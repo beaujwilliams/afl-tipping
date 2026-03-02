@@ -1,16 +1,3 @@
 {
-  "crons": [
-    {
-      "path": "/api/admin/snapshot-odds-all-due?season=2026&secret=@cron_secret",
-      "schedule": "15 * * * *"
-    },
-    {
-      "path": "/api/admin/sync-results?season=2026&secret=@cron_secret",
-      "schedule": "*/10 * * * *"
-    },
-    {
-      "path": "/api/admin/recalc-leaderboard?season=2026&secret=@cron_secret",
-      "schedule": "*/10 * * * *"
-    }
-  ]
+  "crons": []
 }

@@ -66,7 +66,7 @@ export default function RootLayout({
 
             {/* 👇 BUILD STAMP */}
             <div style={{ fontSize: 12, opacity: 0.6 }}>
-              build: 2026-03-03-1
+              build: test-2
             </div>
           </nav>
         </header>

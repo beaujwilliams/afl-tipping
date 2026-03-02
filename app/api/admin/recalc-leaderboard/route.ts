@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { cookies } from "next/headers";
-import { createServerClient } from "@supabase/ssr";
 
 function mustEnv(name: string) {
   const v = process.env[name];
@@ -9,31 +7,24 @@ function mustEnv(name: string) {
   return v;
 }
 
-async function isAdminOrCron(req: Request) {
+async function isAdminOrCron(req: Request): Promise<boolean> {
   const url = new URL(req.url);
+
   const secret = url.searchParams.get("secret");
   const cronSecret = process.env.CRON_SECRET;
   if (secret && cronSecret && secret === cronSecret) return true;
 
-  const cookieStore = cookies();
-  const supabaseAuth = createServerClient(
+  const authHeader = req.headers.get("authorization") || req.headers.get("Authorization");
+  if (!authHeader?.toLowerCase().startsWith("bearer ")) return false;
+  const token = authHeader.slice(7).trim();
+  if (!token) return false;
+
+  const authClient = createClient(
     mustEnv("NEXT_PUBLIC_SUPABASE_URL"),
-    mustEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            cookieStore.set(name, value, options);
-          });
-        },
-      },
-    }
+    mustEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
   );
 
-  const { data } = await supabaseAuth.auth.getUser();
+  const { data } = await authClient.auth.getUser(token);
   return (data.user?.email ?? null) === "beau.j.williams@gmail.com";
 }
 
@@ -57,12 +48,14 @@ export async function GET(req: Request) {
       .single();
 
     if (compErr || !comp) {
-      return NextResponse.json({ error: "Competition not found", details: compErr?.message }, { status: 500 });
+      return NextResponse.json(
+        { error: "Competition not found", details: compErr?.message },
+        { status: 500 }
+      );
     }
 
     const competitionId = comp.id as string;
 
-    // 1) get finished matches
     const { data: finishedMatches, error: mErr } = await supabase
       .from("matches")
       .select("id, round_number, winner_team, home_team, away_team")
@@ -79,7 +72,6 @@ export async function GET(req: Request) {
       return NextResponse.json({ ok: true, season, matchesScored: 0, note: "No finished matches yet" });
     }
 
-    // 2) load tips for those matches
     const { data: tips, error: tErr } = await supabase
       .from("tips")
       .select("user_id, match_id, tipped_team")
@@ -91,7 +83,6 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Failed to read tips", details: tErr.message }, { status: 500 });
     }
 
-    // 3) load odds snapshots for those matches (Sportsbet)
     const { data: odds, error: oErr } = await supabase
       .from("odds_snapshots")
       .select("match_id, home_odds, away_odds")
@@ -105,7 +96,6 @@ export async function GET(req: Request) {
 
     const oddsByMatch = new Map<string, { home_odds: number | null; away_odds: number | null }>();
     for (const row of odds ?? []) {
-      // if multiple snapshots exist, last one wins (fine for MVP)
       oddsByMatch.set(String((row as any).match_id), {
         home_odds: (row as any).home_odds ?? null,
         away_odds: (row as any).away_odds ?? null,
@@ -115,7 +105,6 @@ export async function GET(req: Request) {
     const matchById = new Map<string, any>();
     for (const m of finishedMatches ?? []) matchById.set(String(m.id), m);
 
-    // 4) compute points per user
     const pointsByUser = new Map<string, number>();
 
     for (const tip of tips ?? []) {
@@ -133,9 +122,7 @@ export async function GET(req: Request) {
       if (!matchOdds) continue;
 
       let pts = 0;
-
       if (tipped === winner) {
-        // award odds for the winner team (decimal odds)
         if (winner === match.home_team) pts = Number(matchOdds.home_odds ?? 0);
         else if (winner === match.away_team) pts = Number(matchOdds.away_odds ?? 0);
       }
@@ -143,8 +130,6 @@ export async function GET(req: Request) {
       if (pts > 0) pointsByUser.set(userId, (pointsByUser.get(userId) ?? 0) + pts);
     }
 
-    // 5) upsert leaderboard entries
-    // Assumes a unique key exists on (competition_id, season, user_id)
     const upserts = Array.from(pointsByUser.entries()).map(([user_id, total_points]) => ({
       competition_id: competitionId,
       season,
@@ -159,11 +144,14 @@ export async function GET(req: Request) {
         .upsert(upserts, { onConflict: "competition_id,season,user_id" });
 
       if (upErr) {
-        return NextResponse.json({
-          error: "Failed to upsert leaderboard entries",
-          details: upErr.message,
-          hint: "Check that leaderboard_entries has a unique constraint on (competition_id, season, user_id).",
-        }, { status: 500 });
+        return NextResponse.json(
+          {
+            error: "Failed to upsert leaderboard entries",
+            details: upErr.message,
+            hint: "Ensure unique constraint exists on (competition_id, season, user_id).",
+          },
+          { status: 500 }
+        );
       }
     }
 

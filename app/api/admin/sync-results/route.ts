@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { cookies } from "next/headers";
-import { createServerClient } from "@supabase/ssr";
 
 function mustEnv(name: string) {
   const v = process.env[name];
@@ -9,31 +7,24 @@ function mustEnv(name: string) {
   return v;
 }
 
-async function isAdminOrCron(req: Request) {
+async function isAdminOrCron(req: Request): Promise<boolean> {
   const url = new URL(req.url);
+
   const secret = url.searchParams.get("secret");
   const cronSecret = process.env.CRON_SECRET;
   if (secret && cronSecret && secret === cronSecret) return true;
 
-  const cookieStore = cookies();
-  const supabaseAuth = createServerClient(
+  const authHeader = req.headers.get("authorization") || req.headers.get("Authorization");
+  if (!authHeader?.toLowerCase().startsWith("bearer ")) return false;
+  const token = authHeader.slice(7).trim();
+  if (!token) return false;
+
+  const authClient = createClient(
     mustEnv("NEXT_PUBLIC_SUPABASE_URL"),
-    mustEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            cookieStore.set(name, value, options);
-          });
-        },
-      },
-    }
+    mustEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
   );
 
-  const { data } = await supabaseAuth.auth.getUser();
+  const { data } = await authClient.auth.getUser(token);
   return (data.user?.email ?? null) === "beau.j.williams@gmail.com";
 }
 
@@ -57,13 +48,14 @@ export async function GET(req: Request) {
       .single();
 
     if (compErr || !comp) {
-      return NextResponse.json({ error: "Competition not found", details: compErr?.message }, { status: 500 });
+      return NextResponse.json(
+        { error: "Competition not found", details: compErr?.message },
+        { status: 500 }
+      );
     }
 
     const competitionId = comp.id as string;
 
-    // Pull final games from Squiggle (complete=100 usually means final)
-    // We’ll update matches where we have an external id match.
     const gamesUrl = `https://api.squiggle.com.au/?q=games;year=${season};complete=100;format=json`;
     const resp = await fetch(gamesUrl, { cache: "no-store" });
     const body = await resp.json();
@@ -71,8 +63,6 @@ export async function GET(req: Request) {
     const games: any[] = Array.isArray(body?.games) ? body.games : [];
     const finalGamesFound = games.length;
 
-    // Build map by Squiggle game id -> winner
-    // Squiggle fields vary; common are "id", "hteam", "ateam", "winner", "hscore", "ascore"
     let updated = 0;
     let consideredFinal = 0;
 
@@ -80,7 +70,6 @@ export async function GET(req: Request) {
       const gameId = g?.id ?? g?.gameid ?? null;
       if (!gameId) continue;
 
-      // Try to determine winner team name
       const winner =
         g?.winner ??
         g?.winnerteam ??
@@ -96,15 +85,10 @@ export async function GET(req: Request) {
 
       consideredFinal++;
 
-      const patch: any = {
-        winner_team: winner,
-        is_final: true,
-      };
-
+      const patch: any = { winner_team: winner, is_final: true };
       if (typeof g?.hscore === "number") patch.home_score = g.hscore;
       if (typeof g?.ascore === "number") patch.away_score = g.ascore;
 
-      // Update by external id (match_external_id)
       const { data: upd, error: updErr } = await supabase
         .from("matches")
         .update(patch)
@@ -120,11 +104,7 @@ export async function GET(req: Request) {
     return NextResponse.json({
       ok: true,
       season,
-      fetchAttempt: {
-        url: gamesUrl,
-        finalGamesFound,
-        finalDataSource: "complete=100",
-      },
+      fetchAttempt: { url: gamesUrl, finalGamesFound, finalDataSource: "complete=100" },
       gamesFetched: finalGamesFound,
       consideredFinal,
       updated,

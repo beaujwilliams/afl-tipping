@@ -10,12 +10,10 @@ function mustEnv(name: string) {
 async function isAdminOrCron(req: Request): Promise<boolean> {
   const url = new URL(req.url);
 
-  // 1) Allow automation via secret
   const secret = url.searchParams.get("secret");
   const cronSecret = process.env.CRON_SECRET;
   if (secret && cronSecret && secret === cronSecret) return true;
 
-  // 2) Allow admin via Bearer token (from /admin page)
   const authHeader = req.headers.get("authorization") || req.headers.get("Authorization");
   if (!authHeader?.toLowerCase().startsWith("bearer ")) return false;
 
@@ -44,26 +42,10 @@ export async function GET(req: Request) {
       mustEnv("SUPABASE_SERVICE_ROLE_KEY")
     );
 
-    const { data: comp, error: compErr } = await supabase
-      .from("competitions")
-      .select("id")
-      .limit(1)
-      .single();
-
-    if (compErr || !comp) {
-      return NextResponse.json(
-        { error: "Competition not found", details: compErr?.message },
-        { status: 500 }
-      );
-    }
-
-    const competitionId = comp.id as string;
-
-    // Finished matches: winner_team is not null
+    // Finished matches for season (no competition_id in your schema)
     const { data: finishedMatches, error: mErr } = await supabase
       .from("matches")
       .select("id, winner_team, home_team, away_team")
-      .eq("competition_id", competitionId)
       .eq("season", season)
       .not("winner_team", "is", null);
 
@@ -80,7 +62,6 @@ export async function GET(req: Request) {
     const { data: tips, error: tErr } = await supabase
       .from("tips")
       .select("user_id, match_id, tipped_team")
-      .eq("competition_id", competitionId)
       .eq("season", season)
       .in("match_id", matchIds);
 
@@ -92,7 +73,6 @@ export async function GET(req: Request) {
     const { data: odds, error: oErr } = await supabase
       .from("odds_snapshots")
       .select("match_id, home_odds, away_odds")
-      .eq("competition_id", competitionId)
       .eq("season", season)
       .in("match_id", matchIds);
 
@@ -111,7 +91,6 @@ export async function GET(req: Request) {
     const matchById = new Map<string, any>();
     for (const m of finishedMatches ?? []) matchById.set(String(m.id), m);
 
-    // Score totals
     const pointsByUser = new Map<string, number>();
 
     for (const tip of tips ?? []) {
@@ -137,9 +116,9 @@ export async function GET(req: Request) {
       if (pts > 0) pointsByUser.set(userId, (pointsByUser.get(userId) ?? 0) + pts);
     }
 
-    // Upsert leaderboard_entries
+    // Upsert leaderboard entries (no competition_id)
+    // Assumes unique constraint on (season, user_id)
     const upserts = Array.from(pointsByUser.entries()).map(([user_id, total_points]) => ({
-      competition_id: competitionId,
       season,
       user_id,
       total_points,
@@ -149,14 +128,14 @@ export async function GET(req: Request) {
     if (upserts.length > 0) {
       const { error: upErr } = await supabase
         .from("leaderboard_entries")
-        .upsert(upserts, { onConflict: "competition_id,season,user_id" });
+        .upsert(upserts, { onConflict: "season,user_id" });
 
       if (upErr) {
         return NextResponse.json(
           {
             error: "Failed to upsert leaderboard entries",
             details: upErr.message,
-            hint: "Check unique constraint on (competition_id, season, user_id).",
+            hint: "Check unique constraint on (season, user_id).",
           },
           { status: 500 }
         );

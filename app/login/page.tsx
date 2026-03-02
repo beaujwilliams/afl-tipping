@@ -10,14 +10,26 @@ export default function LoginPage() {
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // ✅ Auto-forward if already logged in
+  // ✅ Auto-forward if already logged in (robust: initial check + auth change listener)
   useEffect(() => {
-    (async () => {
+    let mounted = true;
+
+    async function goIfLoggedIn() {
       const { data } = await supabaseBrowser.auth.getSession();
-      if (data.session) {
-        window.location.href = "/round/2026";
-      }
-    })();
+      if (!mounted) return;
+      if (data.session) window.location.href = "/round/2026";
+    }
+
+    goIfLoggedIn();
+
+    const { data: sub } = supabaseBrowser.auth.onAuthStateChange((_event, session) => {
+      if (session) window.location.href = "/round/2026";
+    });
+
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
   }, []);
 
   async function signIn(e: React.FormEvent) {
@@ -48,6 +60,7 @@ export default function LoginPage() {
       email,
       password,
       options: {
+        // after confirming email, send them back to the site (not localhost)
         emailRedirectTo: `${window.location.origin}/login`,
       },
     });
@@ -60,12 +73,6 @@ export default function LoginPage() {
     }
 
     setMsg("Account created. Check your email to confirm, then come back and sign in.");
-  }
-
-  async function signOut() {
-    setMsg(null);
-    await supabaseBrowser.auth.signOut();
-    setMsg("Signed out.");
   }
 
   return (
@@ -131,23 +138,6 @@ export default function LoginPage() {
           }}
         >
           {busy ? "Creating…" : "Create account"}
-        </button>
-
-        <button
-          type="button"
-          onClick={signOut}
-          style={{
-            width: "100%",
-            padding: 12,
-            borderRadius: 12,
-            border: "1px solid #eee",
-            background: "#fafafa",
-            fontWeight: 600,
-            cursor: "pointer",
-            marginTop: 10,
-          }}
-        >
-          Sign out (debug)
         </button>
 
         {msg && <p style={{ marginTop: 12 }}>{msg}</p>}

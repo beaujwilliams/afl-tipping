@@ -1,199 +1,179 @@
 import { NextResponse } from "next/server";
-import { createServiceClient } from "@/lib/supabase-server";
+import { createClient } from "@supabase/supabase-js";
+import { cookies } from "next/headers";
+import { createServerClient } from "@supabase/ssr";
 
-type MatchRow = {
-  id: string;
-  round_id: string;
-  commence_time_utc: string;
-  home_team: string;
-  away_team: string;
-  winner_team: string | null;
-};
+function mustEnv(name: string) {
+  const v = process.env[name];
+  if (!v) throw new Error(`Missing env var: ${name}`);
+  return v;
+}
 
-type TipRow = {
-  match_id: string;
-  user_id: string;
-  picked_team: string;
-};
-
-type OddsRow = {
-  match_id: string;
-  home_team: string;
-  away_team: string;
-  home_odds: number;
-  away_odds: number;
-  snapshot_for_time_utc: string;
-};
-
-type RoundRow = {
-  id: string;
-  odds_snapshot_for_time_utc: string | null;
-};
-
-export async function GET(req: Request) {
+async function isAdminOrCron(req: Request) {
   const url = new URL(req.url);
   const secret = url.searchParams.get("secret");
-  const season = Number(url.searchParams.get("season") ?? "2026");
+  const cronSecret = process.env.CRON_SECRET;
+  if (secret && cronSecret && secret === cronSecret) return true;
 
-  if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const cookieStore = cookies();
+  const supabaseAuth = createServerClient(
+    mustEnv("NEXT_PUBLIC_SUPABASE_URL"),
+    mustEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            cookieStore.set(name, value, options);
+          });
+        },
+      },
+    }
+  );
 
-  const supabase = createServiceClient();
+  const { data } = await supabaseAuth.auth.getUser();
+  return (data.user?.email ?? null) === "beau.j.williams@gmail.com";
+}
 
-  // single-comp MVP
-  const { data: comp, error: cErr } = await supabase
-    .from("competitions")
-    .select("id")
-    .limit(1)
-    .single();
+export async function GET(req: Request) {
+  try {
+    const allowed = await isAdminOrCron(req);
+    if (!allowed) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  if (cErr || !comp) return NextResponse.json({ error: "No competition found" }, { status: 404 });
+    const url = new URL(req.url);
+    const season = Number(url.searchParams.get("season") ?? "2026");
 
-  // Load rounds (need odds_snapshot_for_time_utc)
-  const { data: rounds, error: rErr } = await supabase
-    .from("rounds")
-    .select("id, odds_snapshot_for_time_utc")
-    .eq("competition_id", comp.id)
-    .eq("season", season);
+    const supabase = createClient(
+      mustEnv("NEXT_PUBLIC_SUPABASE_URL"),
+      mustEnv("SUPABASE_SERVICE_ROLE_KEY")
+    );
 
-  if (rErr) return NextResponse.json({ error: rErr.message }, { status: 500 });
+    const { data: comp, error: compErr } = await supabase
+      .from("competitions")
+      .select("id")
+      .limit(1)
+      .single();
 
-  const roundsList = (rounds ?? []) as RoundRow[];
-  const roundIds = roundsList.map((r) => r.id);
-  const roundSnapshotById: Record<string, string | null> = {};
-  roundsList.forEach((r) => (roundSnapshotById[r.id] = r.odds_snapshot_for_time_utc ?? null));
+    if (compErr || !comp) {
+      return NextResponse.json({ error: "Competition not found", details: compErr?.message }, { status: 500 });
+    }
 
-  // Load finished matches with winners
-  const { data: matches, error: mErr } = await supabase
-    .from("matches")
-    .select("id, round_id, commence_time_utc, home_team, away_team, winner_team")
-    .in("round_id", roundIds)
-    .not("winner_team", "is", null);
+    const competitionId = comp.id as string;
 
-  if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
+    // 1) get finished matches
+    const { data: finishedMatches, error: mErr } = await supabase
+      .from("matches")
+      .select("id, round_number, winner_team, home_team, away_team")
+      .eq("competition_id", competitionId)
+      .eq("season", season)
+      .not("winner_team", "is", null);
 
-  const finishedMatches = (matches ?? []) as MatchRow[];
-  const matchIds = finishedMatches.map((m) => m.id);
+    if (mErr) {
+      return NextResponse.json({ error: "Failed to read matches", details: mErr.message }, { status: 500 });
+    }
 
-  if (!matchIds.length) {
-    return NextResponse.json({ ok: true, season, matchesFinished: 0, note: "No finished matches yet" });
-  }
+    const matchIds = (finishedMatches ?? []).map((m: any) => m.id);
+    if (matchIds.length === 0) {
+      return NextResponse.json({ ok: true, season, matchesScored: 0, note: "No finished matches yet" });
+    }
 
-  // Load tips for those matches
-  const { data: tips, error: tErr } = await supabase
-    .from("tips")
-    .select("match_id, user_id, picked_team")
-    .eq("competition_id", comp.id)
-    .in("match_id", matchIds);
+    // 2) load tips for those matches
+    const { data: tips, error: tErr } = await supabase
+      .from("tips")
+      .select("user_id, match_id, tipped_team")
+      .eq("competition_id", competitionId)
+      .eq("season", season)
+      .in("match_id", matchIds);
 
-  if (tErr) return NextResponse.json({ error: tErr.message }, { status: 500 });
+    if (tErr) {
+      return NextResponse.json({ error: "Failed to read tips", details: tErr.message }, { status: 500 });
+    }
 
-  const tipsList = (tips ?? []) as TipRow[];
+    // 3) load odds snapshots for those matches (Sportsbet)
+    const { data: odds, error: oErr } = await supabase
+      .from("odds_snapshots")
+      .select("match_id, home_odds, away_odds")
+      .eq("competition_id", competitionId)
+      .eq("season", season)
+      .in("match_id", matchIds);
 
-  // Build the set of (match_id, snapshot_for_time_utc) we need
-  const neededPairs = finishedMatches
-    .map((m) => ({
-      match_id: m.id,
-      snapshot_for_time_utc: roundSnapshotById[m.round_id],
-    }))
-    .filter((x) => !!x.snapshot_for_time_utc) as { match_id: string; snapshot_for_time_utc: string }[];
+    if (oErr) {
+      return NextResponse.json({ error: "Failed to read odds snapshots", details: oErr.message }, { status: 500 });
+    }
 
-  // If no rounds have snapshot time recorded yet, we can’t score correctly
-  if (!neededPairs.length) {
+    const oddsByMatch = new Map<string, { home_odds: number | null; away_odds: number | null }>();
+    for (const row of odds ?? []) {
+      // if multiple snapshots exist, last one wins (fine for MVP)
+      oddsByMatch.set(String((row as any).match_id), {
+        home_odds: (row as any).home_odds ?? null,
+        away_odds: (row as any).away_odds ?? null,
+      });
+    }
+
+    const matchById = new Map<string, any>();
+    for (const m of finishedMatches ?? []) matchById.set(String(m.id), m);
+
+    // 4) compute points per user
+    const pointsByUser = new Map<string, number>();
+
+    for (const tip of tips ?? []) {
+      const userId = String((tip as any).user_id);
+      const matchId = String((tip as any).match_id);
+      const tipped = (tip as any).tipped_team as string;
+
+      const match = matchById.get(matchId);
+      if (!match) continue;
+
+      const winner = match.winner_team as string;
+      if (!winner) continue;
+
+      const matchOdds = oddsByMatch.get(matchId);
+      if (!matchOdds) continue;
+
+      let pts = 0;
+
+      if (tipped === winner) {
+        // award odds for the winner team (decimal odds)
+        if (winner === match.home_team) pts = Number(matchOdds.home_odds ?? 0);
+        else if (winner === match.away_team) pts = Number(matchOdds.away_odds ?? 0);
+      }
+
+      if (pts > 0) pointsByUser.set(userId, (pointsByUser.get(userId) ?? 0) + pts);
+    }
+
+    // 5) upsert leaderboard entries
+    // Assumes a unique key exists on (competition_id, season, user_id)
+    const upserts = Array.from(pointsByUser.entries()).map(([user_id, total_points]) => ({
+      competition_id: competitionId,
+      season,
+      user_id,
+      total_points,
+      updated_at: new Date().toISOString(),
+    }));
+
+    if (upserts.length > 0) {
+      const { error: upErr } = await supabase
+        .from("leaderboard_entries")
+        .upsert(upserts, { onConflict: "competition_id,season,user_id" });
+
+      if (upErr) {
+        return NextResponse.json({
+          error: "Failed to upsert leaderboard entries",
+          details: upErr.message,
+          hint: "Check that leaderboard_entries has a unique constraint on (competition_id, season, user_id).",
+        }, { status: 500 });
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       season,
-      matchesFinished: finishedMatches.length,
-      note: "No rounds have odds_snapshot_for_time_utc set yet (run odds snapshot first).",
+      matchesScored: (finishedMatches ?? []).length,
+      usersUpdated: upserts.length,
     });
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message ?? "Unknown error" }, { status: 500 });
   }
-
-  // Fetch odds for all finished matches; we’ll pick the row with the exact snapshot_for_time_utc for that match’s round
-  const { data: oddsRows, error: oErr } = await supabase
-    .from("match_odds")
-    .select("match_id, home_team, away_team, home_odds, away_odds, snapshot_for_time_utc")
-    .eq("competition_id", comp.id)
-    .in("match_id", matchIds);
-
-  if (oErr) return NextResponse.json({ error: oErr.message }, { status: 500 });
-
-  // Index odds by match_id then by snapshot_for_time_utc
-  const oddsIndex: Record<string, Record<string, OddsRow>> = {};
-  (oddsRows as OddsRow[] | null)?.forEach((row) => {
-    oddsIndex[row.match_id] = oddsIndex[row.match_id] ?? {};
-    oddsIndex[row.match_id][row.snapshot_for_time_utc] = row;
-  });
-
-  let tipsScored = 0;
-  const userTotals: Record<string, number> = {};
-  let skippedNoOdds = 0;
-
-  for (const tip of tipsList) {
-    const match = finishedMatches.find((m) => m.id === tip.match_id);
-    if (!match || !match.winner_team) continue;
-
-    const snapshot = roundSnapshotById[match.round_id];
-    if (!snapshot) {
-      skippedNoOdds++;
-      continue;
-    }
-
-    const odds = oddsIndex[tip.match_id]?.[snapshot];
-    if (!odds) {
-      skippedNoOdds++;
-      continue;
-    }
-
-    let points = 0;
-
-    if (tip.picked_team === match.winner_team) {
-      if (match.winner_team === match.home_team) points = Number(odds.home_odds);
-      else if (match.winner_team === match.away_team) points = Number(odds.away_odds);
-    }
-
-    userTotals[tip.user_id] = (userTotals[tip.user_id] ?? 0) + points;
-
-    const { error: sErr } = await supabase.from("tip_scores").upsert(
-      {
-        competition_id: comp.id,
-        season,
-        match_id: tip.match_id,
-        user_id: tip.user_id,
-        points,
-        picked_team: tip.picked_team,
-        winner_team: match.winner_team,
-        calculated_at_utc: new Date().toISOString(),
-      },
-      { onConflict: "competition_id,season,match_id,user_id" }
-    );
-
-    if (!sErr) tipsScored++;
-  }
-
-  // Upsert leaderboard totals
-  let leaderboardRows = 0;
-  for (const [user_id, total] of Object.entries(userTotals)) {
-    const { error: lErr } = await supabase.from("leaderboard_entries").upsert(
-      {
-        competition_id: comp.id,
-        season,
-        user_id,
-        total_points: total,
-        updated_at_utc: new Date().toISOString(),
-      },
-      { onConflict: "competition_id,season,user_id" }
-    );
-    if (!lErr) leaderboardRows++;
-  }
-
-  return NextResponse.json({
-    ok: true,
-    season,
-    matchesFinished: finishedMatches.length,
-    tipsScored,
-    leaderboardRows,
-    skippedNoOdds,
-    note: "Scoring uses round odds_snapshot_for_time_utc (your 12pm rule).",
-  });
 }

@@ -1,125 +1,136 @@
 import { NextResponse } from "next/server";
-import { createServiceClient } from "@/lib/supabase-server";
+import { createClient } from "@supabase/supabase-js";
+import { cookies } from "next/headers";
+import { createServerClient } from "@supabase/ssr";
 
-type SquiggleGame = {
-  id?: number;
-  date?: string;
-  year?: number;
-  round?: number;
-  hteam?: string;
-  ateam?: string;
-  hscore?: number | null;
-  ascore?: number | null;
-  winner?: string | null;
-  complete?: number | null; // 100 when final
-};
-
-function norm(s: string) {
-  return s.trim().replace(/\s+/g, " ");
+function mustEnv(name: string) {
+  const v = process.env[name];
+  if (!v) throw new Error(`Missing env var: ${name}`);
+  return v;
 }
 
-function sameMatchTeams(aHome: string, aAway: string, bHome: string, bAway: string) {
-  const ah = norm(aHome);
-  const aa = norm(aAway);
-  const bh = norm(bHome);
-  const ba = norm(bAway);
-  return (ah === bh && aa === ba) || (ah === ba && aa === bh);
+async function isAdminOrCron(req: Request) {
+  const url = new URL(req.url);
+  const secret = url.searchParams.get("secret");
+  const cronSecret = process.env.CRON_SECRET;
+  if (secret && cronSecret && secret === cronSecret) return true;
+
+  const cookieStore = cookies();
+  const supabaseAuth = createServerClient(
+    mustEnv("NEXT_PUBLIC_SUPABASE_URL"),
+    mustEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            cookieStore.set(name, value, options);
+          });
+        },
+      },
+    }
+  );
+
+  const { data } = await supabaseAuth.auth.getUser();
+  return (data.user?.email ?? null) === "beau.j.williams@gmail.com";
 }
 
 export async function GET(req: Request) {
-  const url = new URL(req.url);
-  const secret = url.searchParams.get("secret");
-  const season = Number(url.searchParams.get("season") ?? "2026");
+  try {
+    const allowed = await isAdminOrCron(req);
+    if (!allowed) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+    const url = new URL(req.url);
+    const season = Number(url.searchParams.get("season") ?? "2026");
 
-  const supabase = createServiceClient();
+    const supabase = createClient(
+      mustEnv("NEXT_PUBLIC_SUPABASE_URL"),
+      mustEnv("SUPABASE_SERVICE_ROLE_KEY")
+    );
 
-  // single-comp MVP
-  const { data: comp, error: cErr } = await supabase
-    .from("competitions")
-    .select("id")
-    .limit(1)
-    .single();
+    const { data: comp, error: compErr } = await supabase
+      .from("competitions")
+      .select("id")
+      .limit(1)
+      .single();
 
-  if (cErr || !comp) return NextResponse.json({ error: "No competition found" }, { status: 404 });
+    if (compErr || !comp) {
+      return NextResponse.json({ error: "Competition not found", details: compErr?.message }, { status: 500 });
+    }
 
-  // Load round ids for this season
-  const { data: rounds, error: rErr } = await supabase
-    .from("rounds")
-    .select("id")
-    .eq("competition_id", comp.id)
-    .eq("season", season);
+    const competitionId = comp.id as string;
 
-  if (rErr) return NextResponse.json({ error: rErr.message }, { status: 500 });
+    // Pull final games from Squiggle (complete=100 usually means final)
+    // We’ll update matches where we have an external id match.
+    const gamesUrl = `https://api.squiggle.com.au/?q=games;year=${season};complete=100;format=json`;
+    const resp = await fetch(gamesUrl, { cache: "no-store" });
+    const body = await resp.json();
 
-  const roundIds = (rounds ?? []).map((r: any) => r.id);
+    const games: any[] = Array.isArray(body?.games) ? body.games : [];
+    const finalGamesFound = games.length;
 
-  // Load matches in DB for season
-  const { data: matches, error: mErr } = await supabase
-    .from("matches")
-    .select("id, commence_time_utc, home_team, away_team, winner_team, status, round_id")
-    .in("round_id", roundIds);
+    // Build map by Squiggle game id -> winner
+    // Squiggle fields vary; common are "id", "hteam", "ateam", "winner", "hscore", "ascore"
+    let updated = 0;
+    let consideredFinal = 0;
 
-  if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
-  if (!matches?.length) {
+    for (const g of games) {
+      const gameId = g?.id ?? g?.gameid ?? null;
+      if (!gameId) continue;
+
+      // Try to determine winner team name
+      const winner =
+        g?.winner ??
+        g?.winnerteam ??
+        (typeof g?.hscore === "number" && typeof g?.ascore === "number"
+          ? g.hscore > g.ascore
+            ? g?.hteam
+            : g.ascore > g.hscore
+              ? g?.ateam
+              : null
+          : null);
+
+      if (!winner) continue;
+
+      consideredFinal++;
+
+      const patch: any = {
+        winner_team: winner,
+        is_final: true,
+      };
+
+      if (typeof g?.hscore === "number") patch.home_score = g.hscore;
+      if (typeof g?.ascore === "number") patch.away_score = g.ascore;
+
+      // Update by external id (match_external_id)
+      const { data: upd, error: updErr } = await supabase
+        .from("matches")
+        .update(patch)
+        .eq("competition_id", competitionId)
+        .eq("season", season)
+        .eq("match_external_id", String(gameId))
+        .select("id")
+        .limit(1);
+
+      if (!updErr && (upd?.length ?? 0) > 0) updated++;
+    }
+
     return NextResponse.json({
       ok: true,
       season,
-      gamesFetched: 0,
-      consideredFinal: 0,
-      updated: 0,
-      note: "No matches in DB",
+      fetchAttempt: {
+        url: gamesUrl,
+        finalGamesFound,
+        finalDataSource: "complete=100",
+      },
+      gamesFetched: finalGamesFound,
+      consideredFinal,
+      updated,
+      note: "Using complete=100 (final games only)",
     });
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message ?? "Unknown error" }, { status: 500 });
   }
-
-  // ✅ Fetch only FINAL games from Squiggle
-  const gamesUrl = `https://api.squiggle.com.au/?q=games;year=${season};complete=100;format=json`;
-  const res = await fetch(gamesUrl, { cache: "no-store" });
-  const json = await res.json();
-  const games: SquiggleGame[] = json?.games ?? [];
-
-  let updated = 0;
-
-  // Only games that really have winner info
-  const finalGames = games.filter((g) => g.hteam && g.ateam && g.winner);
-
-  // Match by teams (allow swapped), choose closest time if multiple
-  for (const g of finalGames) {
-    const candidates = (matches as any[]).filter((m) =>
-      sameMatchTeams(m.home_team, m.away_team, g.hteam!, g.ateam!)
-    );
-
-    if (!candidates.length) continue;
-
-    const gTime = g.date ? new Date(g.date).getTime() : NaN;
-    const best = candidates
-      .map((m) => ({
-        m,
-        diff: Number.isNaN(gTime) ? 0 : Math.abs(new Date(m.commence_time_utc).getTime() - gTime),
-      }))
-      .sort((a, b) => a.diff - b.diff)[0].m;
-
-    const winnerTeam = norm(g.winner!);
-
-    if (best.winner_team !== winnerTeam || best.status !== "finished") {
-      const { error: uErr } = await supabase
-        .from("matches")
-        .update({ winner_team: winnerTeam, status: "finished" })
-        .eq("id", best.id);
-
-      if (!uErr) updated++;
-    }
-  }
-
-  return NextResponse.json({
-    ok: true,
-    season,
-    gamesFetched: games.length,
-    consideredFinal: finalGames.length,
-    updated,
-    note: "Using complete=100 (final games only)",
-  });
 }

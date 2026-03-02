@@ -21,10 +21,8 @@ export default function RootLayout({
       setEmail(data.user?.email ?? null);
     }
 
-    // initial
     load();
 
-    // also react to auth changes (login/logout)
     const { data: sub } = supabaseBrowser.auth.onAuthStateChange(() => {
       load();
     });
@@ -65,6 +63,11 @@ export default function RootLayout({
                 Admin
               </Link>
             )}
+
+            {/* 👇 BUILD STAMP */}
+            <div style={{ fontSize: 12, opacity: 0.6 }}>
+              build: 2026-03-03-1
+            </div>
           </nav>
         </header>
 

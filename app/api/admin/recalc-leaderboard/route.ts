@@ -10,12 +10,15 @@ function mustEnv(name: string) {
 async function isAdminOrCron(req: Request): Promise<boolean> {
   const url = new URL(req.url);
 
+  // 1) Allow automation via secret
   const secret = url.searchParams.get("secret");
   const cronSecret = process.env.CRON_SECRET;
   if (secret && cronSecret && secret === cronSecret) return true;
 
+  // 2) Allow admin via Bearer token (from /admin page)
   const authHeader = req.headers.get("authorization") || req.headers.get("Authorization");
   if (!authHeader?.toLowerCase().startsWith("bearer ")) return false;
+
   const token = authHeader.slice(7).trim();
   if (!token) return false;
 
@@ -56,9 +59,10 @@ export async function GET(req: Request) {
 
     const competitionId = comp.id as string;
 
+    // Finished matches: winner_team is not null
     const { data: finishedMatches, error: mErr } = await supabase
       .from("matches")
-      .select("id, round_number, winner_team, home_team, away_team")
+      .select("id, winner_team, home_team, away_team")
       .eq("competition_id", competitionId)
       .eq("season", season)
       .not("winner_team", "is", null);
@@ -72,6 +76,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ ok: true, season, matchesScored: 0, note: "No finished matches yet" });
     }
 
+    // Tips for those matches
     const { data: tips, error: tErr } = await supabase
       .from("tips")
       .select("user_id, match_id, tipped_team")
@@ -83,6 +88,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Failed to read tips", details: tErr.message }, { status: 500 });
     }
 
+    // Odds snapshots for those matches
     const { data: odds, error: oErr } = await supabase
       .from("odds_snapshots")
       .select("match_id, home_odds, away_odds")
@@ -94,23 +100,24 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Failed to read odds snapshots", details: oErr.message }, { status: 500 });
     }
 
-    const oddsByMatch = new Map<string, { home_odds: number | null; away_odds: number | null }>();
+    const oddsByMatch = new Map<string, { home: number; away: number }>();
     for (const row of odds ?? []) {
       oddsByMatch.set(String((row as any).match_id), {
-        home_odds: (row as any).home_odds ?? null,
-        away_odds: (row as any).away_odds ?? null,
+        home: Number((row as any).home_odds ?? 0),
+        away: Number((row as any).away_odds ?? 0),
       });
     }
 
     const matchById = new Map<string, any>();
     for (const m of finishedMatches ?? []) matchById.set(String(m.id), m);
 
+    // Score totals
     const pointsByUser = new Map<string, number>();
 
     for (const tip of tips ?? []) {
       const userId = String((tip as any).user_id);
       const matchId = String((tip as any).match_id);
-      const tipped = (tip as any).tipped_team as string;
+      const tipped = String((tip as any).tipped_team);
 
       const match = matchById.get(matchId);
       if (!match) continue;
@@ -118,18 +125,19 @@ export async function GET(req: Request) {
       const winner = match.winner_team as string;
       if (!winner) continue;
 
-      const matchOdds = oddsByMatch.get(matchId);
-      if (!matchOdds) continue;
+      const mo = oddsByMatch.get(matchId);
+      if (!mo) continue;
 
       let pts = 0;
       if (tipped === winner) {
-        if (winner === match.home_team) pts = Number(matchOdds.home_odds ?? 0);
-        else if (winner === match.away_team) pts = Number(matchOdds.away_odds ?? 0);
+        if (winner === match.home_team) pts = mo.home;
+        else if (winner === match.away_team) pts = mo.away;
       }
 
       if (pts > 0) pointsByUser.set(userId, (pointsByUser.get(userId) ?? 0) + pts);
     }
 
+    // Upsert leaderboard_entries
     const upserts = Array.from(pointsByUser.entries()).map(([user_id, total_points]) => ({
       competition_id: competitionId,
       season,
@@ -148,7 +156,7 @@ export async function GET(req: Request) {
           {
             error: "Failed to upsert leaderboard entries",
             details: upErr.message,
-            hint: "Ensure unique constraint exists on (competition_id, season, user_id).",
+            hint: "Check unique constraint on (competition_id, season, user_id).",
           },
           { status: 500 }
         );

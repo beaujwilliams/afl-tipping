@@ -16,15 +16,58 @@ export default function SeasonRoundsPage() {
   const season = Number(params.season);
 
   const [rows, setRows] = useState<RoundRow[]>([]);
-  const [msg, setMsg] = useState("Loading…");
+  const [msg, setMsg] = useState("Checking session…");
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    (async () => {
-      const { data: auth } = await supabaseBrowser.auth.getUser();
-      if (!auth.user) {
-        window.location.href = "/login";
+    let alive = true;
+
+    async function ensureSessionOrRedirect() {
+      // 1) immediate session check
+      const { data } = await supabaseBrowser.auth.getSession();
+      if (!alive) return;
+
+      if (data.session) {
+        setReady(true);
+        setMsg("");
         return;
       }
+
+      // 2) wait briefly for auth state to resolve in production
+      const { data: sub } = supabaseBrowser.auth.onAuthStateChange((_event, session) => {
+        if (session) {
+          setReady(true);
+          setMsg("");
+          sub.subscription.unsubscribe();
+        }
+      });
+
+      // 3) after 1.2s, if still no session -> redirect
+      setTimeout(async () => {
+        const { data: again } = await supabaseBrowser.auth.getSession();
+        if (!alive) return;
+
+        if (!again.session) window.location.href = "/login";
+        else {
+          setReady(true);
+          setMsg("");
+        }
+        sub.subscription.unsubscribe();
+      }, 1200);
+    }
+
+    ensureSessionOrRedirect();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!ready) return;
+
+    (async () => {
+      setMsg("Loading rounds…");
 
       const { data: comp } = await supabaseBrowser
         .from("competitions")
@@ -52,7 +95,7 @@ export default function SeasonRoundsPage() {
       setRows((data ?? []) as RoundRow[]);
       setMsg("");
     })();
-  }, [season]);
+  }, [ready, season]);
 
   return (
     <main style={{ maxWidth: 900, margin: "40px auto", padding: 16 }}>

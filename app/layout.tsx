@@ -6,11 +6,7 @@ import { useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import LogoutButton from "@/components/LogoutButton";
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   const [email, setEmail] = useState<string | null>(null);
 
   useEffect(() => {
@@ -38,61 +34,66 @@ export default function RootLayout({
 
   return (
     <html lang="en">
-      <body>
-        <header
-          style={{
-            borderBottom: "1px solid #eee",
-            padding: "14px 24px",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 16,
-            flexWrap: "wrap",
-          }}
-        >
-          <div style={{ fontWeight: 800 }}>
-            <Link href="/" style={{ textDecoration: "none", color: "black" }}>
-              Needlessly Complicated AFL Tipping
-            </Link>
-          </div>
-
-          <nav
-            style={{
-              display: "flex",
-              gap: 16,
-              fontSize: 14,
-              alignItems: "center",
-              flexWrap: "wrap",
-              justifyContent: "flex-end",
-            }}
-          >
-            <Link href="/round/2026">Rounds</Link>
-            <Link href="/leaderboard/2026">Leaderboard</Link>
-
-            {isAdmin && (
-              <Link href="/admin" style={{ fontWeight: 800, color: "#c40000" }}>
-                Admin
+      <body className="min-h-screen bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+        <header className="border-b border-zinc-200 dark:border-zinc-800 px-6 py-4">
+          <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4">
+            <div className="font-extrabold">
+              <Link
+                href="/"
+                className="no-underline text-zinc-900 dark:text-zinc-100"
+              >
+                Needlessly Complicated AFL Tipping
               </Link>
-            )}
+            </div>
 
-            {/* Signed-in indicator + Logout */}
-            {email ? (
-              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                <div style={{ fontSize: 12, opacity: 0.7 }}>{email}</div>
-                <LogoutButton />
+            <nav className="flex flex-wrap items-center justify-end gap-4 text-sm">
+              <Link
+                href="/round/2026"
+                className="text-zinc-800 hover:underline dark:text-zinc-200"
+              >
+                Rounds
+              </Link>
+
+              <Link
+                href="/leaderboard/2026"
+                className="text-zinc-800 hover:underline dark:text-zinc-200"
+              >
+                Leaderboard
+              </Link>
+
+              {isAdmin && (
+                <Link
+                  href="/admin"
+                  className="font-extrabold text-red-700 hover:underline dark:text-red-400"
+                >
+                  Admin
+                </Link>
+              )}
+
+              {email ? (
+                <div className="flex items-center gap-2">
+                  <div className="max-w-[220px] truncate text-xs text-zinc-600 dark:text-zinc-400">
+                    {email}
+                  </div>
+                  <LogoutButton />
+                </div>
+              ) : (
+                <Link
+                  href="/login"
+                  className="font-semibold text-zinc-900 hover:underline dark:text-zinc-100"
+                >
+                  Log in
+                </Link>
+              )}
+
+              <div className="text-xs text-zinc-500 dark:text-zinc-500">
+                build: test-2
               </div>
-            ) : (
-              <Link href="/login" style={{ fontWeight: 700 }}>
-                Log in
-              </Link>
-            )}
-
-            {/* 👇 BUILD STAMP */}
-            <div style={{ fontSize: 12, opacity: 0.6 }}>build: test-2</div>
-          </nav>
+            </nav>
+          </div>
         </header>
 
-        <main>{children}</main>
+        <main className="mx-auto max-w-5xl px-4 py-6">{children}</main>
       </body>
     </html>
   );

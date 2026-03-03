@@ -9,8 +9,11 @@ export default function LoginPage() {
 
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [cooldownUntil, setCooldownUntil] = useState<number>(0);
 
-  // ✅ Auto-forward if already logged in (robust: initial check + auth change listener)
+  const inCooldown = Date.now() < cooldownUntil;
+
+  // ✅ Auto-forward if already logged in
   useEffect(() => {
     let mounted = true;
 
@@ -34,6 +37,9 @@ export default function LoginPage() {
 
   async function signIn(e: React.FormEvent) {
     e.preventDefault();
+
+    if (busy) return;
+
     setMsg(null);
     setBusy(true);
 
@@ -53,26 +59,42 @@ export default function LoginPage() {
   }
 
   async function signUp() {
-    setMsg(null);
-    setBusy(true);
+    if (busy) return;
 
-    const { error } = await supabaseBrowser.auth.signUp({
-      email,
-      password,
-      options: {
-        // after confirming email, send them back to the site (not localhost)
-        emailRedirectTo: `${window.location.origin}/login`,
-      },
-    });
-
-    setBusy(false);
-
-    if (error) {
-      setMsg(error.message);
+    if (inCooldown) {
+      setMsg("Please wait a few seconds before trying again.");
       return;
     }
 
-    setMsg("Account created. Check your email to confirm, then come back and sign in.");
+    setMsg(null);
+    setBusy(true);
+
+    try {
+      const { data, error } = await supabaseBrowser.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/login`,
+        },
+      });
+
+      if (error) throw error;
+
+      // If email confirmation is enabled
+      if (!data.user) {
+        setMsg("Check your email to confirm your account, then come back and sign in.");
+      } else {
+        setMsg("Account created successfully.");
+      }
+
+      // ⛔ Cooldown to prevent rapid re-attempts
+      setCooldownUntil(Date.now() + 10000); // 10 seconds
+    } catch (err: any) {
+      setMsg(err?.message ?? "Signup failed.");
+      setCooldownUntil(Date.now() + 10000);
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -83,6 +105,7 @@ export default function LoginPage() {
         <label style={{ display: "block", marginBottom: 10 }}>
           <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 6 }}>Email</div>
           <input
+            disabled={busy}
             style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #ccc" }}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -96,6 +119,7 @@ export default function LoginPage() {
         <label style={{ display: "block", marginBottom: 10 }}>
           <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 6 }}>Password</div>
           <input
+            disabled={busy}
             style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #ccc" }}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -116,7 +140,7 @@ export default function LoginPage() {
             border: "1px solid #ddd",
             background: "white",
             fontWeight: 800,
-            cursor: "pointer",
+            cursor: busy ? "not-allowed" : "pointer",
           }}
         >
           {busy ? "Signing in…" : "Sign in"}
@@ -124,7 +148,7 @@ export default function LoginPage() {
 
         <button
           type="button"
-          disabled={busy}
+          disabled={busy || inCooldown}
           onClick={signUp}
           style={{
             width: "100%",
@@ -133,11 +157,12 @@ export default function LoginPage() {
             border: "1px solid #ddd",
             background: "white",
             fontWeight: 700,
-            cursor: "pointer",
+            cursor: busy || inCooldown ? "not-allowed" : "pointer",
             marginTop: 10,
+            opacity: busy || inCooldown ? 0.6 : 1,
           }}
         >
-          {busy ? "Creating…" : "Create account"}
+          {busy ? "Creating…" : inCooldown ? "Please wait…" : "Create account"}
         </button>
 
         {msg && <p style={{ marginTop: 12 }}>{msg}</p>}

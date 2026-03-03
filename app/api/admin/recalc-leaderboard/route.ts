@@ -12,11 +12,14 @@ function mustEnv(name: string) {
 async function isAdminOrCron(req: Request): Promise<boolean> {
   const url = new URL(req.url);
 
+  // Cron secret allowed
   const secret = url.searchParams.get("secret");
   const cronSecret = process.env.CRON_SECRET;
   if (secret && cronSecret && secret === cronSecret) return true;
 
-  const authHeader = req.headers.get("authorization") || req.headers.get("Authorization");
+  // Bearer token admin allowed (from Admin UI)
+  const authHeader =
+    req.headers.get("authorization") || req.headers.get("Authorization");
   if (!authHeader?.toLowerCase().startsWith("bearer ")) return false;
 
   const token = authHeader.slice(7).trim();
@@ -31,37 +34,13 @@ async function isAdminOrCron(req: Request): Promise<boolean> {
   return (data.user?.email ?? null) === ADMIN_EMAIL;
 }
 
-// IMPORTANT: use `any` here to avoid TS type fights with information_schema.
-async function tableHasColumn(supabase: any, table: string, column: string): Promise<boolean> {
-  const { data, error } = await supabase
-    .from("information_schema.columns")
-    .select("column_name")
-    .eq("table_schema", "public")
-    .eq("table_name", table)
-    .eq("column_name", column)
-    .limit(1);
-
-  if (error) return false;
-  return (data?.length ?? 0) > 0;
-}
-
 export async function GET(req: Request) {
   try {
     const allowed = await isAdminOrCron(req);
     if (!allowed) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     const url = new URL(req.url);
-    const secret = url.searchParams.get("secret") || "";
-    const cronSecret = process.env.CRON_SECRET || "";
-    const okBySecret = cronSecret && secret && secret === cronSecret;
-
-    if (!okBySecret) {
-        // keep your existing Bearer/admin check exactly as-is below
-        // (do NOT return here)
-}   else {
-        // if okBySecret, skip the Bearer/admin check
-}
-    const season = Number(url.searchParams.get("season") ?? "2026");
+    const season = Number(url.searchParams.get("season") ?? "2026"); // kept for logging/future use
 
     // Service role for DB work
     const supabase = createClient(
@@ -69,97 +48,92 @@ export async function GET(req: Request) {
       mustEnv("SUPABASE_SERVICE_ROLE_KEY")
     );
 
-    const [matchesHasSeason, tipsHasSeason, oddsHasSeason, leaderboardHasSeason] =
-      await Promise.all([
-        tableHasColumn(supabase as any, "matches", "season"),
-        tableHasColumn(supabase as any, "tips", "season"),
-        tableHasColumn(supabase as any, "odds_snapshots", "season"),
-        tableHasColumn(supabase as any, "leaderboard_entries", "season"),
-      ]);
-
-    // Finished matches
-    let matchesQuery = supabase
+    // 1) Finished matches (winner_team set)
+    const { data: finishedMatches, error: mErr } = await supabase
       .from("matches")
       .select("id, winner_team, home_team, away_team")
       .not("winner_team", "is", null);
 
-    if (matchesHasSeason) matchesQuery = matchesQuery.eq("season", season);
-
-    const { data: finishedMatches, error: mErr } = await matchesQuery;
-
     if (mErr) {
-      return NextResponse.json({ error: "Failed to read matches", details: mErr.message }, { status: 500 });
+      return NextResponse.json(
+        { error: "Failed to read matches", details: mErr.message },
+        { status: 500 }
+      );
     }
 
-    const matchIds = (finishedMatches ?? []).map((m: any) => m.id);
+    const matchIds = (finishedMatches ?? []).map((m: any) => String(m.id));
     if (matchIds.length === 0) {
       return NextResponse.json({
         ok: true,
         season,
         matchesScored: 0,
         note: "No finished matches yet",
-        schema: { matchesHasSeason, tipsHasSeason, oddsHasSeason, leaderboardHasSeason },
       });
     }
 
-    // Tips for those matches
-    let tipsQuery = supabase
+    // 2) Tips for those matches (NOTE: picked_team is your column)
+    const { data: tips, error: tErr } = await supabase
       .from("tips")
-      .select("user_id, match_id, tipped_team")
+      .select("user_id, match_id, picked_team")
       .in("match_id", matchIds);
-
-    if (tipsHasSeason) tipsQuery = tipsQuery.eq("season", season);
-
-    const { data: tips, error: tErr } = await tipsQuery;
 
     if (tErr) {
-      return NextResponse.json({ error: "Failed to read tips", details: tErr.message }, { status: 500 });
+      return NextResponse.json(
+        { error: "Failed to read tips", details: tErr.message },
+        { status: 500 }
+      );
     }
 
-    // Odds snapshots for those matches
-    let oddsQuery = supabase
-      .from("odds_snapshots")
-      .select("match_id, home_odds, away_odds")
-      .in("match_id", matchIds);
-
-    if (oddsHasSeason) oddsQuery = oddsQuery.eq("season", season);
-
-    const { data: odds, error: oErr } = await oddsQuery;
+    // 3) Odds for those matches from match_odds
+    // We’ll pick the latest snapshot_for_time_utc per match_id (max snapshot), and within that the latest captured_at_utc.
+    const { data: oddsRows, error: oErr } = await supabase
+      .from("match_odds")
+      .select("match_id, home_odds, away_odds, snapshot_for_time_utc, captured_at_utc")
+      .in("match_id", matchIds)
+      .order("snapshot_for_time_utc", { ascending: false })
+      .order("captured_at_utc", { ascending: false });
 
     if (oErr) {
-      return NextResponse.json({ error: "Failed to read odds snapshots", details: oErr.message }, { status: 500 });
+      return NextResponse.json(
+        { error: "Failed to read match_odds", details: oErr.message },
+        { status: 500 }
+      );
     }
 
-    const oddsByMatch = new Map<string, { home: number; away: number }>();
-    for (const row of odds ?? []) {
-      oddsByMatch.set(String((row as any).match_id), {
+    // Build oddsByMatch: keep first row per match_id due to ordering above
+    const oddsByMatch = new Map<string, { home: number; away: number; snapshot: string }>();
+    for (const row of oddsRows ?? []) {
+      const mid = String((row as any).match_id);
+      if (oddsByMatch.has(mid)) continue;
+      oddsByMatch.set(mid, {
         home: Number((row as any).home_odds ?? 0),
         away: Number((row as any).away_odds ?? 0),
+        snapshot: String((row as any).snapshot_for_time_utc ?? ""),
       });
     }
 
     const matchById = new Map<string, any>();
-    for (const m of finishedMatches ?? []) matchById.set(String(m.id), m);
+    for (const m of finishedMatches ?? []) matchById.set(String((m as any).id), m);
 
-    // Score totals by user
+    // 4) Score totals by user
     const pointsByUser = new Map<string, number>();
 
     for (const tip of tips ?? []) {
       const userId = String((tip as any).user_id);
       const matchId = String((tip as any).match_id);
-      const tipped = String((tip as any).tipped_team);
+      const picked = String((tip as any).picked_team ?? "");
 
       const match = matchById.get(matchId);
       if (!match) continue;
 
-      const winner = match.winner_team as string;
+      const winner = String(match.winner_team ?? "");
       if (!winner) continue;
 
       const mo = oddsByMatch.get(matchId);
       if (!mo) continue;
 
       let pts = 0;
-      if (tipped === winner) {
+      if (picked === winner) {
         if (winner === match.home_team) pts = mo.home;
         else if (winner === match.away_team) pts = mo.away;
       }
@@ -167,33 +141,21 @@ export async function GET(req: Request) {
       if (pts > 0) pointsByUser.set(userId, (pointsByUser.get(userId) ?? 0) + pts);
     }
 
-    // Upsert leaderboard entries
-    const upserts = Array.from(pointsByUser.entries()).map(([user_id, total_points]) => {
-      const row: any = {
-        user_id,
-        total_points,
-        updated_at: new Date().toISOString(),
-      };
-      if (leaderboardHasSeason) row.season = season;
-      return row;
-    });
+    // 5) Upsert leaderboard entries
+    const upserts = Array.from(pointsByUser.entries()).map(([user_id, total_points]) => ({
+      user_id,
+      total_points,
+      updated_at: new Date().toISOString(),
+    }));
 
     if (upserts.length > 0) {
-      const onConflict = leaderboardHasSeason ? "season,user_id" : "user_id";
-
       const { error: upErr } = await supabase
         .from("leaderboard_entries")
-        .upsert(upserts, { onConflict });
+        .upsert(upserts, { onConflict: "user_id" });
 
       if (upErr) {
         return NextResponse.json(
-          {
-            error: "Failed to upsert leaderboard entries",
-            details: upErr.message,
-            hint: leaderboardHasSeason
-              ? "Ensure unique constraint exists on (season, user_id)."
-              : "Ensure unique constraint exists on (user_id).",
-          },
+          { error: "Failed to upsert leaderboard entries", details: upErr.message },
           { status: 500 }
         );
       }
@@ -204,7 +166,10 @@ export async function GET(req: Request) {
       season,
       matchesScored: (finishedMatches ?? []).length,
       usersUpdated: upserts.length,
-      schema: { matchesHasSeason, tipsHasSeason, oddsHasSeason, leaderboardHasSeason },
+      note:
+        upserts.length === 0
+          ? "No correct tips matched finished matches (or odds missing)."
+          : undefined,
     });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? "Unknown error" }, { status: 500 });

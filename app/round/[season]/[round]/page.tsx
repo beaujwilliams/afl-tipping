@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
@@ -129,9 +129,12 @@ export default function RoundPage() {
   const [tipsByMatchId, setTipsByMatchId] = useState<Record<string, string>>({});
   const [savingMatchId, setSavingMatchId] = useState<string | null>(null);
 
-  // oddsByMatchId[matchId] = { home_odds, away_odds, home_team, away_team }
   const [oddsByMatchId, setOddsByMatchId] = useState<Record<string, OddsRow>>({});
   const [oddsInfo, setOddsInfo] = useState<string>("");
+
+  // Polling UX
+  const [oddsPollingStopped, setOddsPollingStopped] = useState(false);
+  const [oddsPollingReason, setOddsPollingReason] = useState<"" | "complete" | "timeout">("");
 
   // Smooth countdown timer
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
@@ -198,10 +201,55 @@ export default function RoundPage() {
     setTipsByMatchId((prev) => ({ ...prev, [matchId]: pickedTeam }));
   }
 
+  // -------- odds loader (reusable for initial load + polling) --------
+  async function loadOddsLatestForMatches(
+    competitionId: string,
+    matchIds: string[],
+    totalMatches: number
+  ) {
+    if (!matchIds.length) return;
+
+    const { data: oddsRows, error: oErr } = await supabaseBrowser
+      .from("match_odds")
+      .select("match_id, home_team, away_team, home_odds, away_odds, captured_at_utc")
+      .eq("competition_id", competitionId)
+      .in("match_id", matchIds)
+      .order("captured_at_utc", { ascending: false });
+
+    if (oErr) {
+      setOddsInfo(`Odds not loaded: ${oErr.message}`);
+      return;
+    }
+
+    const map: Record<string, OddsRow> = {};
+    (oddsRows as OddsRow[] | null)?.forEach((row) => {
+      if (!map[row.match_id]) map[row.match_id] = row; // keep latest per match_id
+    });
+
+    setOddsByMatchId(map);
+
+    const have = Object.keys(map).length;
+    setOddsInfo(
+      have
+        ? `Odds available for ${have}/${totalMatches} matches.`
+        : "No odds captured yet for this round."
+    );
+
+    // If complete, stop polling immediately
+    if (have >= totalMatches && totalMatches > 0) {
+      setOddsPollingStopped(true);
+      setOddsPollingReason("complete");
+    }
+  }
+
   useEffect(() => {
     (async () => {
       setMsg("Loading…");
       setOddsInfo("");
+      setOddsByMatchId({});
+      setTipsByMatchId({});
+      setOddsPollingStopped(false);
+      setOddsPollingReason("");
 
       const { data: auth } = await supabaseBrowser.auth.getUser();
       if (!auth.user) {
@@ -273,33 +321,67 @@ export default function RoundPage() {
       }
 
       // Load odds (latest per match)
-      if (matchIds.length) {
-        const { data: oddsRows, error: oErr } = await supabaseBrowser
-          .from("match_odds")
-          .select("match_id, home_team, away_team, home_odds, away_odds, captured_at_utc")
-          .eq("competition_id", comp.id)
-          .in("match_id", matchIds)
-          .order("captured_at_utc", { ascending: false });
-
-        if (oErr) {
-          setOddsInfo(`Odds not loaded: ${oErr.message}`);
-        } else {
-          const map: Record<string, OddsRow> = {};
-          (oddsRows as OddsRow[] | null)?.forEach((row) => {
-            if (!map[row.match_id]) map[row.match_id] = row;
-          });
-          setOddsByMatchId(map);
-
-          const have = Object.keys(map).length;
-          setOddsInfo(
-            have
-              ? `Odds available for ${have}/${matchIds.length} matches.`
-              : "No odds captured yet for this round."
-          );
-        }
-      }
+      await loadOddsLatestForMatches(comp.id, matchIds, matchIds.length);
     })();
   }, [season, round]);
+
+  // -------- Poll odds every 90s while missing, up to 60 minutes --------
+  const pollStartRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!compId) return;
+    if (!matches.length) return;
+
+    // if not missing, no polling needed
+    if (!oddsMissing) {
+      return;
+    }
+
+    // already stopped (complete/timeout), no polling
+    if (oddsPollingStopped) {
+      return;
+    }
+
+    // start timer
+    if (pollStartRef.current === null) {
+      pollStartRef.current = Date.now();
+    }
+
+    const POLL_MS = 90_000; // 90s
+    const MAX_MS = 60 * 60 * 1000; // 60 minutes (change to 30 * 60 * 1000 if you prefer)
+
+    const matchIds = matches.map((m) => m.id);
+
+    const interval = setInterval(async () => {
+      const started = pollStartRef.current ?? Date.now();
+      const elapsed = Date.now() - started;
+
+      if (elapsed >= MAX_MS) {
+        setOddsPollingStopped(true);
+        setOddsPollingReason("timeout");
+        return;
+      }
+
+      // small jitter (+/- up to 10s) to avoid everyone hitting at once
+      const jitter = Math.floor(Math.random() * 20_000) - 10_000;
+      if (jitter > 0) {
+        await new Promise((r) => setTimeout(r, jitter));
+      }
+
+      await loadOddsLatestForMatches(compId, matchIds, matchIds.length);
+    }, POLL_MS);
+
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [compId, matches.length, oddsMissing, oddsPollingStopped]);
+
+  // Reset poll timer when odds become complete (or when changing round)
+  useEffect(() => {
+    if (!oddsMissing) {
+      pollStartRef.current = null;
+    }
+  }, [oddsMissing, season, round]);
+
+  const showRefreshHint = oddsPollingStopped && oddsPollingReason === "timeout" && oddsMissing;
 
   return (
     <main style={{ maxWidth: 1000, margin: "40px auto", padding: 16 }}>
@@ -315,7 +397,9 @@ export default function RoundPage() {
             padding: 14,
             borderRadius: 12,
             border: "1px solid rgba(0,0,0,0.12)",
-            background: isLocked ? "rgba(220, 38, 38, 0.06)" : "rgba(34, 197, 94, 0.06)",
+            background: isLocked
+              ? "rgba(220, 38, 38, 0.06)"
+              : "rgba(34, 197, 94, 0.06)",
           }}
         >
           {isLocked ? (
@@ -358,13 +442,52 @@ export default function RoundPage() {
             padding: 14,
             borderRadius: 12,
             border: "1px solid rgba(0,0,0,0.10)",
-            background: "rgba(245, 158, 11, 0.10)", // amber-ish
+            background: "rgba(245, 158, 11, 0.10)",
           }}
         >
-          <div style={{ fontWeight: 800 }}>Odds will be locked at the snapshot time. Your pick is saved.</div>
+          <div style={{ fontWeight: 800 }}>
+            Odds will be locked at the snapshot time. Your pick is saved.
+          </div>
           <div style={{ marginTop: 6, fontSize: 12, opacity: 0.85 }}>
             Odds captured for <b>{oddsHaveCount}</b>/<b>{matches.length}</b> matches so far.
+            {!oddsPollingStopped && (
+              <span style={{ marginLeft: 8, opacity: 0.85 }}>
+                (Auto-checking every 90s)
+              </span>
+            )}
           </div>
+        </div>
+      )}
+
+      {/* ✅ Refresh hint once polling times out */}
+      {showRefreshHint && (
+        <div
+          style={{
+            marginTop: 12,
+            padding: 14,
+            borderRadius: 12,
+            border: "1px solid rgba(0,0,0,0.10)",
+            background: "rgba(59, 130, 246, 0.10)",
+          }}
+        >
+          <div style={{ fontWeight: 800 }}>Still waiting on odds.</div>
+          <div style={{ marginTop: 6, fontSize: 12, opacity: 0.85 }}>
+            We’ll stop auto-checking to save requests. Refresh this page to check again.
+          </div>
+          <button
+            onClick={() => window.location.reload()}
+            style={{
+              marginTop: 10,
+              padding: "10px 12px",
+              borderRadius: 10,
+              border: "1px solid rgba(0,0,0,0.18)",
+              background: "white",
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            Refresh now
+          </button>
         </div>
       )}
 
@@ -381,7 +504,14 @@ export default function RoundPage() {
             background: "rgba(0,0,0,0.02)",
           }}
         >
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
+          >
             <div>
               <div style={{ fontWeight: 700 }}>
                 Your tips: {tippedCount} / {matches.length}
@@ -443,8 +573,14 @@ export default function RoundPage() {
                 {formatMelbourne(g.commence_time_utc)} • {normalizeVenue(g.venue)}
               </div>
 
-              <div style={{ display: "flex", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
-                {/* Home team button */}
+              <div
+                style={{
+                  display: "flex",
+                  gap: 12,
+                  marginTop: 12,
+                  flexWrap: "wrap",
+                }}
+              >
                 <button
                   disabled={isLocked || saving}
                   onClick={() => saveTip(g.id, g.home_team)}
@@ -452,7 +588,10 @@ export default function RoundPage() {
                     flex: 1,
                     padding: "14px 18px",
                     borderRadius: 12,
-                    border: picked === g.home_team ? "2px solid #0070f3" : "1px solid #ccc",
+                    border:
+                      picked === g.home_team
+                        ? "2px solid #0070f3"
+                        : "1px solid #ccc",
                     background: picked === g.home_team ? "#e6f3ff" : "white",
                     fontWeight: picked === g.home_team ? 700 : 600,
                     cursor: isLocked ? "not-allowed" : "pointer",
@@ -461,19 +600,31 @@ export default function RoundPage() {
                     opacity: isLocked || saving ? 0.65 : 1,
                   }}
                 >
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 10,
+                    }}
+                  >
                     <span>{g.home_team}</span>
                     <span style={{ opacity: 0.85 }}>{fmtOdds(homeOdds)}</span>
                   </div>
 
                   {picked === g.home_team && (
-                    <span style={{ position: "absolute", right: 12, top: 10, fontSize: 16 }}>
+                    <span
+                      style={{
+                        position: "absolute",
+                        right: 12,
+                        top: 10,
+                        fontSize: 16,
+                      }}
+                    >
                       ✓
                     </span>
                   )}
                 </button>
 
-                {/* Away team button */}
                 <button
                   disabled={isLocked || saving}
                   onClick={() => saveTip(g.id, g.away_team)}
@@ -481,7 +632,10 @@ export default function RoundPage() {
                     flex: 1,
                     padding: "14px 18px",
                     borderRadius: 12,
-                    border: picked === g.away_team ? "2px solid #0070f3" : "1px solid #ccc",
+                    border:
+                      picked === g.away_team
+                        ? "2px solid #0070f3"
+                        : "1px solid #ccc",
                     background: picked === g.away_team ? "#e6f3ff" : "white",
                     fontWeight: picked === g.away_team ? 700 : 600,
                     cursor: isLocked ? "not-allowed" : "pointer",
@@ -490,13 +644,26 @@ export default function RoundPage() {
                     opacity: isLocked || saving ? 0.65 : 1,
                   }}
                 >
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 10,
+                    }}
+                  >
                     <span>{g.away_team}</span>
                     <span style={{ opacity: 0.85 }}>{fmtOdds(awayOdds)}</span>
                   </div>
 
                   {picked === g.away_team && (
-                    <span style={{ position: "absolute", right: 12, top: 10, fontSize: 16 }}>
+                    <span
+                      style={{
+                        position: "absolute",
+                        right: 12,
+                        top: 10,
+                        fontSize: 16,
+                      }}
+                    >
                       ✓
                     </span>
                   )}

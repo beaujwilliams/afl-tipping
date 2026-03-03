@@ -161,6 +161,16 @@ export default function RoundPage() {
     return matches.filter((m) => !!tipsByMatchId[m.id]).length;
   }, [matches, tipsByMatchId]);
 
+  const oddsHaveCount = useMemo(() => {
+    if (!matches.length) return 0;
+    return matches.filter((m) => !!oddsByMatchId[m.id]).length;
+  }, [matches, oddsByMatchId]);
+
+  const oddsMissing = useMemo(() => {
+    if (!matches.length) return false;
+    return oddsHaveCount < matches.length;
+  }, [matches.length, oddsHaveCount]);
+
   async function saveTip(matchId: string, pickedTeam: string) {
     if (!compId || !userId) return;
     if (isLocked) return;
@@ -337,6 +347,24 @@ export default function RoundPage() {
               {oddsInfo}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ✅ Odds-not-captured banner */}
+      {!!matches.length && oddsMissing && (
+        <div
+          style={{
+            marginTop: 12,
+            padding: 14,
+            borderRadius: 12,
+            border: "1px solid rgba(0,0,0,0.10)",
+            background: "rgba(245, 158, 11, 0.10)", // amber-ish
+          }}
+        >
+          <div style={{ fontWeight: 800 }}>Odds will be locked at the snapshot time. Your pick is saved.</div>
+          <div style={{ marginTop: 6, fontSize: 12, opacity: 0.85 }}>
+            Odds captured for <b>{oddsHaveCount}</b>/<b>{matches.length}</b> matches so far.
+          </div>
         </div>
       )}
 

@@ -1,19 +1,47 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+
+const SIGNUP_COOLDOWN_MS = 60_000;
+const SIGNUP_COOLDOWN_KEY = "afl_last_signup_attempt_ms";
+
+function msLeftToCooldown(): number {
+  if (typeof window === "undefined") return 0;
+  const raw = window.localStorage.getItem(SIGNUP_COOLDOWN_KEY);
+  const last = raw ? Number(raw) : 0;
+  if (!last || Number.isNaN(last)) return 0;
+  const left = SIGNUP_COOLDOWN_MS - (Date.now() - last);
+  return Math.max(0, left);
+}
+
+function setCooldownNow() {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(SIGNUP_COOLDOWN_KEY, String(Date.now()));
+}
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
   const [msg, setMsg] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [cooldownUntil, setCooldownUntil] = useState<number>(0);
 
-  const inCooldown = Date.now() < cooldownUntil;
+  const [busySignIn, setBusySignIn] = useState(false);
+  const [busySignUp, setBusySignUp] = useState(false);
 
-  // ✅ Auto-forward if already logged in
+  const busy = busySignIn || busySignUp;
+
+  const [cooldownLeftMs, setCooldownLeftMs] = useState<number>(0);
+  useEffect(() => {
+    // tick cooldown text while on page
+    const t = setInterval(() => setCooldownLeftMs(msLeftToCooldown()), 500);
+    setCooldownLeftMs(msLeftToCooldown());
+    return () => clearInterval(t);
+  }, []);
+
+  const canSignUp = useMemo(() => cooldownLeftMs === 0 && !busy, [cooldownLeftMs, busy]);
+
+  // ✅ Auto-forward if already logged in (initial check + auth change listener)
   useEffect(() => {
     let mounted = true;
 
@@ -37,18 +65,17 @@ export default function LoginPage() {
 
   async function signIn(e: React.FormEvent) {
     e.preventDefault();
-
     if (busy) return;
 
     setMsg(null);
-    setBusy(true);
+    setBusySignIn(true);
 
     const { error } = await supabaseBrowser.auth.signInWithPassword({
       email,
       password,
     });
 
-    setBusy(false);
+    setBusySignIn(false);
 
     if (error) {
       setMsg(error.message);
@@ -61,40 +88,40 @@ export default function LoginPage() {
   async function signUp() {
     if (busy) return;
 
-    if (inCooldown) {
-      setMsg("Please wait a few seconds before trying again.");
+    const left = msLeftToCooldown();
+    if (left > 0) {
+      const secs = Math.ceil(left / 1000);
+      setMsg(`Please wait ${secs}s before trying again.`);
       return;
     }
 
     setMsg(null);
-    setBusy(true);
+    setBusySignUp(true);
+    setCooldownNow(); // ✅ throttle immediately to stop spam taps
 
-    try {
-      const { data, error } = await supabaseBrowser.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/login`,
-        },
-      });
+    const { error } = await supabaseBrowser.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: `${window.location.origin}/login`,
+      },
+    });
 
-      if (error) throw error;
+    setBusySignUp(false);
+    setCooldownLeftMs(msLeftToCooldown());
 
-      // If email confirmation is enabled
-      if (!data.user) {
-        setMsg("Check your email to confirm your account, then come back and sign in.");
+    if (error) {
+      // Friendlier copy for the common rate limit case
+      const m = error.message?.toLowerCase?.() ?? "";
+      if (m.includes("rate limit")) {
+        setMsg("Too many signup emails were requested. Please wait a minute and try again.");
       } else {
-        setMsg("Account created successfully.");
+        setMsg(error.message);
       }
-
-      // ⛔ Cooldown to prevent rapid re-attempts
-      setCooldownUntil(Date.now() + 10000); // 10 seconds
-    } catch (err: any) {
-      setMsg(err?.message ?? "Signup failed.");
-      setCooldownUntil(Date.now() + 10000);
-    } finally {
-      setBusy(false);
+      return;
     }
+
+    setMsg("Account created. Check your email to confirm, then come back and sign in.");
   }
 
   return (
@@ -105,7 +132,6 @@ export default function LoginPage() {
         <label style={{ display: "block", marginBottom: 10 }}>
           <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 6 }}>Email</div>
           <input
-            disabled={busy}
             style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #ccc" }}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -119,7 +145,6 @@ export default function LoginPage() {
         <label style={{ display: "block", marginBottom: 10 }}>
           <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 6 }}>Password</div>
           <input
-            disabled={busy}
             style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #ccc" }}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -141,14 +166,15 @@ export default function LoginPage() {
             background: "white",
             fontWeight: 800,
             cursor: busy ? "not-allowed" : "pointer",
+            opacity: busy ? 0.7 : 1,
           }}
         >
-          {busy ? "Signing in…" : "Sign in"}
+          {busySignIn ? "Signing in…" : "Sign in"}
         </button>
 
         <button
           type="button"
-          disabled={busy || inCooldown}
+          disabled={!canSignUp}
           onClick={signUp}
           style={{
             width: "100%",
@@ -157,12 +183,16 @@ export default function LoginPage() {
             border: "1px solid #ddd",
             background: "white",
             fontWeight: 700,
-            cursor: busy || inCooldown ? "not-allowed" : "pointer",
+            cursor: canSignUp ? "pointer" : "not-allowed",
+            opacity: canSignUp ? 1 : 0.7,
             marginTop: 10,
-            opacity: busy || inCooldown ? 0.6 : 1,
           }}
         >
-          {busy ? "Creating…" : inCooldown ? "Please wait…" : "Create account"}
+          {busySignUp
+            ? "Creating…"
+            : cooldownLeftMs > 0
+            ? `Create account (wait ${Math.ceil(cooldownLeftMs / 1000)}s)`
+            : "Create account"}
         </button>
 
         {msg && <p style={{ marginTop: 12 }}>{msg}</p>}

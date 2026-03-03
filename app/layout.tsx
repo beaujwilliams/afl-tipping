@@ -8,7 +8,7 @@ import { supabaseBrowser } from "@/lib/supabase-browser";
 import LogoutButton from "@/components/LogoutButton";
 
 const ADMIN_EMAIL = "beau.j.williams@gmail.com";
-const BUILD_LABEL = process.env.NEXT_PUBLIC_BUILD_LABEL || "prod";
+const BUILD_LABEL = process.env.NEXT_PUBLIC_BUILD_LABEL || "build-2026-03-04";
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const [email, setEmail] = useState<string | null>(null);
@@ -37,25 +37,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
   const isAdmin = (email ?? "").toLowerCase() === ADMIN_EMAIL;
 
-  function NavItem({
-    href,
-    label,
-  }: {
-    href: string;
-    label: string;
-  }) {
+  function NavItem({ href, label }: { href: string; label: string }) {
     const active = pathname?.startsWith(href);
 
     return (
       <Link
         href={href}
         style={{
-          padding: "8px 12px",
-          borderRadius: 10,
-          fontSize: 14,
+          padding: "10px 14px",
+          borderRadius: 12,
+          fontSize: 15,
           fontWeight: 700,
           textDecoration: "none",
-          background: active ? "rgba(0,0,0,0.06)" : "transparent",
+          background: active ? "rgba(255,255,255,0.08)" : "transparent",
           color: "inherit",
         }}
       >
@@ -74,11 +68,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           fontFamily: "Arial, Helvetica, sans-serif",
         }}
       >
-        {/* Header */}
         <header
           style={{
             borderBottom: "1px solid var(--border)",
-            padding: "14px 16px",
+            padding: "18px 16px 14px",
           }}
         >
           <div
@@ -87,7 +80,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               margin: "0 auto",
               display: "flex",
               flexDirection: "column",
-              gap: 10,
+              gap: 14,
             }}
           >
             {/* Title */}
@@ -95,7 +88,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               href="/"
               style={{
                 fontWeight: 900,
-                fontSize: 16,
+                fontSize: 18,
                 textDecoration: "none",
                 color: "inherit",
               }}
@@ -103,13 +96,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               Needlessly Complicated AFL Tipping
             </Link>
 
-            {/* Nav row */}
+            {/* Navigation */}
             <div
               style={{
                 display: "flex",
                 flexWrap: "wrap",
                 alignItems: "center",
-                gap: 8,
+                gap: 10,
               }}
             >
               <NavItem href="/round/2026" label="Rounds" />
@@ -118,13 +111,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
               <div style={{ flex: 1 }} />
 
-              {email ? (
-                <>
+              {email && (
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "flex-end",
+                    gap: 6,
+                  }}
+                >
                   <div
                     style={{
                       fontSize: 12,
-                      opacity: 0.7,
-                      maxWidth: 200,
+                      opacity: 0.6,
+                      maxWidth: 220,
                       overflow: "hidden",
                       textOverflow: "ellipsis",
                       whiteSpace: "nowrap",
@@ -132,21 +132,33 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   >
                     {email}
                   </div>
-                  <LogoutButton />
-                </>
-              ) : (
-                <NavItem href="/login" label="Log in" />
-              )}
-            </div>
 
-            {/* Build label */}
-            <div style={{ fontSize: 11, opacity: 0.5 }}>
-              build: {BUILD_LABEL}
+                  <div
+                    style={{
+                      fontSize: 12,
+                      opacity: 0.45,
+                    }}
+                  >
+                    {BUILD_LABEL}
+                  </div>
+                </div>
+              )}
+
+              {email && (
+                <div
+                  style={{
+                    marginLeft: 10,
+                  }}
+                >
+                  <LogoutButton />
+                </div>
+              )}
+
+              {!email && <NavItem href="/login" label="Log in" />}
             </div>
           </div>
         </header>
 
-        {/* Page */}
         <main style={{ maxWidth: 1000, margin: "40px auto", padding: 16 }}>
           {children}
         </main>

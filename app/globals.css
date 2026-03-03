@@ -1,14 +1,32 @@
+/* ===============================
+   Base Theme Tokens
+================================ */
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  --muted: rgba(0, 0, 0, 0.65);
+  --border: rgba(0, 0, 0, 0.12);
+  --card: #ffffff;
+  --card-soft: rgba(0, 0, 0, 0.03);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+
+    --muted: rgba(255, 255, 255, 0.7);
+    --border: rgba(255, 255, 255, 0.18);
+    --card: #111111;
+    --card-soft: rgba(255, 255, 255, 0.06);
   }
 }
+
+/* ===============================
+   Layout Base
+================================ */
 
 html,
 body {
@@ -24,6 +42,10 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* ===============================
+   Global Resets
+================================ */
+
 * {
   box-sizing: border-box;
   padding: 0;
@@ -35,8 +57,46 @@ a {
   text-decoration: none;
 }
 
+/* ===============================
+   Dark Mode Improvements
+================================ */
+
 @media (prefers-color-scheme: dark) {
   html {
     color-scheme: dark;
   }
+}
+
+/* ===============================
+   Form Controls (Fix invisible text)
+================================ */
+
+input,
+textarea,
+select {
+  background: var(--card);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+}
+
+button {
+  color: inherit;
+}
+
+/* ===============================
+   Utility Classes (Optional but Helpful)
+================================ */
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+}
+
+.card-soft {
+  background: var(--card-soft);
+  border: 1px solid var(--border);
+}
+
+.muted {
+  color: var(--muted);
 }

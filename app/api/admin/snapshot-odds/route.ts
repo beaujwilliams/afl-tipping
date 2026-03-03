@@ -142,7 +142,12 @@ function normTeam(name: string) {
   return TEAM_ALIASES[key] ?? key;
 }
 
-function sameMatch(aHome: string, aAway: string, bHome: string, bAway: string) {
+function sameMatch(
+  aHome: string,
+  aAway: string,
+  bHome: string,
+  bAway: string
+) {
   const ah = normTeam(aHome);
   const aa = normTeam(aAway);
   const bh = normTeam(bHome);
@@ -219,15 +224,20 @@ export async function GET(req: Request) {
 
     if (!comp) return NextResponse.json({ error: "No competition" }, { status: 404 });
 
+    // ✅ include existing snapshot fields so we can decide whether to overwrite them
     const { data: roundRow } = await supabase
       .from("rounds")
-      .select("id, lock_time_utc")
+      .select("id, lock_time_utc, odds_snapshot_for_time_utc, odds_captured_at_utc")
       .eq("competition_id", comp.id)
       .eq("season", season)
       .eq("round_number", round)
       .single();
 
     if (!roundRow) return NextResponse.json({ error: "Round not found" }, { status: 404 });
+
+    if (!roundRow.lock_time_utc) {
+      return NextResponse.json({ error: "Round lock_time_utc is missing" }, { status: 400 });
+    }
 
     const snapshotForTimeUtc = computeSnapshotForTimeUtc(roundRow.lock_time_utc);
 
@@ -403,6 +413,39 @@ export async function GET(req: Request) {
       }
     }
 
+    // ✅ Lock the round snapshot fields if we captured (or already had) odds for this snapshot
+    const shouldLockRoundSnapshot = force
+      ? updated > 0
+      : inserted > 0 || skippedExisting > 0;
+
+    if (shouldLockRoundSnapshot) {
+      const existingSnap = (roundRow as any)?.odds_snapshot_for_time_utc ?? null;
+
+      // Only overwrite round snapshot if empty, same snapshot, or force mode
+      const canWrite =
+        !existingSnap || existingSnap === snapshotForTimeUtc || force;
+
+      if (canWrite) {
+        const { error: rUpErr } = await supabase
+          .from("rounds")
+          .update({
+            odds_snapshot_for_time_utc: snapshotForTimeUtc,
+            odds_captured_at_utc: new Date().toISOString(),
+          })
+          .eq("id", roundRow.id);
+
+        if (rUpErr) {
+          return NextResponse.json(
+            {
+              error: "Failed to update round snapshot fields",
+              details: rUpErr.message,
+            },
+            { status: 500 }
+          );
+        }
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       season,
@@ -423,7 +466,10 @@ export async function GET(req: Request) {
         !force && inserted === 0 && skippedExisting > 0
           ? "No new rows inserted (already captured for this snapshot)."
           : undefined,
-      oddsCapturedForRound: force ? updated > 0 : inserted > 0 || skippedExisting > 0,
+      oddsCapturedForRound: force
+        ? updated > 0
+        : inserted > 0 || skippedExisting > 0,
+      roundSnapshotLocked: shouldLockRoundSnapshot,
     });
   } catch (e: any) {
     return NextResponse.json(

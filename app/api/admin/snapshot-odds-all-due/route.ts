@@ -3,7 +3,9 @@ import { createClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase-server";
 
 const ADMIN_EMAIL = "beau.j.williams@gmail.com";
-const MEL_TZ = "Australia/Melbourne";
+
+// ✅ Must match snapshot-odds/route.ts
+const SNAPSHOT_HOURS_BEFORE_LOCK = 36;
 
 function mustEnv(name: string) {
   const v = process.env[name];
@@ -11,47 +13,15 @@ function mustEnv(name: string) {
   return v;
 }
 
-function melDateParts(isoUtc: string): { y: number; m: number; d: number } {
-  const dt = new Date(isoUtc);
-
-  const parts = new Intl.DateTimeFormat("en-AU", {
-    timeZone: MEL_TZ,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(dt);
-
-  const y = Number(parts.find((p) => p.type === "year")?.value);
-  const m = Number(parts.find((p) => p.type === "month")?.value);
-  const d = Number(parts.find((p) => p.type === "day")?.value);
-
-  return { y, m, d };
-}
-
 /**
- * Rule: 12pm Melbourne time the day BEFORE the first match of the round.
- * We use lock_time_utc (first match start) to derive the Melbourne calendar date.
+ * Due time = lock_time_utc - 36 hours
  */
 function computeSnapshotDueTimeUtc(lockTimeUtcIso: string): string {
-  const { y, m, d } = melDateParts(lockTimeUtcIso);
+  const lockMs = new Date(lockTimeUtcIso).getTime();
+  if (Number.isNaN(lockMs)) throw new Error("Invalid lock_time_utc");
 
-  // subtract 1 day (calendar)
-  const utcMid = new Date(Date.UTC(y, m - 1, d, 0, 0, 0));
-  utcMid.setUTCDate(utcMid.getUTCDate() - 1);
-
-  const yyyy = utcMid.getUTCFullYear();
-  const mm = String(utcMid.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(utcMid.getUTCDate()).padStart(2, "0");
-
-  // noon Melbourne
-  const base = `${yyyy}-${mm}-${dd}T12:00:00`;
-
-  // Try AEDT (+11), then AEST (+10)
-  let dt = new Date(`${base}+11:00`);
-  if (!Number.isNaN(dt.getTime())) return dt.toISOString();
-
-  dt = new Date(`${base}+10:00`);
-  return dt.toISOString();
+  const dueMs = lockMs - SNAPSHOT_HOURS_BEFORE_LOCK * 60 * 60 * 1000;
+  return new Date(dueMs).toISOString();
 }
 
 async function allowBearerOrCron(req: Request): Promise<{
@@ -93,7 +63,9 @@ type RoundRow = { round_number: number; lock_time_utc: string };
 export async function GET(req: Request) {
   try {
     const gate = await allowBearerOrCron(req);
-    if (!gate.ok) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (!gate.ok) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     const url = new URL(req.url);
     const season = Number(url.searchParams.get("season") || "2026");
@@ -109,7 +81,9 @@ export async function GET(req: Request) {
       .limit(1)
       .single();
 
-    if (!comp) return NextResponse.json({ error: "No competition" }, { status: 404 });
+    if (!comp) {
+      return NextResponse.json({ error: "No competition" }, { status: 404 });
+    }
 
     // Fetch rounds
     let q = supabase
@@ -119,7 +93,9 @@ export async function GET(req: Request) {
       .eq("season", season)
       .order("round_number", { ascending: true });
 
-    if (onlyRoundParam !== null) q = q.eq("round_number", Number(onlyRoundParam));
+    if (onlyRoundParam !== null) {
+      q = q.eq("round_number", Number(onlyRoundParam));
+    }
 
     const { data: rounds, error } = await q;
     if (error) {
@@ -128,6 +104,7 @@ export async function GET(req: Request) {
         { status: 500 }
       );
     }
+
     if (!rounds?.length) {
       return NextResponse.json({
         ok: true,
@@ -141,54 +118,65 @@ export async function GET(req: Request) {
 
     const now = new Date();
 
-    // Build enriched list
+    // Build enriched list (rounds already ordered by round_number)
     const enriched = (rounds as RoundRow[]).map((r) => {
       const snapshotForTimeUtc = computeSnapshotDueTimeUtc(r.lock_time_utc);
+      const due = now >= new Date(snapshotForTimeUtc);
       return {
         round_number: r.round_number,
         lock_time_utc: r.lock_time_utc,
         snapshotForTimeUtc,
-        due: now >= new Date(snapshotForTimeUtc),
+        due,
       };
     });
 
     // Decide which single round to act on
-    let target =
-      enriched.find((r) => r.due) ??
-      enriched.reduce((best, cur) => {
-        // next upcoming (closest snapshot time in future)
-        if (!best) return cur;
-        const bestT = new Date(best.snapshotForTimeUtc).getTime();
-        const curT = new Date(cur.snapshotForTimeUtc).getTime();
-        return curT < bestT ? cur : best;
-      }, enriched[0]);
+    // - If ?round= is provided, list is already restricted to that one.
+    // - Otherwise:
+    //    * normal mode: pick first due round (in round order)
+    //    * force mode: pick next upcoming round (first not-due); if none, fall back to last
+    let target: (typeof enriched)[number] | null = null;
 
-    // If onlyRound specified, target is already restricted (fine)
-    // If force=1 and onlyRound not specified, we force-run the next upcoming (or earliest)
-    const shouldRun = force || target.due;
+    if (onlyRoundParam !== null) {
+      target = enriched[0] ?? null;
+    } else if (force) {
+      target =
+        enriched.find((r) => !r.due) ?? enriched[enriched.length - 1] ?? null;
+    } else {
+      target = enriched.find((r) => r.due) ?? enriched[0] ?? null;
+    }
 
-    let processedDueRounds = 0;
-    let capturedRounds = 0;
-
-    // If we’re not running (not due yet and not forced), return single “next”
-    if (!shouldRun) {
-      const next = target;
+    if (!target) {
       return NextResponse.json({
         ok: true,
         season,
-        processedDueRounds,
-        capturedRounds,
+        processedDueRounds: 0,
+        capturedRounds: 0,
+        next: null,
+        results: [],
+      });
+    }
+
+    const shouldRun = force || target.due;
+
+    // If we’re not running (not due yet and not forced), return single “next”
+    if (!shouldRun) {
+      return NextResponse.json({
+        ok: true,
+        season,
+        processedDueRounds: 0,
+        capturedRounds: 0,
         next: {
-          round: next.round_number,
+          round: target.round_number,
           due: false,
-          snapshotForTimeUtc: next.snapshotForTimeUtc,
-          lockTimeUtc: next.lock_time_utc,
+          snapshotForTimeUtc: target.snapshotForTimeUtc,
+          lockTimeUtc: target.lock_time_utc,
         },
         results: [
           {
-            round: next.round_number,
+            round: target.round_number,
             due: false,
-            snapshotForTimeUtc: next.snapshotForTimeUtc,
+            snapshotForTimeUtc: target.snapshotForTimeUtc,
             note: "Not due yet",
           },
         ],
@@ -196,12 +184,15 @@ export async function GET(req: Request) {
     }
 
     // Run snapshot for the chosen target
-    processedDueRounds = 1;
-
     const secretQS =
-      gate.mode === "cron" ? `&secret=${encodeURIComponent(gate.secret ?? "")}` : "";
+      gate.mode === "cron"
+        ? `&secret=${encodeURIComponent(gate.secret ?? "")}`
+        : "";
 
-    const snapUrl = `${url.origin}/api/admin/snapshot-odds?season=${season}&round=${target.round_number}${secretQS}`;
+    // ✅ IMPORTANT: pass force to snapshot-odds when force=1
+    const forceQS = force ? `&force=1` : "";
+
+    const snapUrl = `${url.origin}/api/admin/snapshot-odds?season=${season}&round=${target.round_number}${forceQS}${secretQS}`;
 
     const headers: Record<string, string> = {};
     if (gate.mode === "bearer" && gate.token) {
@@ -215,16 +206,21 @@ export async function GET(req: Request) {
     try {
       json = JSON.parse(text);
     } catch {
-      json = { error: "Non-JSON response", status: res.status, bodyHead: text.slice(0, 800) };
+      json = {
+        error: "Non-JSON response",
+        status: res.status,
+        bodyHead: text.slice(0, 800),
+      };
     }
 
-    if (res.status === 200 && json?.ok) capturedRounds = 1;
+    const capturedRounds = res.status === 200 && json?.ok ? 1 : 0;
 
     return NextResponse.json({
       ok: true,
       season,
-      processedDueRounds,
+      processedDueRounds: 1,
       capturedRounds,
+      snapshotHoursBeforeLock: SNAPSHOT_HOURS_BEFORE_LOCK,
       next: {
         round: target.round_number,
         due: true,

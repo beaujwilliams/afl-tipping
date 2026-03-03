@@ -15,9 +15,10 @@ async function isAdminOrCron(req: Request): Promise<boolean> {
   const cronSecret = process.env.CRON_SECRET;
   if (secret && cronSecret && secret === cronSecret) return true;
 
-  // 2) Allow signed-in admin via Authorization header (Bearer token)
+  // 2) Allow admin via Bearer token (from /admin page)
   const authHeader = req.headers.get("authorization") || req.headers.get("Authorization");
   if (!authHeader?.toLowerCase().startsWith("bearer ")) return false;
+
   const token = authHeader.slice(7).trim();
   if (!token) return false;
 
@@ -27,8 +28,7 @@ async function isAdminOrCron(req: Request): Promise<boolean> {
   );
 
   const { data } = await authClient.auth.getUser(token);
-  const email = data.user?.email ?? null;
-  return email === "beau.j.williams@gmail.com";
+  return (data.user?.email ?? null) === "beau.j.williams@gmail.com";
 }
 
 export async function GET(req: Request) {
@@ -45,6 +45,7 @@ export async function GET(req: Request) {
       mustEnv("SUPABASE_SERVICE_ROLE_KEY")
     );
 
+    // Single-comp MVP: just use the first competition
     const { data: comp, error: compErr } = await supabase
       .from("competitions")
       .select("id")
@@ -58,11 +59,11 @@ export async function GET(req: Request) {
       );
     }
 
-    const competitionId = comp.id as string;
+    const competitionId = String(comp.id);
 
     const { data: rounds, error: roundsErr } = await supabase
       .from("rounds")
-      .select("id, round_number, lock_time_utc")
+      .select("round_number, lock_time_utc")
       .eq("competition_id", competitionId)
       .eq("season", season)
       .order("round_number", { ascending: true });
@@ -78,10 +79,11 @@ export async function GET(req: Request) {
     const results: any[] = [];
     let processedDueRounds = 0;
 
+    const bypassSecret = mustEnv("VERCEL_AUTOMATION_BYPASS_SECRET");
+
     for (const r of rounds ?? []) {
       const round = Number((r as any).round_number);
       const lockUtc = (r as any).lock_time_utc ? new Date((r as any).lock_time_utc) : null;
-
       const due = force || (!!lockUtc && now >= lockUtc);
 
       if (!due) {
@@ -94,7 +96,6 @@ export async function GET(req: Request) {
         continue;
       }
 
-      // If already captured for this round, skip (unless force)
       if (!force) {
         const { count, error: cErr } = await supabase
           .from("odds_snapshots")
@@ -116,16 +117,22 @@ export async function GET(req: Request) {
 
       processedDueRounds++;
 
-      // Call existing per-round snapshot endpoint internally (uses CRON_SECRET)
+      // Internal call to /api/admin/snapshot-odds
       const base = new URL(req.url);
       const internalUrl = new URL(`${base.origin}/api/admin/snapshot-odds`);
       internalUrl.searchParams.set("season", String(season));
       internalUrl.searchParams.set("round", String(round));
       internalUrl.searchParams.set("secret", mustEnv("CRON_SECRET"));
 
-      const resp = await fetch(internalUrl.toString(), { method: "GET" });
-      const text = await resp.text();
+      // ✅ Bypass Vercel Deployment Protection for server-to-server call
+      const resp = await fetch(internalUrl.toString(), {
+        method: "GET",
+        headers: {
+          "x-vercel-protection-bypass": bypassSecret,
+        },
+      });
 
+      const text = await resp.text();
       let json: any;
       try {
         json = JSON.parse(text);

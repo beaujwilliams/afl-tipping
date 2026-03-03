@@ -1,81 +1,78 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import { createClient } from "@supabase/supabase-js";
 
 const ADMIN_EMAIL = "beau.j.williams@gmail.com";
 
+function mustEnv(name: string) {
+  const v = process.env[name];
+  if (!v) throw new Error(`Missing env var: ${name}`);
+  return v;
+}
+
+async function isAdminOrCron(req: NextRequest): Promise<{ ok: boolean; mode?: "cron" | "bearer"; token?: string }> {
+  const url = new URL(req.url);
+
+  // ✅ Cron secret mode
+  const secret = url.searchParams.get("secret") ?? "";
+  const cronSecret = process.env.CRON_SECRET ?? "";
+  if (cronSecret && secret && secret === cronSecret) {
+    return { ok: true, mode: "cron" };
+  }
+
+  // ✅ Bearer mode
+  const authHeader = req.headers.get("authorization") || req.headers.get("Authorization");
+  if (!authHeader?.toLowerCase().startsWith("bearer ")) return { ok: false };
+
+  const token = authHeader.slice(7).trim();
+  if (!token) return { ok: false };
+
+  const authClient = createClient(
+    mustEnv("NEXT_PUBLIC_SUPABASE_URL"),
+    mustEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+  );
+
+  const { data } = await authClient.auth.getUser(token);
+  if ((data.user?.email ?? "") !== ADMIN_EMAIL) return { ok: false };
+
+  return { ok: true, mode: "bearer", token };
+}
+
 export async function GET(req: NextRequest) {
   try {
+    const gate = await isAdminOrCron(req);
+    if (!gate.ok) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
     const url = new URL(req.url);
     const season = Number(url.searchParams.get("season") ?? new Date().getFullYear());
     const force = url.searchParams.get("force") === "1";
     const limit = Number(url.searchParams.get("limit") ?? "0"); // 0 = unlimited
+    const onlyRound = url.searchParams.get("round"); // optional
 
-    // ---------------------------
-    // Auth: verify Bearer token
-    // ---------------------------
-    const authHeader = req.headers.get("authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return NextResponse.json({ error: "Missing Bearer token" }, { status: 401 });
-    }
-
-    const token = authHeader.replace("Bearer ", "");
-
-    const cookieStore = cookies();
-
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          get() {
-            return undefined;
-          },
-          set() {},
-          remove() {},
-        },
-        global: {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      }
+    // Service role client (we do DB reads here)
+    const supabase = createClient(
+      mustEnv("NEXT_PUBLIC_SUPABASE_URL"),
+      mustEnv("SUPABASE_SERVICE_ROLE_KEY")
     );
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError || !user) {
-      return NextResponse.json({ error: "Invalid session" }, { status: 401 });
-    }
-
-    if (user.email !== ADMIN_EMAIL) {
-      return NextResponse.json({ error: "Not authorized" }, { status: 403 });
-    }
-
-    // ---------------------------
-    // Fetch rounds for season
-    // ---------------------------
-    const { data: rounds, error: roundsError } = await supabase
+    // Rounds for season
+    let roundsQuery = supabase
       .from("rounds")
-      .select("*")
+      .select("season, round, lock_time_utc")
       .eq("season", season)
       .order("round", { ascending: true });
+
+    if (onlyRound !== null) {
+      roundsQuery = roundsQuery.eq("round", Number(onlyRound));
+    }
+
+    const { data: rounds, error: roundsError } = await roundsQuery;
 
     if (roundsError) {
       return NextResponse.json({ error: "Failed to read rounds", details: roundsError.message }, { status: 500 });
     }
 
     if (!rounds?.length) {
-      return NextResponse.json({
-        ok: true,
-        season,
-        processedDueRounds: 0,
-        capturedRounds: 0,
-        note: "No rounds found",
-      });
+      return NextResponse.json({ ok: true, season, processedDueRounds: 0, capturedRounds: 0, note: "No rounds found" });
     }
 
     const now = new Date();
@@ -83,18 +80,19 @@ export async function GET(req: NextRequest) {
     let capturedRounds = 0;
     const results: any[] = [];
 
-    // ---------------------------
-    // Loop rounds
-    // ---------------------------
-    for (const round of rounds) {
-      const lockTime = new Date(round.lock_time_utc);
+    // If cron mode, forward ?secret=... down to snapshot-odds
+    const incomingSecret = url.searchParams.get("secret") ?? "";
+    const secretQS = gate.mode === "cron" ? `&secret=${encodeURIComponent(incomingSecret)}` : "";
+
+    for (const r of rounds) {
+      const lockTime = new Date(r.lock_time_utc);
       const due = force || now >= lockTime;
 
       if (!due) {
         results.push({
-          round: round.round,
+          round: r.round,
           due: false,
-          snapshotForTimeUtc: round.lock_time_utc,
+          snapshotForTimeUtc: r.lock_time_utc,
           note: "Not due yet",
         });
         continue;
@@ -102,22 +100,19 @@ export async function GET(req: NextRequest) {
 
       processedDueRounds++;
 
-      // ---------------------------
-      // Call snapshot-odds route
-      // ---------------------------
-      const snapshotUrl = `${url.origin}/api/admin/snapshot-odds?season=${season}&round=${round.round}`;
+      // Call snapshot-odds on same deployment
+      const snapshotUrl = `${url.origin}/api/admin/snapshot-odds?season=${season}&round=${r.round}${secretQS}`;
 
-      const snapshotRes = await fetch(snapshotUrl, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const headers: Record<string, string> = {};
+      if (gate.mode === "bearer" && gate.token) headers["Authorization"] = `Bearer ${gate.token}`;
+
+      const snapshotRes = await fetch(snapshotUrl, { headers, cache: "no-store" });
 
       let snapshotResult: any;
+      const text = await snapshotRes.text();
       try {
-        snapshotResult = await snapshotRes.json();
+        snapshotResult = JSON.parse(text);
       } catch {
-        const text = await snapshotRes.text();
         snapshotResult = {
           error: "Non-JSON response",
           status: snapshotRes.status,
@@ -125,24 +120,17 @@ export async function GET(req: NextRequest) {
         };
       }
 
-      if (snapshotRes.status === 200) {
-        capturedRounds++;
-      }
+      if (snapshotRes.status === 200) capturedRounds++;
 
       results.push({
-        round: round.round,
+        round: r.round,
         due: true,
-        snapshotForTimeUtc: round.lock_time_utc,
+        snapshotForTimeUtc: r.lock_time_utc,
         status: snapshotRes.status,
         snapshotResult,
       });
 
-      // ---------------------------
-      // LIMIT SUPPORT (new)
-      // ---------------------------
-      if (limit > 0 && capturedRounds >= limit) {
-        break;
-      }
+      if (limit > 0 && capturedRounds >= limit) break;
     }
 
     return NextResponse.json({
@@ -153,12 +141,6 @@ export async function GET(req: NextRequest) {
       results,
     });
   } catch (err: any) {
-    return NextResponse.json(
-      {
-        error: "Unexpected error",
-        details: err?.message ?? String(err),
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Unexpected error", details: err?.message ?? String(err) }, { status: 500 });
   }
 }

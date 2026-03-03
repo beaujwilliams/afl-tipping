@@ -11,9 +11,6 @@ function mustEnv(name: string) {
   return v;
 }
 
-/**
- * Convert a UTC ISO string to Melbourne calendar parts (Y/M/D).
- */
 function melDateParts(isoUtc: string): { y: number; m: number; d: number } {
   const dt = new Date(isoUtc);
 
@@ -32,25 +29,13 @@ function melDateParts(isoUtc: string): { y: number; m: number; d: number } {
 }
 
 /**
- * Your rule:
- * "12pm AEDT the day before the first game of the round."
- *
- * We approximate this by:
- * - take lock_time_utc (which is first match start time in your system)
- * - convert to Melbourne date
- * - subtract 1 day
- * - set time to 12:00 Melbourne
- * - convert back to UTC ISO
+ * Rule: 12pm Melbourne time the day BEFORE the first match of the round.
+ * We use lock_time_utc (first match start) to derive the Melbourne calendar date.
  */
 function computeSnapshotDueTimeUtc(lockTimeUtcIso: string): string {
   const { y, m, d } = melDateParts(lockTimeUtcIso);
 
-  // Build a UTC date representing Melbourne midnight for that calendar day,
-  // then subtract 1 day, then set Melbourne time 12:00.
-  // We'll do this by constructing an ISO string with an explicit offset.
-  // Melbourne can be +11 or +10 depending on DST, so try +11 then +10.
-
-  // subtract 1 day on the *calendar*
+  // subtract 1 day (calendar)
   const utcMid = new Date(Date.UTC(y, m - 1, d, 0, 0, 0));
   utcMid.setUTCDate(utcMid.getUTCDate() - 1);
 
@@ -58,10 +43,10 @@ function computeSnapshotDueTimeUtc(lockTimeUtcIso: string): string {
   const mm = String(utcMid.getUTCMonth() + 1).padStart(2, "0");
   const dd = String(utcMid.getUTCDate()).padStart(2, "0");
 
-  // noon Melbourne time
+  // noon Melbourne
   const base = `${yyyy}-${mm}-${dd}T12:00:00`;
 
-  // Try AEDT (+11) first, then AEST (+10)
+  // Try AEDT (+11), then AEST (+10)
   let dt = new Date(`${base}+11:00`);
   if (!Number.isNaN(dt.getTime())) return dt.toISOString();
 
@@ -98,11 +83,12 @@ async function allowBearerOrCron(req: Request): Promise<{
   );
 
   const { data } = await authClient.auth.getUser(token);
-
   if ((data.user?.email ?? "") !== ADMIN_EMAIL) return { ok: false };
 
   return { ok: true, mode: "bearer", token };
 }
+
+type RoundRow = { round_number: number; lock_time_utc: string };
 
 export async function GET(req: Request) {
   try {
@@ -112,8 +98,7 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const season = Number(url.searchParams.get("season") || "2026");
     const force = url.searchParams.get("force") === "1";
-    const limit = Number(url.searchParams.get("limit") || "0"); // 0 = no limit
-    const onlyRound = url.searchParams.get("round"); // optional
+    const onlyRoundParam = url.searchParams.get("round"); // optional
 
     const supabase = createServiceClient();
 
@@ -126,7 +111,7 @@ export async function GET(req: Request) {
 
     if (!comp) return NextResponse.json({ error: "No competition" }, { status: 404 });
 
-    // schema: round_number + lock_time_utc
+    // Fetch rounds
     let q = supabase
       .from("rounds")
       .select("round_number, lock_time_utc")
@@ -134,7 +119,7 @@ export async function GET(req: Request) {
       .eq("season", season)
       .order("round_number", { ascending: true });
 
-    if (onlyRound !== null) q = q.eq("round_number", Number(onlyRound));
+    if (onlyRoundParam !== null) q = q.eq("round_number", Number(onlyRoundParam));
 
     const { data: rounds, error } = await q;
     if (error) {
@@ -149,65 +134,113 @@ export async function GET(req: Request) {
         season,
         processedDueRounds: 0,
         capturedRounds: 0,
+        next: null,
         results: [],
       });
     }
 
     const now = new Date();
+
+    // Build enriched list
+    const enriched = (rounds as RoundRow[]).map((r) => {
+      const snapshotForTimeUtc = computeSnapshotDueTimeUtc(r.lock_time_utc);
+      return {
+        round_number: r.round_number,
+        lock_time_utc: r.lock_time_utc,
+        snapshotForTimeUtc,
+        due: now >= new Date(snapshotForTimeUtc),
+      };
+    });
+
+    // Decide which single round to act on
+    let target =
+      enriched.find((r) => r.due) ??
+      enriched.reduce((best, cur) => {
+        // next upcoming (closest snapshot time in future)
+        if (!best) return cur;
+        const bestT = new Date(best.snapshotForTimeUtc).getTime();
+        const curT = new Date(cur.snapshotForTimeUtc).getTime();
+        return curT < bestT ? cur : best;
+      }, enriched[0]);
+
+    // If onlyRound specified, target is already restricted (fine)
+    // If force=1 and onlyRound not specified, we force-run the next upcoming (or earliest)
+    const shouldRun = force || target.due;
+
     let processedDueRounds = 0;
     let capturedRounds = 0;
-    const results: any[] = [];
+
+    // If we’re not running (not due yet and not forced), return single “next”
+    if (!shouldRun) {
+      const next = target;
+      return NextResponse.json({
+        ok: true,
+        season,
+        processedDueRounds,
+        capturedRounds,
+        next: {
+          round: next.round_number,
+          due: false,
+          snapshotForTimeUtc: next.snapshotForTimeUtc,
+          lockTimeUtc: next.lock_time_utc,
+        },
+        results: [
+          {
+            round: next.round_number,
+            due: false,
+            snapshotForTimeUtc: next.snapshotForTimeUtc,
+            note: "Not due yet",
+          },
+        ],
+      });
+    }
+
+    // Run snapshot for the chosen target
+    processedDueRounds = 1;
 
     const secretQS =
       gate.mode === "cron" ? `&secret=${encodeURIComponent(gate.secret ?? "")}` : "";
 
-    for (const r of rounds) {
-      const dueTimeUtc = computeSnapshotDueTimeUtc(r.lock_time_utc);
-      const due = force || now >= new Date(dueTimeUtc);
+    const snapUrl = `${url.origin}/api/admin/snapshot-odds?season=${season}&round=${target.round_number}${secretQS}`;
 
-      if (!due) {
-        results.push({
-          round: r.round_number,
-          due: false,
-          snapshotForTimeUtc: dueTimeUtc,
-          note: "Not due yet",
-        });
-        continue;
-      }
-
-      processedDueRounds++;
-
-      const snapUrl = `${url.origin}/api/admin/snapshot-odds?season=${season}&round=${r.round_number}${secretQS}`;
-
-      const headers: Record<string, string> = {};
-      if (gate.mode === "bearer" && gate.token) {
-        headers["Authorization"] = `Bearer ${gate.token}`;
-      }
-
-      const res = await fetch(snapUrl, { headers, cache: "no-store" });
-      const text = await res.text();
-
-      let json: any;
-      try {
-        json = JSON.parse(text);
-      } catch {
-        json = { error: "Non-JSON response", status: res.status, bodyHead: text.slice(0, 800) };
-      }
-
-      if (res.status === 200 && json?.ok) capturedRounds++;
-
-      results.push({
-        round: r.round_number,
-        due: true,
-        snapshotForTimeUtc: dueTimeUtc,
-        status: res.status,
-        snapshotResult: json,
-      });
-
-      if (limit > 0 && capturedRounds >= limit) break;
+    const headers: Record<string, string> = {};
+    if (gate.mode === "bearer" && gate.token) {
+      headers["Authorization"] = `Bearer ${gate.token}`;
     }
 
-    return NextResponse.json({ ok: true, season, processedDueRounds, capturedRounds, results });
+    const res = await fetch(snapUrl, { headers, cache: "no-store" });
+    const text = await res.text();
+
+    let json: any;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      json = { error: "Non-JSON response", status: res.status, bodyHead: text.slice(0, 800) };
+    }
+
+    if (res.status === 200 && json?.ok) capturedRounds = 1;
+
+    return NextResponse.json({
+      ok: true,
+      season,
+      processedDueRounds,
+      capturedRounds,
+      next: {
+        round: target.round_number,
+        due: true,
+        snapshotForTimeUtc: target.snapshotForTimeUtc,
+        lockTimeUtc: target.lock_time_utc,
+      },
+      results: [
+        {
+          round: target.round_number,
+          due: true,
+          snapshotForTimeUtc: target.snapshotForTimeUtc,
+          status: res.status,
+          snapshotResult: json,
+        },
+      ],
+    });
   } catch (e: any) {
     return NextResponse.json(
       { error: "Unexpected error", details: e?.message ?? String(e) },

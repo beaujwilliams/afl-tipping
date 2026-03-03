@@ -31,11 +31,8 @@ async function isAdminOrCron(req: Request): Promise<boolean> {
   return (data.user?.email ?? null) === ADMIN_EMAIL;
 }
 
-async function tableHasColumn(
-  supabase: ReturnType<typeof createClient>,
-  table: string,
-  column: string
-): Promise<boolean> {
+// IMPORTANT: use `any` here to avoid TS type fights with information_schema.
+async function tableHasColumn(supabase: any, table: string, column: string): Promise<boolean> {
   const { data, error } = await supabase
     .from("information_schema.columns")
     .select("column_name")
@@ -56,18 +53,18 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const season = Number(url.searchParams.get("season") ?? "2026");
 
+    // Service role for DB work
     const supabase = createClient(
       mustEnv("NEXT_PUBLIC_SUPABASE_URL"),
       mustEnv("SUPABASE_SERVICE_ROLE_KEY")
     );
 
-    // Detect which tables have a season column
     const [matchesHasSeason, tipsHasSeason, oddsHasSeason, leaderboardHasSeason] =
       await Promise.all([
-        tableHasColumn(supabase, "matches", "season"),
-        tableHasColumn(supabase, "tips", "season"),
-        tableHasColumn(supabase, "odds_snapshots", "season"),
-        tableHasColumn(supabase, "leaderboard_entries", "season"),
+        tableHasColumn(supabase as any, "matches", "season"),
+        tableHasColumn(supabase as any, "tips", "season"),
+        tableHasColumn(supabase as any, "odds_snapshots", "season"),
+        tableHasColumn(supabase as any, "leaderboard_entries", "season"),
       ]);
 
     // Finished matches
@@ -91,14 +88,11 @@ export async function GET(req: Request) {
         season,
         matchesScored: 0,
         note: "No finished matches yet",
-        matchesHasSeason,
-        tipsHasSeason,
-        oddsHasSeason,
-        leaderboardHasSeason,
+        schema: { matchesHasSeason, tipsHasSeason, oddsHasSeason, leaderboardHasSeason },
       });
     }
 
-    // Tips for finished matches
+    // Tips for those matches
     let tipsQuery = supabase
       .from("tips")
       .select("user_id, match_id, tipped_team")
@@ -112,7 +106,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Failed to read tips", details: tErr.message }, { status: 500 });
     }
 
-    // Odds snapshots for finished matches
+    // Odds snapshots for those matches
     let oddsQuery = supabase
       .from("odds_snapshots")
       .select("match_id, home_odds, away_odds")
@@ -200,12 +194,7 @@ export async function GET(req: Request) {
       season,
       matchesScored: (finishedMatches ?? []).length,
       usersUpdated: upserts.length,
-      schema: {
-        matchesHasSeason,
-        tipsHasSeason,
-        oddsHasSeason,
-        leaderboardHasSeason,
-      },
+      schema: { matchesHasSeason, tipsHasSeason, oddsHasSeason, leaderboardHasSeason },
     });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? "Unknown error" }, { status: 500 });

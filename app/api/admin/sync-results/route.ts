@@ -34,6 +34,16 @@ export async function GET(req: Request) {
     if (!allowed) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     const url = new URL(req.url);
+    const secret = url.searchParams.get("secret") || "";
+    const cronSecret = process.env.CRON_SECRET || "";
+    const okBySecret = cronSecret && secret && secret === cronSecret;
+
+    if (!okBySecret) {
+        // keep your existing Bearer/admin check exactly as-is below
+        // (do NOT return here)
+}   else {
+        // if okBySecret, skip the Bearer/admin check
+}
     const season = Number(url.searchParams.get("season") ?? "2026");
 
     const supabase = createClient(

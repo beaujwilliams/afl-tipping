@@ -39,19 +39,12 @@ export async function GET(req: Request) {
     }
   }
 
-  // ✅ If cron secret was used, forward it to odds snapshot endpoints
+  // ✅ forward secret to cron-only endpoints
   const secretQS = okBySecret ? `&secret=${encodeURIComponent(secret)}` : "";
 
-  const snapshot_next_due = await call(
-    `/api/admin/snapshot-odds-all-due?season=${season}&limit=1${secretQS}`
-  );
+  const snapshot_next_due = await call(`/api/admin/snapshot-odds-all-due?season=${season}&limit=1${secretQS}`);
+  const sync_results = await call(`/api/admin/sync-results?season=${season}${secretQS}`);
+  const recalc_leaderboard = await call(`/api/admin/recalc-leaderboard?season=${season}${secretQS}`);
 
-  const sync_results = await call(`/api/admin/sync-results?season=${season}`);
-  const recalc_leaderboard = await call(`/api/admin/recalc-leaderboard?season=${season}`);
-
-  return NextResponse.json({
-    ok: true,
-    season,
-    steps: { snapshot_next_due, sync_results, recalc_leaderboard },
-  });
+  return NextResponse.json({ ok: true, season, steps: { snapshot_next_due, sync_results, recalc_leaderboard } });
 }

@@ -174,6 +174,22 @@ export default function RoundPage() {
     return oddsHaveCount < matches.length;
   }, [matches.length, oddsHaveCount]);
 
+  // ✅ Snapshot window: start polling only within 36 hours of lock time
+  const snapshotDueMs = useMemo(() => {
+    if (!lockMs) return null;
+    return lockMs - 36 * 60 * 60 * 1000; // 36h before lock
+  }, [lockMs]);
+
+  const isWithinSnapshotWindow = useMemo(() => {
+    if (!snapshotDueMs) return false;
+    return nowMs >= snapshotDueMs;
+  }, [nowMs, snapshotDueMs]);
+
+  const shouldPollOdds = useMemo(() => {
+    // only poll when it actually matters
+    return !!compId && !!matches.length && !isLocked && oddsMissing && isWithinSnapshotWindow && !oddsPollingStopped;
+  }, [compId, matches.length, isLocked, oddsMissing, isWithinSnapshotWindow, oddsPollingStopped]);
+
   async function saveTip(matchId: string, pickedTeam: string) {
     if (!compId || !userId) return;
     if (isLocked) return;
@@ -202,11 +218,7 @@ export default function RoundPage() {
   }
 
   // -------- odds loader (reusable for initial load + polling) --------
-  async function loadOddsLatestForMatches(
-    competitionId: string,
-    matchIds: string[],
-    totalMatches: number
-  ) {
+  async function loadOddsLatestForMatches(competitionId: string, matchIds: string[], totalMatches: number) {
     if (!matchIds.length) return;
 
     const { data: oddsRows, error: oErr } = await supabaseBrowser
@@ -230,9 +242,7 @@ export default function RoundPage() {
 
     const have = Object.keys(map).length;
     setOddsInfo(
-      have
-        ? `Odds available for ${have}/${totalMatches} matches.`
-        : "No odds captured yet for this round."
+      have ? `Odds available for ${have}/${totalMatches} matches.` : "No odds captured yet for this round."
     );
 
     // If complete, stop polling immediately
@@ -259,11 +269,7 @@ export default function RoundPage() {
       setUserId(auth.user.id);
 
       // single-comp MVP
-      const { data: comp, error: cErr } = await supabaseBrowser
-        .from("competitions")
-        .select("id")
-        .limit(1)
-        .single();
+      const { data: comp, error: cErr } = await supabaseBrowser.from("competitions").select("id").limit(1).single();
 
       if (cErr || !comp) {
         setMsg("No competition found.");
@@ -325,29 +331,19 @@ export default function RoundPage() {
     })();
   }, [season, round]);
 
-  // -------- Poll odds every 90s while missing, up to 60 minutes --------
+  // -------- Poll odds every 90s while missing AND within snapshot window, up to 60 minutes --------
   const pollStartRef = useRef<number | null>(null);
+
   useEffect(() => {
-    if (!compId) return;
-    if (!matches.length) return;
-
-    // if not missing, no polling needed
-    if (!oddsMissing) {
+    if (!shouldPollOdds) {
+      pollStartRef.current = null;
       return;
     }
 
-    // already stopped (complete/timeout), no polling
-    if (oddsPollingStopped) {
-      return;
-    }
-
-    // start timer
-    if (pollStartRef.current === null) {
-      pollStartRef.current = Date.now();
-    }
+    if (pollStartRef.current === null) pollStartRef.current = Date.now();
 
     const POLL_MS = 90_000; // 90s
-    const MAX_MS = 60 * 60 * 1000; // 60 minutes (change to 30 * 60 * 1000 if you prefer)
+    const MAX_MS = 60 * 60 * 1000; // 60 minutes
 
     const matchIds = matches.map((m) => m.id);
 
@@ -361,27 +357,25 @@ export default function RoundPage() {
         return;
       }
 
-      // small jitter (+/- up to 10s) to avoid everyone hitting at once
       const jitter = Math.floor(Math.random() * 20_000) - 10_000;
-      if (jitter > 0) {
-        await new Promise((r) => setTimeout(r, jitter));
-      }
+      if (jitter > 0) await new Promise((r) => setTimeout(r, jitter));
 
-      await loadOddsLatestForMatches(compId, matchIds, matchIds.length);
+      await loadOddsLatestForMatches(compId!, matchIds, matchIds.length);
     }, POLL_MS);
 
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [compId, matches.length, oddsMissing, oddsPollingStopped]);
+  }, [shouldPollOdds, compId, matches]);
 
-  // Reset poll timer when odds become complete (or when changing round)
+  // If odds become complete, reset poll timer (and if switching rounds)
   useEffect(() => {
-    if (!oddsMissing) {
-      pollStartRef.current = null;
-    }
+    if (!oddsMissing) pollStartRef.current = null;
   }, [oddsMissing, season, round]);
 
   const showRefreshHint = oddsPollingStopped && oddsPollingReason === "timeout" && oddsMissing;
+
+  // ✅ Alert if we hit lock time and odds are STILL missing
+  const showSnapshotMissedAlert = isLocked && !!matches.length && oddsMissing;
 
   return (
     <main style={{ maxWidth: 1000, margin: "40px auto", padding: 16 }}>
@@ -397,9 +391,7 @@ export default function RoundPage() {
             padding: 14,
             borderRadius: 12,
             border: "1px solid rgba(0,0,0,0.12)",
-            background: isLocked
-              ? "rgba(220, 38, 38, 0.06)"
-              : "rgba(34, 197, 94, 0.06)",
+            background: isLocked ? "rgba(220, 38, 38, 0.06)" : "rgba(34, 197, 94, 0.06)",
           }}
         >
           {isLocked ? (
@@ -434,6 +426,25 @@ export default function RoundPage() {
         </div>
       )}
 
+      {/* ✅ Snapshot missed alert (after lock, odds still missing) */}
+      {showSnapshotMissedAlert && (
+        <div
+          style={{
+            marginTop: 12,
+            padding: 14,
+            borderRadius: 12,
+            border: "1px solid rgba(220, 38, 38, 0.35)",
+            background: "rgba(220, 38, 38, 0.08)",
+          }}
+        >
+          <div style={{ fontWeight: 900, color: "crimson" }}>⚠️ Odds snapshot hasn’t run for this round.</div>
+          <div style={{ marginTop: 6, fontSize: 12, opacity: 0.9 }}>
+            This round is locked, but we’re still missing odds for <b>{matches.length - oddsHaveCount}</b> match(es).
+            Admin: run <b>Snapshot Next Due Round</b> (or force snapshot) to backfill.
+          </div>
+        </div>
+      )}
+
       {/* ✅ Odds-not-captured banner */}
       {!!matches.length && oddsMissing && (
         <div
@@ -445,14 +456,13 @@ export default function RoundPage() {
             background: "rgba(245, 158, 11, 0.10)",
           }}
         >
-          <div style={{ fontWeight: 800 }}>
-            Odds will be locked at the snapshot time. Your pick is saved.
-          </div>
+          <div style={{ fontWeight: 800 }}>Odds will be locked at the snapshot time. Your pick is saved.</div>
           <div style={{ marginTop: 6, fontSize: 12, opacity: 0.85 }}>
             Odds captured for <b>{oddsHaveCount}</b>/<b>{matches.length}</b> matches so far.
-            {!oddsPollingStopped && (
+            {shouldPollOdds && <span style={{ marginLeft: 8, opacity: 0.85 }}>(Auto-checking every 90s)</span>}
+            {!shouldPollOdds && !isLocked && snapshotDueMs && nowMs < snapshotDueMs && (
               <span style={{ marginLeft: 8, opacity: 0.85 }}>
-                (Auto-checking every 90s)
+                (We’ll start checking within 36h of lock)
               </span>
             )}
           </div>
@@ -504,14 +514,7 @@ export default function RoundPage() {
             background: "rgba(0,0,0,0.02)",
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              gap: 12,
-              flexWrap: "wrap",
-            }}
-          >
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <div>
               <div style={{ fontWeight: 700 }}>
                 Your tips: {tippedCount} / {matches.length}
@@ -573,14 +576,7 @@ export default function RoundPage() {
                 {formatMelbourne(g.commence_time_utc)} • {normalizeVenue(g.venue)}
               </div>
 
-              <div
-                style={{
-                  display: "flex",
-                  gap: 12,
-                  marginTop: 12,
-                  flexWrap: "wrap",
-                }}
-              >
+              <div style={{ display: "flex", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
                 <button
                   disabled={isLocked || saving}
                   onClick={() => saveTip(g.id, g.home_team)}
@@ -588,10 +584,7 @@ export default function RoundPage() {
                     flex: 1,
                     padding: "14px 18px",
                     borderRadius: 12,
-                    border:
-                      picked === g.home_team
-                        ? "2px solid #0070f3"
-                        : "1px solid #ccc",
+                    border: picked === g.home_team ? "2px solid #0070f3" : "1px solid #ccc",
                     background: picked === g.home_team ? "#e6f3ff" : "white",
                     fontWeight: picked === g.home_team ? 700 : 600,
                     cursor: isLocked ? "not-allowed" : "pointer",
@@ -600,28 +593,13 @@ export default function RoundPage() {
                     opacity: isLocked || saving ? 0.65 : 1,
                   }}
                 >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: 10,
-                    }}
-                  >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
                     <span>{g.home_team}</span>
                     <span style={{ opacity: 0.85 }}>{fmtOdds(homeOdds)}</span>
                   </div>
 
                   {picked === g.home_team && (
-                    <span
-                      style={{
-                        position: "absolute",
-                        right: 12,
-                        top: 10,
-                        fontSize: 16,
-                      }}
-                    >
-                      ✓
-                    </span>
+                    <span style={{ position: "absolute", right: 12, top: 10, fontSize: 16 }}>✓</span>
                   )}
                 </button>
 
@@ -632,10 +610,7 @@ export default function RoundPage() {
                     flex: 1,
                     padding: "14px 18px",
                     borderRadius: 12,
-                    border:
-                      picked === g.away_team
-                        ? "2px solid #0070f3"
-                        : "1px solid #ccc",
+                    border: picked === g.away_team ? "2px solid #0070f3" : "1px solid #ccc",
                     background: picked === g.away_team ? "#e6f3ff" : "white",
                     fontWeight: picked === g.away_team ? 700 : 600,
                     cursor: isLocked ? "not-allowed" : "pointer",
@@ -644,28 +619,13 @@ export default function RoundPage() {
                     opacity: isLocked || saving ? 0.65 : 1,
                   }}
                 >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: 10,
-                    }}
-                  >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
                     <span>{g.away_team}</span>
                     <span style={{ opacity: 0.85 }}>{fmtOdds(awayOdds)}</span>
                   </div>
 
                   {picked === g.away_team && (
-                    <span
-                      style={{
-                        position: "absolute",
-                        right: 12,
-                        top: 10,
-                        fontSize: 16,
-                      }}
-                    >
-                      ✓
-                    </span>
+                    <span style={{ position: "absolute", right: 12, top: 10, fontSize: 16 }}>✓</span>
                   )}
                 </button>
               </div>

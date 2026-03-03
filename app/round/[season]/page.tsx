@@ -11,15 +11,21 @@ type RoundRow = {
   lock_time_utc: string | null;
 };
 
-function fmtMelbourne(iso: string | null) {
+function melbourneMs(iso: string | null) {
+  if (!iso) return null;
+  const ms = new Date(iso).getTime();
+  return Number.isNaN(ms) ? null : ms;
+}
+
+function fmtMelbourneShort(iso: string | null) {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
   return new Intl.DateTimeFormat("en-AU", {
     timeZone: "Australia/Melbourne",
-    year: "numeric",
-    month: "2-digit",
+    weekday: "short",
     day: "2-digit",
+    month: "short",
     hour: "2-digit",
     minute: "2-digit",
   }).format(d);
@@ -106,41 +112,70 @@ export default function SeasonRoundsPage() {
 
   const hasRows = useMemo(() => rows.length > 0, [rows.length]);
 
+  const nowMs = Date.now();
+
   return (
-    <main style={{ maxWidth: 900, margin: "40px auto", padding: 16 }}>
-      <h1 style={{ margin: 0 }}>Rounds • {season}</h1>
+    <main style={{ maxWidth: 900, margin: "26px auto", padding: 16 }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <h1 style={{ margin: 0, fontSize: 40, letterSpacing: -0.5 }}>Rounds • {season}</h1>
+        <div style={{ opacity: 0.7, fontSize: 12 }}>All times shown in Melbourne</div>
+      </div>
 
-      {msg && <p style={{ marginTop: 16, opacity: 0.8 }}>{msg}</p>}
+      {msg && <p style={{ marginTop: 14, opacity: 0.8 }}>{msg}</p>}
 
-      {!msg && !hasRows && (
-        <div style={{ marginTop: 16, opacity: 0.75 }}>No rounds found.</div>
-      )}
+      {!msg && !hasRows && <div style={{ marginTop: 16, opacity: 0.75 }}>No rounds found.</div>}
 
       {!msg && hasRows && (
-        <div style={{ marginTop: 16, display: "grid", gap: 10 }}>
-          {rows.map((r) => (
-            <Link
-              key={r.id}
-              href={`/round/${season}/${r.round_number}`}
-              style={{
-                border: "1px solid rgba(255,255,255,0.14)",
-                borderRadius: 14,
-                padding: 14,
-                textDecoration: "none",
-                color: "var(--foreground)",
-                background: "rgba(255,255,255,0.04)",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: 12,
-              }}
-            >
-              <div style={{ fontWeight: 900 }}>Round {r.round_number}</div>
-              <div style={{ opacity: 0.75, fontSize: 12, whiteSpace: "nowrap" }}>
-                {fmtMelbourne(r.lock_time_utc)}
-              </div>
-            </Link>
-          ))}
+        <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
+          {rows.map((r) => {
+            const lock = melbourneMs(r.lock_time_utc);
+            const locked = lock ? nowMs >= lock : false;
+
+            return (
+              <Link
+                key={r.id}
+                href={`/round/${season}/${r.round_number}`}
+                style={{
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  borderRadius: 18,
+                  padding: "16px 16px",
+                  textDecoration: "none",
+                  color: "var(--foreground)",
+                  background: "rgba(255,255,255,0.04)",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 14,
+                  minHeight: 64, // good finger target
+                  WebkitTapHighlightColor: "transparent",
+                }}
+              >
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <div style={{ fontWeight: 950, fontSize: 18, letterSpacing: -0.2 }}>
+                    Round {r.round_number}
+                  </div>
+                  <div style={{ opacity: 0.75, fontSize: 12 }}>
+                    Locks: <span style={{ opacity: 0.95 }}>{fmtMelbourneShort(r.lock_time_utc)}</span>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 900,
+                    padding: "8px 10px",
+                    borderRadius: 999,
+                    border: "1px solid rgba(255,255,255,0.16)",
+                    background: locked ? "rgba(239,68,68,0.12)" : "rgba(34,197,94,0.12)",
+                    color: locked ? "rgb(239,68,68)" : "rgb(34,197,94)",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {locked ? "LOCKED" : "OPEN"}
+                </div>
+              </Link>
+            );
+          })}
         </div>
       )}
     </main>

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { supabaseBrowser } from "@/lib/supabase-browser";
 
 export default function AdminPage() {
   const router = useRouter();
@@ -15,9 +16,23 @@ export default function AdminPage() {
       setLoading(path);
       setResult(null);
 
-      const res = await fetch(path, { cache: "no-store" });
-      const json = await res.json();
+      // 🔐 Get current session access token
+      const { data } = await supabaseBrowser.auth.getSession();
+      const token = data.session?.access_token;
 
+      if (!token) {
+        setResult({ error: "Not authenticated." });
+        return;
+      }
+
+      const res = await fetch(path, {
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const json = await res.json();
       setResult(json);
     } catch (err: any) {
       setResult({ error: err?.message ?? "Unknown error" });
@@ -46,7 +61,6 @@ export default function AdminPage() {
         />
       </div>
 
-      {/* --- ADMIN ACTION BUTTONS --- */}
       <div
         style={{
           marginTop: 30,
@@ -90,7 +104,6 @@ export default function AdminPage() {
           Recalculate Leaderboard
         </button>
 
-        {/* --- NEW BUTTON --- */}
         <button
           onClick={() => router.push("/admin/members")}
           style={{
@@ -104,7 +117,6 @@ export default function AdminPage() {
         </button>
       </div>
 
-      {/* --- RESULT OUTPUT --- */}
       {result && (
         <div
           style={{

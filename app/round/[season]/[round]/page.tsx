@@ -95,18 +95,6 @@ function formatMelbourne(isoUtc: string) {
   }).format(d);
 }
 
-function msToCountdown(ms: number) {
-  if (ms <= 0) return "0m";
-  const totalMins = Math.floor(ms / 60000);
-  const days = Math.floor(totalMins / (60 * 24));
-  const hours = Math.floor((totalMins % (60 * 24)) / 60);
-  const mins = totalMins % 60;
-
-  if (days > 0) return `${days}d ${hours}h ${mins}m`;
-  if (hours > 0) return `${hours}h ${mins}m`;
-  return `${mins}m`;
-}
-
 function fmtOdds(n: number | null | undefined) {
   if (n === null || n === undefined) return "—";
   const num = Number(n);
@@ -129,37 +117,19 @@ export default function RoundPage() {
   const [tipsByMatchId, setTipsByMatchId] = useState<Record<string, string>>({});
   const [savingMatchId, setSavingMatchId] = useState<string | null>(null);
 
-  // oddsByMatchId[matchId] = { home_odds, away_odds, home_team, away_team }
   const [oddsByMatchId, setOddsByMatchId] = useState<Record<string, OddsRow>>({});
   const [oddsInfo, setOddsInfo] = useState<string>("");
 
-  // Smooth countdown timer
-  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+  const [nowIso, setNowIso] = useState<string>(new Date().toISOString());
   useEffect(() => {
-    const t = setInterval(() => setNowMs(Date.now()), 1000);
+    const t = setInterval(() => setNowIso(new Date().toISOString()), 10000);
     return () => clearInterval(t);
   }, []);
 
-  const lockMs = useMemo(() => {
-    if (!roundRow) return null;
-    const ms = new Date(roundRow.lock_time_utc).getTime();
-    return Number.isNaN(ms) ? null : ms;
-  }, [roundRow]);
-
   const isLocked = useMemo(() => {
-    if (!lockMs) return false;
-    return nowMs >= lockMs;
-  }, [nowMs, lockMs]);
-
-  const lockCountdown = useMemo(() => {
-    if (!lockMs) return "";
-    return msToCountdown(lockMs - nowMs);
-  }, [lockMs, nowMs]);
-
-  const tippedCount = useMemo(() => {
-    if (!matches.length) return 0;
-    return matches.filter((m) => !!tipsByMatchId[m.id]).length;
-  }, [matches, tipsByMatchId]);
+    if (!roundRow) return false;
+    return new Date(nowIso).getTime() >= new Date(roundRow.lock_time_utc).getTime();
+  }, [roundRow, nowIso]);
 
   async function saveTip(matchId: string, pickedTeam: string) {
     if (!compId || !userId) return;
@@ -193,6 +163,7 @@ export default function RoundPage() {
       setMsg("Loading…");
       setOddsInfo("");
 
+      // 1) Must be logged in
       const { data: auth } = await supabaseBrowser.auth.getUser();
       if (!auth.user) {
         window.location.href = "/login";
@@ -200,23 +171,27 @@ export default function RoundPage() {
       }
       setUserId(auth.user.id);
 
-      // single-comp MVP
-      const { data: comp, error: cErr } = await supabaseBrowser
-        .from("competitions")
-        .select("id")
+      // 2) Must be a member of a competition (no more "pick first comp")
+      const { data: membership, error: mErr } = await supabaseBrowser
+        .from("memberships")
+        .select("competition_id")
+        .eq("user_id", auth.user.id)
         .limit(1)
         .single();
 
-      if (cErr || !comp) {
-        setMsg("No competition found.");
+      if (mErr || !membership) {
+        window.location.href = "/setup";
         return;
       }
-      setCompId(comp.id);
 
+      const competitionId = membership.competition_id as string;
+      setCompId(competitionId);
+
+      // 3) Load this round row for THIS competition + season/round
       const { data: r, error: rErr } = await supabaseBrowser
         .from("rounds")
         .select("id, season, round_number, lock_time_utc")
-        .eq("competition_id", comp.id)
+        .eq("competition_id", competitionId)
         .eq("season", season)
         .eq("round_number", round)
         .single();
@@ -227,14 +202,15 @@ export default function RoundPage() {
       }
       setRoundRow(r as RoundRow);
 
-      const { data: m, error: mErr } = await supabaseBrowser
+      // 4) Matches in the round
+      const { data: m, error: mErr2 } = await supabaseBrowser
         .from("matches")
         .select("id, commence_time_utc, home_team, away_team, venue, status, winner_team")
         .eq("round_id", r.id)
         .order("commence_time_utc", { ascending: true });
 
-      if (mErr) {
-        setMsg(`Error loading matches: ${mErr.message}`);
+      if (mErr2) {
+        setMsg(`Error loading matches: ${mErr2.message}`);
         return;
       }
 
@@ -244,12 +220,12 @@ export default function RoundPage() {
 
       const matchIds = matchList.map((x) => x.id);
 
-      // Load tips
+      // 5) Load tips for this user + competition
       if (matchIds.length) {
         const { data: tips, error: tErr } = await supabaseBrowser
           .from("tips")
           .select("match_id, picked_team")
-          .eq("competition_id", comp.id)
+          .eq("competition_id", competitionId)
           .eq("user_id", auth.user.id)
           .in("match_id", matchIds);
 
@@ -262,12 +238,12 @@ export default function RoundPage() {
         }
       }
 
-      // Load odds (latest per match)
+      // 6) Load odds (latest per match)
       if (matchIds.length) {
         const { data: oddsRows, error: oErr } = await supabaseBrowser
           .from("match_odds")
           .select("match_id, home_team, away_team, home_odds, away_odds, captured_at_utc")
-          .eq("competition_id", comp.id)
+          .eq("competition_id", competitionId)
           .in("match_id", matchIds)
           .order("captured_at_utc", { ascending: false });
 
@@ -297,100 +273,23 @@ export default function RoundPage() {
         Round {round} • {season}
       </h1>
 
-      {/* Lock banner + countdown */}
       {roundRow && (
-        <div
-          style={{
-            marginTop: 12,
-            padding: 14,
-            borderRadius: 12,
-            border: "1px solid rgba(0,0,0,0.12)",
-            background: isLocked ? "rgba(220, 38, 38, 0.06)" : "rgba(34, 197, 94, 0.06)",
-          }}
-        >
-          {isLocked ? (
-            <>
-              <div style={{ fontWeight: 700 }}>Round locked ✅</div>
-              <div style={{ marginTop: 4, opacity: 0.85 }}>
-                Locked at <b>{formatMelbourne(roundRow.lock_time_utc)}</b> (Melbourne time)
-              </div>
-              <div style={{ marginTop: 6, fontSize: 12, color: "crimson" }}>
-                Tips can’t be changed once the round is locked.
-              </div>
-            </>
-          ) : (
-            <>
-              <div style={{ fontWeight: 700 }}>
-                Round locks in <span>{lockCountdown}</span>
-              </div>
-              <div style={{ marginTop: 4, opacity: 0.85 }}>
-                Lock time: <b>{formatMelbourne(roundRow.lock_time_utc)}</b> (Melbourne time)
-              </div>
-              <div style={{ marginTop: 6, fontSize: 12, opacity: 0.8 }}>
-                Your whole round locks at the first match start time.
-              </div>
-            </>
-          )}
-
-          {oddsInfo && (
-            <div style={{ marginTop: 8, fontSize: 12, opacity: 0.8 }}>
-              {oddsInfo}
-            </div>
-          )}
+        <div style={{ marginTop: 10, padding: 12, border: "1px solid #ddd", borderRadius: 8 }}>
+          <div>
+            Lock time (Melbourne): <b>{formatMelbourne(roundRow.lock_time_utc)}</b>
+          </div>
+          <div style={{ marginTop: 6 }}>
+            Status:{" "}
+            <b style={{ color: isLocked ? "crimson" : "green" }}>
+              {isLocked ? "LOCKED" : "OPEN"}
+            </b>
+          </div>
+          {oddsInfo && <div style={{ marginTop: 6, fontSize: 12, opacity: 0.8 }}>{oddsInfo}</div>}
         </div>
       )}
 
       {msg && <p style={{ marginTop: 16 }}>{msg}</p>}
 
-      {/* Tips summary */}
-      {!!matches.length && (
-        <div
-          style={{
-            marginTop: 18,
-            padding: 14,
-            borderRadius: 12,
-            border: "1px solid rgba(0,0,0,0.10)",
-            background: "rgba(0,0,0,0.02)",
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-            <div>
-              <div style={{ fontWeight: 700 }}>
-                Your tips: {tippedCount} / {matches.length}
-              </div>
-              <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
-                Tip all matches before the lock time.
-              </div>
-            </div>
-
-            {isLocked ? (
-              <div style={{ fontWeight: 700, color: "crimson" }}>LOCKED</div>
-            ) : (
-              <div style={{ fontWeight: 700, color: "green" }}>OPEN</div>
-            )}
-          </div>
-
-          <div style={{ marginTop: 12, display: "grid", gap: 6 }}>
-            {matches.map((m) => {
-              const picked = tipsByMatchId[m.id] ?? null;
-              return (
-                <div key={m.id} style={{ fontSize: 13, opacity: 0.9 }}>
-                  {m.home_team} vs {m.away_team} —{" "}
-                  {picked ? (
-                    <span>
-                      tipped <b>{picked}</b>
-                    </span>
-                  ) : (
-                    <span style={{ opacity: 0.6 }}>Not tipped</span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Matches list */}
       <div style={{ marginTop: 20 }}>
         {matches.map((g) => {
           const picked = tipsByMatchId[g.id] ?? null;
@@ -408,7 +307,6 @@ export default function RoundPage() {
                 borderRadius: 12,
                 padding: 16,
                 marginBottom: 16,
-                opacity: isLocked ? 0.98 : 1,
               }}
             >
               <div style={{ fontSize: 14, opacity: 0.8 }}>
@@ -416,7 +314,6 @@ export default function RoundPage() {
               </div>
 
               <div style={{ display: "flex", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
-                {/* Home team button */}
                 <button
                   disabled={isLocked || saving}
                   onClick={() => saveTip(g.id, g.home_team)}
@@ -426,26 +323,22 @@ export default function RoundPage() {
                     borderRadius: 12,
                     border: picked === g.home_team ? "2px solid #0070f3" : "1px solid #ccc",
                     background: picked === g.home_team ? "#e6f3ff" : "white",
-                    fontWeight: picked === g.home_team ? 700 : 600,
+                    fontWeight: picked === g.home_team ? 600 : 500,
                     cursor: isLocked ? "not-allowed" : "pointer",
                     position: "relative",
                     textAlign: "left",
-                    opacity: isLocked || saving ? 0.65 : 1,
                   }}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
                     <span>{g.home_team}</span>
-                    <span style={{ opacity: 0.85 }}>{fmtOdds(homeOdds)}</span>
+                    <span style={{ opacity: 0.8 }}>{fmtOdds(homeOdds)}</span>
                   </div>
 
                   {picked === g.home_team && (
-                    <span style={{ position: "absolute", right: 12, top: 10, fontSize: 16 }}>
-                      ✓
-                    </span>
+                    <span style={{ position: "absolute", right: 12, top: 10, fontSize: 16 }}>✓</span>
                   )}
                 </button>
 
-                {/* Away team button */}
                 <button
                   disabled={isLocked || saving}
                   onClick={() => saveTip(g.id, g.away_team)}
@@ -455,37 +348,22 @@ export default function RoundPage() {
                     borderRadius: 12,
                     border: picked === g.away_team ? "2px solid #0070f3" : "1px solid #ccc",
                     background: picked === g.away_team ? "#e6f3ff" : "white",
-                    fontWeight: picked === g.away_team ? 700 : 600,
+                    fontWeight: picked === g.away_team ? 600 : 500,
                     cursor: isLocked ? "not-allowed" : "pointer",
                     position: "relative",
                     textAlign: "left",
-                    opacity: isLocked || saving ? 0.65 : 1,
                   }}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
                     <span>{g.away_team}</span>
-                    <span style={{ opacity: 0.85 }}>{fmtOdds(awayOdds)}</span>
+                    <span style={{ opacity: 0.8 }}>{fmtOdds(awayOdds)}</span>
                   </div>
 
                   {picked === g.away_team && (
-                    <span style={{ position: "absolute", right: 12, top: 10, fontSize: 16 }}>
-                      ✓
-                    </span>
+                    <span style={{ position: "absolute", right: 12, top: 10, fontSize: 16 }}>✓</span>
                   )}
                 </button>
               </div>
-
-              {saving && (
-                <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
-                  Saving…
-                </div>
-              )}
-
-              {!saving && !isLocked && picked && (
-                <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
-                  Saved: <b>{picked}</b>
-                </div>
-              )}
 
               {isLocked && (
                 <div style={{ marginTop: 8, fontSize: 12, color: "crimson" }}>

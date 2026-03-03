@@ -1,82 +1,105 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
-type Row = {
-  user_id: string;
-  total_points: number;
+type RoundRow = {
+  id: string;
+  season: number;
+  round_number: number;
+  lock_time_utc: string;
 };
 
-export default function LeaderboardPage() {
+function formatMelbourne(isoUtc: string) {
+  const d = new Date(isoUtc);
+  return new Intl.DateTimeFormat("en-AU", {
+    timeZone: "Australia/Melbourne",
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(d);
+}
+
+export default function SeasonRoundsPage() {
   const params = useParams<{ season: string }>();
   const season = Number(params.season);
 
-  const [rows, setRows] = useState<Row[]>([]);
+  const [rounds, setRounds] = useState<RoundRow[]>([]);
   const [msg, setMsg] = useState("Loading…");
 
   useEffect(() => {
     (async () => {
+      // 1) Must be logged in
       const { data: auth } = await supabaseBrowser.auth.getUser();
       if (!auth.user) {
         window.location.href = "/login";
         return;
       }
 
-      const { data: comp } = await supabaseBrowser
-        .from("competitions")
-        .select("id")
+      // 2) Must be a member of a competition
+      const { data: membership, error: mErr } = await supabaseBrowser
+        .from("memberships")
+        .select("competition_id")
+        .eq("user_id", auth.user.id)
         .limit(1)
         .single();
 
-      if (!comp) {
-        setMsg("No competition found.");
+      if (mErr || !membership) {
+        window.location.href = "/setup";
         return;
       }
 
+      const compId = membership.competition_id as string;
+
+      // 3) Load rounds
       const { data, error } = await supabaseBrowser
-        .from("leaderboard_entries")
-        .select("user_id, total_points")
-        .eq("competition_id", comp.id)
+        .from("rounds")
+        .select("id, season, round_number, lock_time_utc")
+        .eq("competition_id", compId)
         .eq("season", season)
-        .order("total_points", { ascending: false });
+        .order("round_number", { ascending: true });
 
       if (error) {
         setMsg(error.message);
         return;
       }
 
-      setRows((data ?? []) as Row[]);
+      setRounds((data ?? []) as RoundRow[]);
       setMsg("");
     })();
   }, [season]);
 
   return (
     <main style={{ maxWidth: 900, margin: "40px auto", padding: 16 }}>
-      <h1>Leaderboard • {season}</h1>
+      <h1>Rounds • {season}</h1>
+
       {msg && <p style={{ marginTop: 16 }}>{msg}</p>}
 
       {!msg && (
         <div style={{ marginTop: 16, border: "1px solid #eee", borderRadius: 12, overflow: "hidden" }}>
-          {rows.length === 0 ? (
-            <div style={{ padding: 16 }}>No scores yet — once matches finish and you run scoring, this will populate.</div>
+          {rounds.length === 0 ? (
+            <div style={{ padding: 16 }}>No rounds found.</div>
           ) : (
-            rows.map((r, i) => (
-              <div
-                key={r.user_id}
+            rounds.map((r, i) => (
+              <Link
+                key={r.id}
+                href={`/round/${season}/${r.round_number}`}
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
                   padding: 14,
                   borderTop: i === 0 ? "none" : "1px solid #eee",
+                  textDecoration: "none",
+                  color: "inherit",
                 }}
               >
-                <div>
-                  <b>#{i + 1}</b> <span style={{ opacity: 0.8 }}>{r.user_id.slice(0, 8)}…</span>
-                </div>
-                <div style={{ fontWeight: 700 }}>{Number(r.total_points).toFixed(2)}</div>
-              </div>
+                <div style={{ fontWeight: 800 }}>Round {r.round_number}</div>
+                <div style={{ opacity: 0.75, fontSize: 13 }}>Locks: {formatMelbourne(r.lock_time_utc)}</div>
+              </Link>
             ))
           )}
         </div>

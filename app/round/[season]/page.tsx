@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
@@ -10,6 +10,20 @@ type RoundRow = {
   round_number: number;
   lock_time_utc: string | null;
 };
+
+function fmtMelbourne(iso: string | null) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return new Intl.DateTimeFormat("en-AU", {
+    timeZone: "Australia/Melbourne",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(d);
+}
 
 export default function SeasonRoundsPage() {
   const params = useParams<{ season: string }>();
@@ -23,7 +37,6 @@ export default function SeasonRoundsPage() {
     let alive = true;
 
     async function ensureSessionOrRedirect() {
-      // 1) immediate session check
       const { data } = await supabaseBrowser.auth.getSession();
       if (!alive) return;
 
@@ -33,7 +46,6 @@ export default function SeasonRoundsPage() {
         return;
       }
 
-      // 2) wait briefly for auth state to resolve in production
       const { data: sub } = supabaseBrowser.auth.onAuthStateChange((_event, session) => {
         if (session) {
           setReady(true);
@@ -42,7 +54,6 @@ export default function SeasonRoundsPage() {
         }
       });
 
-      // 3) after 1.2s, if still no session -> redirect
       setTimeout(async () => {
         const { data: again } = await supabaseBrowser.auth.getSession();
         if (!alive) return;
@@ -69,11 +80,7 @@ export default function SeasonRoundsPage() {
     (async () => {
       setMsg("Loading rounds…");
 
-      const { data: comp } = await supabaseBrowser
-        .from("competitions")
-        .select("id")
-        .limit(1)
-        .single();
+      const { data: comp } = await supabaseBrowser.from("competitions").select("id").limit(1).single();
 
       if (!comp) {
         setMsg("No competition found.");
@@ -97,30 +104,40 @@ export default function SeasonRoundsPage() {
     })();
   }, [ready, season]);
 
+  const hasRows = useMemo(() => rows.length > 0, [rows.length]);
+
   return (
     <main style={{ maxWidth: 900, margin: "40px auto", padding: 16 }}>
-      <h1>Rounds • {season}</h1>
-      {msg && <p style={{ marginTop: 16 }}>{msg}</p>}
+      <h1 style={{ margin: 0 }}>Rounds • {season}</h1>
 
-      {!msg && (
+      {msg && <p style={{ marginTop: 16, opacity: 0.8 }}>{msg}</p>}
+
+      {!msg && !hasRows && (
+        <div style={{ marginTop: 16, opacity: 0.75 }}>No rounds found.</div>
+      )}
+
+      {!msg && hasRows && (
         <div style={{ marginTop: 16, display: "grid", gap: 10 }}>
           {rows.map((r) => (
             <Link
               key={r.id}
               href={`/round/${season}/${r.round_number}`}
               style={{
-                border: "1px solid #eee",
-                borderRadius: 12,
+                border: "1px solid rgba(255,255,255,0.14)",
+                borderRadius: 14,
                 padding: 14,
                 textDecoration: "none",
-                color: "black",
+                color: "var(--foreground)",
+                background: "rgba(255,255,255,0.04)",
                 display: "flex",
                 justifyContent: "space-between",
+                alignItems: "center",
+                gap: 12,
               }}
             >
-              <div style={{ fontWeight: 800 }}>Round {r.round_number}</div>
-              <div style={{ opacity: 0.75, fontSize: 12 }}>
-                {r.lock_time_utc ? new Date(r.lock_time_utc).toLocaleString() : ""}
+              <div style={{ fontWeight: 900 }}>Round {r.round_number}</div>
+              <div style={{ opacity: 0.75, fontSize: 12, whiteSpace: "nowrap" }}>
+                {fmtMelbourne(r.lock_time_utc)}
               </div>
             </Link>
           ))}

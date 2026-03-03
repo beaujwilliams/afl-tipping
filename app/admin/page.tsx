@@ -5,6 +5,8 @@ import { supabaseBrowser } from "@/lib/supabase-browser";
 
 type RunResult = { ok?: boolean; error?: string; [key: string]: any };
 
+const ADMIN_EMAIL = "beau.j.williams@gmail.com";
+
 export default function AdminPage() {
   const [season, setSeason] = useState<number>(2026);
   const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -29,7 +31,7 @@ export default function AdminPage() {
       const email = data.user.email ?? "";
       setUserEmail(email);
 
-      if (email !== "beau.j.williams@gmail.com") {
+      if (email !== ADMIN_EMAIL) {
         window.location.href = "/";
         return;
       }
@@ -45,7 +47,7 @@ export default function AdminPage() {
     try {
       const fullUrl = `${baseUrl}${path}`;
 
-      // ✅ Get the current session token and send it as Bearer auth
+      // ✅ Send Bearer token so API can verify you’re the admin
       const { data: sessionData } = await supabaseBrowser.auth.getSession();
       const token = sessionData.session?.access_token;
 
@@ -60,7 +62,7 @@ export default function AdminPage() {
       try {
         json = JSON.parse(text);
       } catch {
-        json = { error: "Non-JSON response", status: res.status, bodyHead: text.slice(0, 500) };
+        json = { error: "Non-JSON response", status: res.status, bodyHead: text.slice(0, 800) };
       }
 
       setLastResult(json);
@@ -87,7 +89,7 @@ export default function AdminPage() {
     cursor: "pointer",
     textAlign: "left",
     fontSize: 16,
-    fontWeight: 700,
+    fontWeight: 800,
     opacity: running ? 0.7 : 1,
   };
 
@@ -96,6 +98,7 @@ export default function AdminPage() {
     opacity: 0.75,
     marginTop: 6,
     fontWeight: 500,
+    lineHeight: 1.35,
   };
 
   return (
@@ -108,7 +111,7 @@ export default function AdminPage() {
         <>
           <div style={cardStyle}>
             <div style={{ fontSize: 14, opacity: 0.7 }}>Signed in as</div>
-            <div style={{ fontWeight: 800 }}>{userEmail}</div>
+            <div style={{ fontWeight: 900 }}>{userEmail}</div>
 
             <div style={{ marginTop: 12 }}>
               <label>
@@ -134,11 +137,24 @@ export default function AdminPage() {
             <button
               style={btnStyle}
               disabled={!!running}
-              onClick={() => run(`/api/admin/snapshot-odds-all-due?season=${season}&force=1`)}
+              onClick={() => run(`/api/admin/snapshot-odds-all-due?season=${season}`)}
+              title="Runs only rounds that are actually due (safe)"
             >
-              1️⃣ Snapshot Odds (ALL DUE — Force)
+              ✅ Snapshot Odds (Due only — safe)
               <div style={smallStyle}>
-                Captures Sportsbet decimal odds for rounds that are due. Force lets you test anytime.
+                Uses your lock time. Won’t hit future rounds. Best for normal use + automation.
+              </div>
+            </button>
+
+            <button
+              style={btnStyle}
+              disabled={!!running}
+              onClick={() => run(`/api/admin/snapshot-odds-all-due?season=${season}&force=1`)}
+              title="FOR TESTING ONLY - can burn your API quota"
+            >
+              🔧 Snapshot Odds (FORCE — testing)
+              <div style={smallStyle}>
+                Forces all rounds as “due”. Use only when debugging. This can consume API quota fast.
               </div>
             </button>
 
@@ -148,7 +164,9 @@ export default function AdminPage() {
               onClick={() => run(`/api/admin/sync-results?season=${season}`)}
             >
               2️⃣ Sync Results (Squiggle)
-              <div style={smallStyle}>Updates matches with winner_team once games are final.</div>
+              <div style={smallStyle}>
+                Pulls final games and updates winners in your matches table.
+              </div>
             </button>
 
             <button
@@ -158,7 +176,7 @@ export default function AdminPage() {
             >
               3️⃣ Recalculate Leaderboard
               <div style={smallStyle}>
-                Scores tips using your snapshot rule and updates leaderboard_entries.
+                Totals tips using your odds rule and writes leaderboard entries.
               </div>
             </button>
           </div>

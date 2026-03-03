@@ -1,5 +1,12 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase-server";
+
+function mustEnv(name: string) {
+  const v = process.env[name];
+  if (!v) throw new Error(`Missing env var: ${name}`);
+  return v;
+}
 
 function getBearer(req: Request) {
   const h = req.headers.get("authorization") || "";
@@ -7,29 +14,32 @@ function getBearer(req: Request) {
   return m?.[1] ?? null;
 }
 
-async function requireAdmin(req: Request) {
+async function requireAdminOrCron(req: Request) {
+  const urlObj = new URL(req.url);
+
+  // Allow cron secret too (optional, but keeps consistency with other admin routes)
+  const secret = urlObj.searchParams.get("secret");
+  const cronSecret = process.env.CRON_SECRET;
+  if (secret && cronSecret && secret === cronSecret) {
+    return { ok: true as const, mode: "cron" as const };
+  }
+
   const token = getBearer(req);
   if (!token) {
-    return { ok: false as const, status: 401, json: { error: "Missing Bearer token" } };
+    return {
+      ok: false as const,
+      status: 401,
+      json: { error: "Missing Bearer token" },
+    };
   }
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-  const adminEmail = process.env.ADMIN_EMAIL;
-
-  if (!url || !anon) {
-    return { ok: false as const, status: 500, json: { error: "Missing Supabase env vars" } };
-  }
-  if (!adminEmail) {
-    return { ok: false as const, status: 500, json: { error: "Missing env var: ADMIN_EMAIL" } };
-  }
+  const url = mustEnv("NEXT_PUBLIC_SUPABASE_URL");
+  const anon = mustEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY");
+  const adminEmail = mustEnv("ADMIN_EMAIL");
 
   // Validate the session token and get the user
   const userRes = await fetch(`${url}/auth/v1/user`, {
-    headers: {
-      apikey: anon,
-      authorization: `Bearer ${token}`,
-    },
+    headers: { apikey: anon, authorization: `Bearer ${token}` },
     cache: "no-store",
   });
 
@@ -42,19 +52,48 @@ async function requireAdmin(req: Request) {
     return { ok: false as const, status: 403, json: { error: "Admin only" } };
   }
 
-  return { ok: true as const, user };
+  return { ok: true as const, mode: "bearer" as const, token, user };
+}
+
+async function getCompetitionId(supabase: ReturnType<typeof createServiceClient>, req: Request) {
+  const url = new URL(req.url);
+  const fromQS = url.searchParams.get("competition_id")?.trim();
+  if (fromQS) return fromQS;
+
+  // fallback: first competition (MVP)
+  const { data: comp, error: cErr } = await supabase
+    .from("competitions")
+    .select("id")
+    .limit(1)
+    .single();
+
+  if (cErr || !comp) return null;
+  return comp.id as string;
+}
+
+// Simple concurrency limiter for fallback email lookups
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = [];
+  let i = 0;
+
+  const workers = Array.from({ length: Math.max(1, limit) }, async () => {
+    while (i < items.length) {
+      const idx = i++;
+      out[idx] = await fn(items[idx]);
+    }
+  });
+
+  await Promise.all(workers);
+  return out;
 }
 
 async function getAuthEmailByUserId(userId: string) {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const service = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const service = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !service) return null;
 
   const r = await fetch(`${url}/auth/v1/admin/users/${userId}`, {
-    headers: {
-      apikey: service,
-      authorization: `Bearer ${service}`,
-    },
+    headers: { apikey: service, authorization: `Bearer ${service}` },
     cache: "no-store",
   });
 
@@ -63,114 +102,174 @@ async function getAuthEmailByUserId(userId: string) {
   return j.email ?? null;
 }
 
+type MemberOut = {
+  user_id: string;
+  email: string | null;
+  display_name: string | null;
+  joined_at: string;
+};
+
 export async function GET(req: Request) {
-  const admin = await requireAdmin(req);
-  if (!admin.ok) return NextResponse.json(admin.json, { status: admin.status });
+  try {
+    const admin = await requireAdminOrCron(req);
+    if (!admin.ok) return NextResponse.json(admin.json, { status: admin.status });
 
-  const supabase = createServiceClient();
+    const supabase = createServiceClient();
 
-  const { data: comp, error: cErr } = await supabase
-    .from("competitions")
-    .select("id")
-    .limit(1)
-    .single();
+    const competitionId = await getCompetitionId(supabase, req);
+    if (!competitionId) {
+      return NextResponse.json({ error: "No competition found" }, { status: 404 });
+    }
 
-  if (cErr || !comp) {
-    return NextResponse.json({ error: "No competition found" }, { status: 404 });
-  }
+    const { data: members, error: mErr } = await supabase
+      .from("memberships")
+      .select("user_id, created_at")
+      .eq("competition_id", competitionId)
+      .order("created_at", { ascending: true });
 
-  const { data: members, error: mErr } = await supabase
-    .from("memberships")
-    .select("user_id, created_at")
-    .eq("competition_id", comp.id)
-    .order("created_at", { ascending: true });
+    if (mErr) {
+      return NextResponse.json(
+        { error: "Failed to read memberships", details: mErr.message },
+        { status: 500 }
+      );
+    }
 
-  if (mErr) {
-    return NextResponse.json({ error: "Failed to read memberships", details: mErr.message }, { status: 500 });
-  }
+    const userIds = (members ?? []).map((m: any) => String(m.user_id));
+    if (userIds.length === 0) {
+      return NextResponse.json({ ok: true, competition_id: competitionId, members: [] });
+    }
 
-  const userIds = (members ?? []).map((m) => m.user_id);
+    // Try to read profiles including email (if your schema has it)
+    let profRows: any[] = [];
+    let profilesHaveEmail = true;
 
-  const { data: profs } = await supabase
-    .from("profiles")
-    .select("id, display_name")
-    .in("id", userIds);
+    const tryWithEmail = await supabase
+      .from("profiles")
+      .select("id, display_name, email")
+      .in("id", userIds);
 
-  const profileMap = new Map<string, { display_name: string | null }>();
-  (profs ?? []).forEach((p: any) => profileMap.set(p.id, { display_name: p.display_name ?? null }));
+    if (tryWithEmail.error) {
+      profilesHaveEmail = false;
+      const fallback = await supabase
+        .from("profiles")
+        .select("id, display_name")
+        .in("id", userIds);
 
-  // Fetch emails (best effort)
-  const out = [];
-  for (const m of members ?? []) {
-    const email = await getAuthEmailByUserId(m.user_id);
-    const p = profileMap.get(m.user_id);
-    out.push({
-      user_id: m.user_id,
-      email,
-      display_name: p?.display_name ?? null,
-      joined_at: m.created_at,
+      if (!fallback.error) profRows = (fallback.data as any[]) ?? [];
+    } else {
+      profRows = (tryWithEmail.data as any[]) ?? [];
+    }
+
+    const profileMap = new Map<string, { display_name: string | null; email: string | null }>();
+    for (const p of profRows) {
+      profileMap.set(String(p.id), {
+        display_name: p.display_name ?? null,
+        email: profilesHaveEmail ? (p.email ?? null) : null,
+      });
+    }
+
+    // Build output; if profiles.email is missing, fetch auth emails with limited concurrency
+    let out: MemberOut[] = (members ?? []).map((m: any) => {
+      const p = profileMap.get(String(m.user_id));
+      return {
+        user_id: String(m.user_id),
+        email: p?.email ?? null,
+        display_name: p?.display_name ?? null,
+        joined_at: String(m.created_at),
+      };
     });
-  }
 
-  return NextResponse.json({ ok: true, members: out });
+    if (!profilesHaveEmail) {
+      out = await mapLimit(out, 5, async (row) => {
+        const email = await getAuthEmailByUserId(row.user_id);
+        return { ...row, email };
+      });
+    }
+
+    return NextResponse.json({ ok: true, competition_id: competitionId, members: out });
+  } catch (e: any) {
+    return NextResponse.json(
+      { error: "Unexpected error", details: e?.message ?? String(e) },
+      { status: 500 }
+    );
+  }
 }
 
 export async function PATCH(req: Request) {
-  const admin = await requireAdmin(req);
-  if (!admin.ok) return NextResponse.json(admin.json, { status: admin.status });
+  try {
+    const admin = await requireAdminOrCron(req);
+    if (!admin.ok) return NextResponse.json(admin.json, { status: admin.status });
 
-  const body = (await req.json().catch(() => null)) as null | {
-    user_id?: string;
-    display_name?: string;
-  };
+    const body = (await req.json().catch(() => null)) as null | {
+      user_id?: string;
+      display_name?: string;
+    };
 
-  const user_id = body?.user_id?.trim();
-  const display_name = (body?.display_name ?? "").trim();
+    const user_id = body?.user_id?.trim();
+    const display_name = (body?.display_name ?? "").trim();
 
-  if (!user_id) return NextResponse.json({ error: "Missing user_id" }, { status: 400 });
+    if (!user_id) return NextResponse.json({ error: "Missing user_id" }, { status: 400 });
 
-  const supabase = createServiceClient();
+    const supabase = createServiceClient();
 
-  const { error } = await supabase.from("profiles").upsert(
-    {
-      id: user_id,
-      display_name: display_name.length ? display_name : null,
-    },
-    { onConflict: "id" }
-  );
+    const { error } = await supabase.from("profiles").upsert(
+      {
+        id: user_id,
+        display_name: display_name.length ? display_name : null,
+      },
+      { onConflict: "id" }
+    );
 
-  if (error) return NextResponse.json({ error: "Failed to save display name", details: error.message }, { status: 500 });
+    if (error) {
+      return NextResponse.json(
+        { error: "Failed to save display name", details: error.message },
+        { status: 500 }
+      );
+    }
 
-  return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true });
+  } catch (e: any) {
+    return NextResponse.json(
+      { error: "Unexpected error", details: e?.message ?? String(e) },
+      { status: 500 }
+    );
+  }
 }
 
 export async function DELETE(req: Request) {
-  const admin = await requireAdmin(req);
-  if (!admin.ok) return NextResponse.json(admin.json, { status: admin.status });
+  try {
+    const admin = await requireAdminOrCron(req);
+    if (!admin.ok) return NextResponse.json(admin.json, { status: admin.status });
 
-  const body = (await req.json().catch(() => null)) as null | { user_id?: string };
-  const user_id = body?.user_id?.trim();
-  if (!user_id) return NextResponse.json({ error: "Missing user_id" }, { status: 400 });
+    const body = (await req.json().catch(() => null)) as null | { user_id?: string };
+    const user_id = body?.user_id?.trim();
+    if (!user_id) return NextResponse.json({ error: "Missing user_id" }, { status: 400 });
 
-  const supabase = createServiceClient();
+    const supabase = createServiceClient();
 
-  const { data: comp, error: cErr } = await supabase
-    .from("competitions")
-    .select("id")
-    .limit(1)
-    .single();
+    const competitionId = await getCompetitionId(supabase, req);
+    if (!competitionId) {
+      return NextResponse.json({ error: "No competition found" }, { status: 404 });
+    }
 
-  if (cErr || !comp) {
-    return NextResponse.json({ error: "No competition found" }, { status: 404 });
+    const { error } = await supabase
+      .from("memberships")
+      .delete()
+      .eq("competition_id", competitionId)
+      .eq("user_id", user_id);
+
+    if (error) {
+      return NextResponse.json(
+        { error: "Failed to remove member", details: error.message },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (e: any) {
+    return NextResponse.json(
+      { error: "Unexpected error", details: e?.message ?? String(e) },
+      { status: 500 }
+    );
   }
-
-  const { error } = await supabase
-    .from("memberships")
-    .delete()
-    .eq("competition_id", comp.id)
-    .eq("user_id", user_id);
-
-  if (error) return NextResponse.json({ error: "Failed to remove member", details: error.message }, { status: 500 });
-
-  return NextResponse.json({ ok: true });
 }

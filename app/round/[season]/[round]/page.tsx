@@ -37,6 +37,13 @@ type OddsRow = {
   snapshot_for_time_utc?: string;
 };
 
+type TipBreakdownResponse = {
+  ok: boolean;
+  season: number;
+  round: number;
+  byMatch: Record<string, Record<string, number>>;
+};
+
 // Starter AFL venue mapping (brand / friendly names)
 const VENUE_MAP: Record<string, string> = {
   // NSW
@@ -133,6 +140,9 @@ export default function RoundPage() {
 
   const [oddsByMatchId, setOddsByMatchId] = useState<Record<string, OddsRow>>({});
   const [oddsInfo, setOddsInfo] = useState<string>("");
+
+  // ✅ NEW: tip breakdown once locked
+  const [tipBreakdownByMatch, setTipBreakdownByMatch] = useState<Record<string, Record<string, number>>>({});
 
   // Polling UX
   const [oddsPollingStopped, setOddsPollingStopped] = useState(false);
@@ -310,6 +320,7 @@ export default function RoundPage() {
       setTipsByMatchId({});
       setOddsPollingStopped(false);
       setOddsPollingReason("");
+      setTipBreakdownByMatch({}); // ✅ reset
 
       const { data: auth } = await supabaseBrowser.auth.getUser();
       if (!auth.user) {
@@ -377,6 +388,26 @@ export default function RoundPage() {
       await loadOddsForMatchesLocked(comp.id, matchIds, matchIds.length, (r as any).odds_snapshot_for_time_utc ?? null);
     })();
   }, [season, round]);
+
+  // ✅ NEW: when round is locked, fetch tip breakdown per match
+  useEffect(() => {
+    if (!isLocked) return;
+
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/round-tip-breakdown?season=${encodeURIComponent(String(season))}&round=${encodeURIComponent(String(round))}`,
+          { cache: "no-store" }
+        );
+        const json = (await res.json().catch(() => null)) as TipBreakdownResponse | null;
+        if (res.ok && json?.ok && json.byMatch) {
+          setTipBreakdownByMatch(json.byMatch);
+        }
+      } catch {
+        // ignore
+      }
+    })();
+  }, [isLocked, season, round]);
 
   // -------- Poll odds every 90s while missing, up to 60 minutes --------
   const pollStartRef = useRef<number | null>(null);
@@ -456,9 +487,7 @@ export default function RoundPage() {
               <div style={{ marginTop: 4, opacity: 0.85 }}>
                 Locked at <b>{formatMelbourne(roundRow.lock_time_utc)}</b> (Melbourne time)
               </div>
-              <div style={{ marginTop: 6, fontSize: 12, color: "crimson" }}>
-                Tips can’t be changed once the round is locked.
-              </div>
+              <div style={{ marginTop: 6, fontSize: 12, color: "crimson" }}>Tips can’t be changed once the round is locked.</div>
             </>
           ) : (
             <>
@@ -468,9 +497,7 @@ export default function RoundPage() {
               <div style={{ marginTop: 4, opacity: 0.85 }}>
                 Lock time: <b>{formatMelbourne(roundRow.lock_time_utc)}</b> (Melbourne time)
               </div>
-              <div style={{ marginTop: 6, fontSize: 12, opacity: 0.8 }}>
-                Your whole round locks at the first match start time.
-              </div>
+              <div style={{ marginTop: 6, fontSize: 12, opacity: 0.8 }}>Your whole round locks at the first match start time.</div>
             </>
           )}
 
@@ -490,8 +517,8 @@ export default function RoundPage() {
         >
           <div style={{ fontWeight: 900, color: "crimson" }}>⚠️ Odds snapshot hasn’t run for this round.</div>
           <div style={{ marginTop: 6, fontSize: 12, opacity: 0.9 }}>
-            This round is locked, but we’re still missing odds for <b>{matches.length - oddsHaveCount}</b> match(es).
-            Admin: run <b>Snapshot Next Due Round</b> (or force snapshot) to backfill.
+            This round is locked, but we’re still missing odds for <b>{matches.length - oddsHaveCount}</b> match(es). Admin: run{" "}
+            <b>Snapshot Next Due Round</b> (or force snapshot) to backfill.
           </div>
         </div>
       )}
@@ -528,9 +555,7 @@ export default function RoundPage() {
           }}
         >
           <div style={{ fontWeight: 800 }}>Still waiting on odds.</div>
-          <div style={{ marginTop: 6, fontSize: 12, opacity: 0.85 }}>
-            We’ll stop auto-checking to save requests. Refresh this page to check again.
-          </div>
+          <div style={{ marginTop: 6, fontSize: 12, opacity: 0.85 }}>We’ll stop auto-checking to save requests. Refresh this page to check again.</div>
           <button
             onClick={() => window.location.reload()}
             style={{
@@ -568,11 +593,7 @@ export default function RoundPage() {
               <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>Tip all matches before the lock time.</div>
             </div>
 
-            {isLocked ? (
-              <div style={{ fontWeight: 700, color: "crimson" }}>LOCKED</div>
-            ) : (
-              <div style={{ fontWeight: 700, color: "green" }}>OPEN</div>
-            )}
+            {isLocked ? <div style={{ fontWeight: 700, color: "crimson" }}>LOCKED</div> : <div style={{ fontWeight: 700, color: "green" }}>OPEN</div>}
           </div>
 
           <div style={{ marginTop: 12, display: "grid", gap: 6 }}>
@@ -603,6 +624,11 @@ export default function RoundPage() {
           const odds = oddsByMatchId[g.id];
           const homeOdds = odds ? odds.home_odds : null;
           const awayOdds = odds ? odds.away_odds : null;
+
+          // ✅ NEW: tip breakdown counts (only shown when locked)
+          const breakdown = tipBreakdownByMatch[g.id] ?? {};
+          const homeTips = breakdown[g.home_team] ?? 0;
+          const awayTips = breakdown[g.away_team] ?? 0;
 
           return (
             <div
@@ -641,9 +667,7 @@ export default function RoundPage() {
                     <span>{g.home_team}</span>
                     <span style={{ opacity: 0.85 }}>{fmtOdds(homeOdds)}</span>
                   </div>
-                  {picked === g.home_team && (
-                    <span style={{ position: "absolute", right: 12, top: 10, fontSize: 16 }}>✓</span>
-                  )}
+                  {picked === g.home_team && <span style={{ position: "absolute", right: 12, top: 10, fontSize: 16 }}>✓</span>}
                 </button>
 
                 <button
@@ -667,11 +691,17 @@ export default function RoundPage() {
                     <span>{g.away_team}</span>
                     <span style={{ opacity: 0.85 }}>{fmtOdds(awayOdds)}</span>
                   </div>
-                  {picked === g.away_team && (
-                    <span style={{ position: "absolute", right: 12, top: 10, fontSize: 16 }}>✓</span>
-                  )}
+                  {picked === g.away_team && <span style={{ position: "absolute", right: 12, top: 10, fontSize: 16 }}>✓</span>}
                 </button>
               </div>
+
+              {/* ✅ NEW: show tip breakdown once locked */}
+              {isLocked && (
+                <div style={{ marginTop: 10, fontSize: 12, opacity: 0.85 }}>
+                  Tip breakdown:{" "}
+                  <b>{g.home_team}</b> {homeTips} • <b>{g.away_team}</b> {awayTips}
+                </div>
+              )}
 
               {saving && <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>Saving…</div>}
 
@@ -681,7 +711,11 @@ export default function RoundPage() {
                 </div>
               )}
 
-              {isLocked && <div style={{ marginTop: 8, fontSize: 12, color: "crimson" }}>Round locked — tips cannot be changed.</div>}
+              {isLocked && (
+                <div style={{ marginTop: 8, fontSize: 12, color: "crimson" }}>
+                  Round locked — tips cannot be changed.
+                </div>
+              )}
 
               {!odds && <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>Odds not captured for this match yet.</div>}
             </div>

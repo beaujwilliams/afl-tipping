@@ -44,6 +44,20 @@ type TipBreakdownResponse = {
   byMatch: Record<string, Record<string, number>>;
 };
 
+type LockedTipPlayer = {
+  user_id: string;
+  display_name: string | null;
+  potential: number;
+  picks: Record<string, { team: string; odds: number }>;
+};
+
+type LockedTipsResponse = {
+  ok: boolean;
+  season: number;
+  round: number;
+  players: LockedTipPlayer[];
+};
+
 // Starter AFL venue mapping (brand / friendly names)
 const VENUE_MAP: Record<string, string> = {
   // NSW
@@ -141,12 +155,20 @@ export default function RoundPage() {
   const [oddsByMatchId, setOddsByMatchId] = useState<Record<string, OddsRow>>({});
   const [oddsInfo, setOddsInfo] = useState<string>("");
 
+  // NEW: everyone's tips table after lock
+  const [lockedTips, setLockedTips] = useState<LockedTipPlayer[] | null>(null);
+  const [lockedTipsMsg, setLockedTipsMsg] = useState<string>("");
+
   // ✅ NEW: tip breakdown once locked
-  const [tipBreakdownByMatch, setTipBreakdownByMatch] = useState<Record<string, Record<string, number>>>({});
+  const [tipBreakdownByMatch, setTipBreakdownByMatch] = useState<
+    Record<string, Record<string, number>>
+  >({});
 
   // Polling UX
   const [oddsPollingStopped, setOddsPollingStopped] = useState(false);
-  const [oddsPollingReason, setOddsPollingReason] = useState<"" | "complete" | "timeout">("");
+  const [oddsPollingReason, setOddsPollingReason] = useState<
+    "" | "complete" | "timeout"
+  >("");
 
   // Smooth countdown timer
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
@@ -200,11 +222,6 @@ export default function RoundPage() {
   const snapshotForTimeUtc = roundRow?.odds_snapshot_for_time_utc ?? null;
 
   const shouldPollOdds = useMemo(() => {
-    // Only poll when it matters:
-    // - round not locked
-    // - odds missing
-    // - AND (snapshot exists OR within 36h window)
-    // - AND we haven't stopped due to complete/timeout
     return (
       !!compId &&
       !!matches.length &&
@@ -213,7 +230,15 @@ export default function RoundPage() {
       (isWithinSnapshotWindow || !!snapshotForTimeUtc) &&
       !oddsPollingStopped
     );
-  }, [compId, matches.length, isLocked, oddsMissing, isWithinSnapshotWindow, snapshotForTimeUtc, oddsPollingStopped]);
+  }, [
+    compId,
+    matches.length,
+    isLocked,
+    oddsMissing,
+    isWithinSnapshotWindow,
+    snapshotForTimeUtc,
+    oddsPollingStopped,
+  ]);
 
   async function saveTip(matchId: string, pickedTeam: string) {
     if (!compId || !userId) return;
@@ -243,7 +268,9 @@ export default function RoundPage() {
   }
 
   function snapshotLabel(snapshot: string | null) {
-    return snapshot ? `Snapshot locked: ${formatMelbourne(snapshot)} (Melbourne)` : "Snapshot not set yet (showing latest)";
+    return snapshot
+      ? `Snapshot locked: ${formatMelbourne(snapshot)} (Melbourne)`
+      : "Snapshot not set yet (showing latest)";
   }
 
   // -------- odds loader (LOCKED to round snapshot when present) --------
@@ -257,19 +284,18 @@ export default function RoundPage() {
 
     let q = supabaseBrowser
       .from("match_odds")
-      .select("match_id, home_team, away_team, home_odds, away_odds, captured_at_utc, snapshot_for_time_utc")
+      .select(
+        "match_id, home_team, away_team, home_odds, away_odds, captured_at_utc, snapshot_for_time_utc"
+      )
       .eq("competition_id", competitionId)
       .in("match_id", matchIds);
 
     if (snapshot) {
-      // ✅ Strict: ONLY show odds from the locked snapshot
       q = q.eq("snapshot_for_time_utc", snapshot);
     } else {
-      // Fallback preview: newest snapshot first
       q = q.order("snapshot_for_time_utc", { ascending: false });
     }
 
-    // Always pick most recently captured within whatever scope we’re querying
     q = q.order("captured_at_utc", { ascending: false });
 
     const { data: oddsRows, error: oErr } = await q;
@@ -289,7 +315,9 @@ export default function RoundPage() {
     const have = Object.keys(map).length;
     setOddsInfo(
       have
-        ? `Odds available for ${have}/${totalMatches} matches. • ${snapshotLabel(snapshot)}`
+        ? `Odds available for ${have}/${totalMatches} matches. • ${snapshotLabel(
+            snapshot
+          )}`
         : `No odds captured yet for this round. • ${snapshotLabel(snapshot)}`
     );
 
@@ -299,7 +327,7 @@ export default function RoundPage() {
     }
   }
 
-  // -------- helper: refresh round snapshot (so UI switches once snapshot runs) --------
+  // -------- helper: refresh round snapshot --------
   async function refreshRoundSnapshot(competitionId: string, roundId: string) {
     const { data, error } = await supabaseBrowser
       .from("rounds")
@@ -320,7 +348,9 @@ export default function RoundPage() {
       setTipsByMatchId({});
       setOddsPollingStopped(false);
       setOddsPollingReason("");
-      setTipBreakdownByMatch({}); // ✅ reset
+      setTipBreakdownByMatch({});
+      setLockedTips(null);
+      setLockedTipsMsg("");
 
       const { data: auth } = await supabaseBrowser.auth.getUser();
       if (!auth.user) {
@@ -330,7 +360,11 @@ export default function RoundPage() {
       setUserId(auth.user.id);
 
       // single-comp MVP
-      const { data: comp, error: cErr } = await supabaseBrowser.from("competitions").select("id").limit(1).single();
+      const { data: comp, error: cErr } = await supabaseBrowser
+        .from("competitions")
+        .select("id")
+        .limit(1)
+        .single();
       if (cErr || !comp) {
         setMsg("No competition found.");
         return;
@@ -353,7 +387,9 @@ export default function RoundPage() {
 
       const { data: m, error: mErr } = await supabaseBrowser
         .from("matches")
-        .select("id, commence_time_utc, home_team, away_team, venue, status, winner_team")
+        .select(
+          "id, commence_time_utc, home_team, away_team, venue, status, winner_team"
+        )
         .eq("round_id", (r as any).id)
         .order("commence_time_utc", { ascending: true });
 
@@ -368,7 +404,7 @@ export default function RoundPage() {
 
       const matchIds = matchList.map((x) => x.id);
 
-      // Load tips
+      // Load tips (current user)
       if (matchIds.length) {
         const { data: tips, error: tErr } = await supabaseBrowser
           .from("tips")
@@ -384,22 +420,31 @@ export default function RoundPage() {
         }
       }
 
-      // Load odds (locked if snapshot exists)
-      await loadOddsForMatchesLocked(comp.id, matchIds, matchIds.length, (r as any).odds_snapshot_for_time_utc ?? null);
+      // Load odds
+      await loadOddsForMatchesLocked(
+        comp.id,
+        matchIds,
+        matchIds.length,
+        (r as any).odds_snapshot_for_time_utc ?? null
+      );
     })();
   }, [season, round]);
 
-  // ✅ NEW: when round is locked, fetch tip breakdown per match
+  // ✅ when round is locked, fetch tip breakdown per match
   useEffect(() => {
     if (!isLocked) return;
 
     (async () => {
       try {
         const res = await fetch(
-          `/api/round-tip-breakdown?season=${encodeURIComponent(String(season))}&round=${encodeURIComponent(String(round))}`,
+          `/api/round-tip-breakdown?season=${encodeURIComponent(
+            String(season)
+          )}&round=${encodeURIComponent(String(round))}`,
           { cache: "no-store" }
         );
-        const json = (await res.json().catch(() => null)) as TipBreakdownResponse | null;
+        const json = (await res
+          .json()
+          .catch(() => null)) as TipBreakdownResponse | null;
         if (res.ok && json?.ok && json.byMatch) {
           setTipBreakdownByMatch(json.byMatch);
         }
@@ -408,6 +453,41 @@ export default function RoundPage() {
       }
     })();
   }, [isLocked, season, round]);
+
+  // ✅ when round is locked, fetch "everyone's tips" table
+  useEffect(() => {
+    if (!isLocked) return;
+    if (lockedTips !== null) return; // already fetched (or already failed but we don't want to spam)
+
+    (async () => {
+      try {
+        setLockedTipsMsg("");
+        const res = await fetch(
+          `/api/round-locked-tips?season=${encodeURIComponent(
+            String(season)
+          )}&round=${encodeURIComponent(String(round))}`,
+          { cache: "no-store" }
+        );
+        const json = (await res
+          .json()
+          .catch(() => null)) as LockedTipsResponse | null;
+
+        if (!res.ok || !json?.ok) {
+          setLockedTips([]);
+          setLockedTipsMsg("Could not load everyone’s tips.");
+          return;
+        }
+
+        const list = Array.isArray(json.players) ? json.players : [];
+        // sort: highest potential first
+        list.sort((a, b) => Number(b.potential ?? 0) - Number(a.potential ?? 0));
+        setLockedTips(list);
+      } catch {
+        setLockedTips([]);
+        setLockedTipsMsg("Could not load everyone’s tips.");
+      }
+    })();
+  }, [isLocked, season, round, lockedTips]);
 
   // -------- Poll odds every 90s while missing, up to 60 minutes --------
   const pollStartRef = useRef<number | null>(null);
@@ -437,17 +517,17 @@ export default function RoundPage() {
         return;
       }
 
-      // Small jitter so multiple users don’t slam at the same millisecond
       const jitter = Math.floor(Math.random() * 20_000) - 10_000;
       if (jitter > 0) await new Promise((r) => setTimeout(r, jitter));
 
-      // ✅ If snapshot was not set yet, check if it has now been set (after cron/admin snapshot)
       let snap = snapshotForTimeUtc;
       if (!snap && compId && roundId) {
         const fresh = await refreshRoundSnapshot(compId, roundId);
         if (fresh && fresh !== snap) {
           snap = fresh;
-          setRoundRow((prev) => (prev ? { ...prev, odds_snapshot_for_time_utc: fresh } : prev));
+          setRoundRow((prev) =>
+            prev ? { ...prev, odds_snapshot_for_time_utc: fresh } : prev
+          );
         }
       }
 
@@ -462,8 +542,17 @@ export default function RoundPage() {
     if (!oddsMissing) pollStartRef.current = null;
   }, [oddsMissing, season, round]);
 
-  const showRefreshHint = oddsPollingStopped && oddsPollingReason === "timeout" && oddsMissing;
+  const showRefreshHint =
+    oddsPollingStopped && oddsPollingReason === "timeout" && oddsMissing;
   const showSnapshotMissedAlert = isLocked && !!matches.length && oddsMissing;
+
+  const matchTitleById = useMemo(() => {
+    const out: Record<string, string> = {};
+    matches.forEach((m) => {
+      out[m.id] = `${m.home_team} vs ${m.away_team}`;
+    });
+    return out;
+  }, [matches]);
 
   return (
     <main style={{ maxWidth: 1000, margin: "40px auto", padding: 16 }}>
@@ -478,16 +567,21 @@ export default function RoundPage() {
             padding: 14,
             borderRadius: 12,
             border: "1px solid rgba(0,0,0,0.12)",
-            background: isLocked ? "rgba(220, 38, 38, 0.06)" : "rgba(34, 197, 94, 0.06)",
+            background: isLocked
+              ? "rgba(220, 38, 38, 0.06)"
+              : "rgba(34, 197, 94, 0.06)",
           }}
         >
           {isLocked ? (
             <>
               <div style={{ fontWeight: 700 }}>Round locked ✅</div>
               <div style={{ marginTop: 4, opacity: 0.85 }}>
-                Locked at <b>{formatMelbourne(roundRow.lock_time_utc)}</b> (Melbourne time)
+                Locked at <b>{formatMelbourne(roundRow.lock_time_utc)}</b>{" "}
+                (Melbourne time)
               </div>
-              <div style={{ marginTop: 6, fontSize: 12, color: "crimson" }}>Tips can’t be changed once the round is locked.</div>
+              <div style={{ marginTop: 6, fontSize: 12, color: "crimson" }}>
+                Tips can’t be changed once the round is locked.
+              </div>
             </>
           ) : (
             <>
@@ -495,13 +589,20 @@ export default function RoundPage() {
                 Round locks in <span>{lockCountdown}</span>
               </div>
               <div style={{ marginTop: 4, opacity: 0.85 }}>
-                Lock time: <b>{formatMelbourne(roundRow.lock_time_utc)}</b> (Melbourne time)
+                Lock time: <b>{formatMelbourne(roundRow.lock_time_utc)}</b>{" "}
+                (Melbourne time)
               </div>
-              <div style={{ marginTop: 6, fontSize: 12, opacity: 0.8 }}>Your whole round locks at the first match start time.</div>
+              <div style={{ marginTop: 6, fontSize: 12, opacity: 0.8 }}>
+                Your whole round locks at the first match start time.
+              </div>
             </>
           )}
 
-          {oddsInfo && <div style={{ marginTop: 8, fontSize: 12, opacity: 0.8 }}>{oddsInfo}</div>}
+          {oddsInfo && (
+            <div style={{ marginTop: 8, fontSize: 12, opacity: 0.8 }}>
+              {oddsInfo}
+            </div>
+          )}
         </div>
       )}
 
@@ -515,9 +616,12 @@ export default function RoundPage() {
             background: "rgba(220, 38, 38, 0.08)",
           }}
         >
-          <div style={{ fontWeight: 900, color: "crimson" }}>⚠️ Odds snapshot hasn’t run for this round.</div>
+          <div style={{ fontWeight: 900, color: "crimson" }}>
+            ⚠️ Odds snapshot hasn’t run for this round.
+          </div>
           <div style={{ marginTop: 6, fontSize: 12, opacity: 0.9 }}>
-            This round is locked, but we’re still missing odds for <b>{matches.length - oddsHaveCount}</b> match(es). Admin: run{" "}
+            This round is locked, but we’re still missing odds for{" "}
+            <b>{matches.length - oddsHaveCount}</b> match(es). Admin: run{" "}
             <b>Snapshot Next Due Round</b> (or force snapshot) to backfill.
           </div>
         </div>
@@ -533,12 +637,21 @@ export default function RoundPage() {
             background: "rgba(245, 158, 11, 0.10)",
           }}
         >
-          <div style={{ fontWeight: 800 }}>Odds will be locked at the snapshot time. Your pick is saved.</div>
+          <div style={{ fontWeight: 800 }}>
+            Odds will be locked at the snapshot time. Your pick is saved.
+          </div>
           <div style={{ marginTop: 6, fontSize: 12, opacity: 0.85 }}>
-            Odds captured for <b>{oddsHaveCount}</b>/<b>{matches.length}</b> matches so far.
-            {shouldPollOdds && <span style={{ marginLeft: 8, opacity: 0.85 }}>(Auto-checking every 90s)</span>}
+            Odds captured for <b>{oddsHaveCount}</b>/<b>{matches.length}</b>{" "}
+            matches so far.
+            {shouldPollOdds && (
+              <span style={{ marginLeft: 8, opacity: 0.85 }}>
+                (Auto-checking every 90s)
+              </span>
+            )}
             {!shouldPollOdds && !isLocked && snapshotDueMs && nowMs < snapshotDueMs && (
-              <span style={{ marginLeft: 8, opacity: 0.85 }}>(We’ll start checking within 36h of lock)</span>
+              <span style={{ marginLeft: 8, opacity: 0.85 }}>
+                (We’ll start checking within 36h of lock)
+              </span>
             )}
           </div>
         </div>
@@ -555,7 +668,9 @@ export default function RoundPage() {
           }}
         >
           <div style={{ fontWeight: 800 }}>Still waiting on odds.</div>
-          <div style={{ marginTop: 6, fontSize: 12, opacity: 0.85 }}>We’ll stop auto-checking to save requests. Refresh this page to check again.</div>
+          <div style={{ marginTop: 6, fontSize: 12, opacity: 0.85 }}>
+            We’ll stop auto-checking to save requests. Refresh this page to check again.
+          </div>
           <button
             onClick={() => window.location.reload()}
             style={{
@@ -585,15 +700,28 @@ export default function RoundPage() {
             background: "rgba(0,0,0,0.02)",
           }}
         >
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
+          >
             <div>
               <div style={{ fontWeight: 700 }}>
                 Your tips: {tippedCount} / {matches.length}
               </div>
-              <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>Tip all matches before the lock time.</div>
+              <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
+                Tip all matches before the lock time.
+              </div>
             </div>
 
-            {isLocked ? <div style={{ fontWeight: 700, color: "crimson" }}>LOCKED</div> : <div style={{ fontWeight: 700, color: "green" }}>OPEN</div>}
+            {isLocked ? (
+              <div style={{ fontWeight: 700, color: "crimson" }}>LOCKED</div>
+            ) : (
+              <div style={{ fontWeight: 700, color: "green" }}>OPEN</div>
+            )}
           </div>
 
           <div style={{ marginTop: 12, display: "grid", gap: 6 }}>
@@ -616,6 +744,106 @@ export default function RoundPage() {
         </div>
       )}
 
+      {/* ✅ NEW: Everyone’s tips section (only after lock) */}
+      {isLocked && (
+        <div
+          style={{
+            marginTop: 16,
+            padding: 14,
+            borderRadius: 14,
+            border: "1px solid rgba(0,0,0,0.10)",
+            background: "rgba(0,0,0,0.02)",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+            <div style={{ fontWeight: 900, fontSize: 16 }}>Everyone’s tips</div>
+            <div style={{ fontSize: 12, opacity: 0.7 }}>
+              Sorted by potential total
+            </div>
+          </div>
+
+          {lockedTipsMsg && (
+            <div style={{ marginTop: 10, fontSize: 12, color: "crimson" }}>
+              {lockedTipsMsg}
+            </div>
+          )}
+
+          {lockedTips === null ? (
+            <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
+              Loading everyone’s tips…
+            </div>
+          ) : lockedTips.length === 0 ? (
+            <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
+              No tips found (or tips table not available yet).
+            </div>
+          ) : (
+            <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+              {lockedTips.map((p) => (
+                <div
+                  key={p.user_id}
+                  style={{
+                    border: "1px solid rgba(0,0,0,0.10)",
+                    background: "rgba(255,255,255,0.65)",
+                    borderRadius: 14,
+                    padding: 12,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 10,
+                      alignItems: "baseline",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <div style={{ fontWeight: 900 }}>
+                      {p.display_name?.trim() ? p.display_name : "(no display name)"}
+                    </div>
+                    <div style={{ fontSize: 12, opacity: 0.8 }}>
+                      Potential: <b>{Number(p.potential ?? 0).toFixed(2)}</b>
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
+                    {matches.map((m) => {
+                      const pick = p.picks?.[m.id] ?? null;
+                      return (
+                        <div
+                          key={m.id}
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            gap: 10,
+                            fontSize: 12,
+                            opacity: 0.9,
+                            borderTop: "1px solid rgba(0,0,0,0.06)",
+                            paddingTop: 6,
+                          }}
+                        >
+                          <div style={{ opacity: 0.75 }}>
+                            {matchTitleById[m.id] ?? `${m.home_team} vs ${m.away_team}`}
+                          </div>
+                          <div style={{ fontWeight: 800 }}>
+                            {pick ? (
+                              <>
+                                {pick.team} <span style={{ opacity: 0.8 }}>({fmtOdds(pick.odds)})</span>
+                              </>
+                            ) : (
+                              <span style={{ opacity: 0.6 }}>—</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <div style={{ marginTop: 20 }}>
         {matches.map((g) => {
           const picked = tipsByMatchId[g.id] ?? null;
@@ -625,7 +853,7 @@ export default function RoundPage() {
           const homeOdds = odds ? odds.home_odds : null;
           const awayOdds = odds ? odds.away_odds : null;
 
-          // ✅ NEW: tip breakdown counts (only shown when locked)
+          // ✅ tip breakdown counts (only shown when locked)
           const breakdown = tipBreakdownByMatch[g.id] ?? {};
           const homeTips = breakdown[g.home_team] ?? 0;
           const awayTips = breakdown[g.away_team] ?? 0;
@@ -667,7 +895,9 @@ export default function RoundPage() {
                     <span>{g.home_team}</span>
                     <span style={{ opacity: 0.85 }}>{fmtOdds(homeOdds)}</span>
                   </div>
-                  {picked === g.home_team && <span style={{ position: "absolute", right: 12, top: 10, fontSize: 16 }}>✓</span>}
+                  {picked === g.home_team && (
+                    <span style={{ position: "absolute", right: 12, top: 10, fontSize: 16 }}>✓</span>
+                  )}
                 </button>
 
                 <button
@@ -691,19 +921,22 @@ export default function RoundPage() {
                     <span>{g.away_team}</span>
                     <span style={{ opacity: 0.85 }}>{fmtOdds(awayOdds)}</span>
                   </div>
-                  {picked === g.away_team && <span style={{ position: "absolute", right: 12, top: 10, fontSize: 16 }}>✓</span>}
+                  {picked === g.away_team && (
+                    <span style={{ position: "absolute", right: 12, top: 10, fontSize: 16 }}>✓</span>
+                  )}
                 </button>
               </div>
 
-              {/* ✅ NEW: show tip breakdown once locked */}
+              {/* ✅ show tip breakdown once locked */}
               {isLocked && (
                 <div style={{ marginTop: 10, fontSize: 12, opacity: 0.85 }}>
-                  Tip breakdown:{" "}
-                  <b>{g.home_team}</b> {homeTips} • <b>{g.away_team}</b> {awayTips}
+                  Tip breakdown: <b>{g.home_team}</b> {homeTips} • <b>{g.away_team}</b> {awayTips}
                 </div>
               )}
 
-              {saving && <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>Saving…</div>}
+              {saving && (
+                <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>Saving…</div>
+              )}
 
               {!saving && !isLocked && picked && (
                 <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
@@ -717,7 +950,11 @@ export default function RoundPage() {
                 </div>
               )}
 
-              {!odds && <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>Odds not captured for this match yet.</div>}
+              {!odds && (
+                <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
+                  Odds not captured for this match yet.
+                </div>
+              )}
             </div>
           );
         })}

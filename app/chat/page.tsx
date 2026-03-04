@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { ReactionPill } from "@/components/ReactionPill";
 
 type MsgRow = {
   id: string;
@@ -121,10 +122,7 @@ export default function ChatPage() {
     // Pull display names
     const userIds = Array.from(new Set(asc.map((m) => m.user_id)));
     if (userIds.length) {
-      const { data: profs } = await supabaseBrowser
-        .from("profiles")
-        .select("id, display_name")
-        .in("id", userIds);
+      const { data: profs } = await supabaseBrowser.from("profiles").select("id, display_name").in("id", userIds);
 
       const map: Record<string, string> = {};
       (profs ?? []).forEach((p: any) => {
@@ -137,10 +135,10 @@ export default function ChatPage() {
     // Pull reactions for these messages
     const msgIds = asc.map((m) => m.id);
     if (msgIds.length) {
-      const { data: rs } = await supabaseBrowser
-        .from("chat_reactions")
-        .select("message_id, user_id, emoji")
-        .in("message_id", msgIds);
+      const { data: rs } = await supabaseBrowser.from("chat_reactions").select("message_id, user_id, emoji").in(
+        "message_id",
+        msgIds
+      );
 
       setReactions((rs ?? []) as ReactionRow[]);
     }
@@ -340,26 +338,28 @@ export default function ChatPage() {
 
                   <div style={{ marginTop: 6, whiteSpace: "pre-wrap", lineHeight: 1.35 }}>{m.body}</div>
 
+                  {/* Reactions (click to toggle, hover to see who reacted) */}
                   <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {REACTIONS.map((e) => (
-                      <button
-                        key={e}
-                        onClick={() => toggleReaction(m.id, e)}
-                        style={{
-                          padding: "6px 10px",
-                          borderRadius: 999,
-                          border: "1px solid rgba(255,255,255,0.14)",
-                          background: mine[e] ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.04)",
-                          color: "var(--foreground)",
-                          cursor: "pointer",
-                          fontWeight: 800,
-                        }}
-                        aria-label={`React ${e}`}
-                        type="button"
-                      >
-                        {e} {r[e] ? <span style={{ opacity: 0.85 }}>{r[e]}</span> : null}
-                      </button>
-                    ))}
+                    {REACTIONS.map((e) => {
+                      const count = r[e] ?? 0;
+
+                      return (
+                        <span
+                          key={e}
+                          onClick={() => toggleReaction(m.id, e)}
+                          style={{
+                            cursor: "pointer",
+                            // keep the “mine” highlight you had before
+                            opacity: 1,
+                            filter: mine[e] ? "brightness(1.08)" : "none",
+                          }}
+                          role="button"
+                          aria-label={`React ${e}`}
+                        >
+                          <ReactionPill messageId={m.id} emoji={e} count={count} />
+                        </span>
+                      );
+                    })}
                   </div>
                 </div>
               );

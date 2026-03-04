@@ -14,6 +14,40 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const [email, setEmail] = useState<string | null>(null);
   const pathname = usePathname();
 
+  // 🔴 chat activity dot
+  const [hasNewChat, setHasNewChat] = useState(false);
+
+  function getLastChatSeenMs() {
+    if (typeof window === "undefined") return 0;
+    const v = window.localStorage.getItem("chat_last_seen_ms");
+    return v ? Number(v) || 0 : 0;
+  }
+
+  function markChatSeenNow() {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("chat_last_seen_ms", String(Date.now()));
+  }
+
+  async function refreshChatActivity() {
+    const { data } = await supabaseBrowser.auth.getSession();
+    if (!data.session) return;
+
+    const { data: rows, error } = await supabaseBrowser
+      .from("chat_messages")
+      .select("created_at")
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    if (error) return;
+
+    const latest = rows?.[0]?.created_at
+      ? new Date(rows[0].created_at).getTime()
+      : 0;
+
+    const lastSeen = getLastChatSeenMs();
+    setHasNewChat(latest > lastSeen);
+  }
+
   useEffect(() => {
     let mounted = true;
 
@@ -35,13 +69,27 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     };
   }, []);
 
+  // Mark chat as seen when user visits /chat; otherwise poll for activity
+  useEffect(() => {
+    if (!pathname) return;
+
+    if (pathname.startsWith("/chat")) {
+      markChatSeenNow();
+      setHasNewChat(false);
+      return;
+    }
+
+    refreshChatActivity();
+    const t = setInterval(() => refreshChatActivity(), 60_000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, email]);
+
   const isAdmin = (email ?? "").toLowerCase() === ADMIN_EMAIL;
 
   function NavItem({ href, label }: { href: string; label: string }) {
-    const active =
-      href === "/"
-        ? pathname === "/"
-        : (pathname ?? "").startsWith(href);
+    const active = href === "/" ? pathname === "/" : (pathname ?? "").startsWith(href);
+    const showDot = href === "/chat" && hasNewChat;
 
     return (
       <Link
@@ -54,9 +102,24 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           textDecoration: "none",
           background: active ? "rgba(255,255,255,0.08)" : "transparent",
           color: "inherit",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 8,
         }}
       >
         {label}
+        {showDot && (
+          <span
+            aria-label="New chat messages"
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: 999,
+              background: "rgb(239,68,68)",
+              display: "inline-block",
+            }}
+          />
+        )}
       </Link>
     );
   }
@@ -138,9 +201,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     {email}
                   </div>
 
-                  <div style={{ fontSize: 12, opacity: 0.45 }}>
-                    {BUILD_LABEL}
-                  </div>
+                  <div style={{ fontSize: 12, opacity: 0.45 }}>{BUILD_LABEL}</div>
                 </div>
               )}
 

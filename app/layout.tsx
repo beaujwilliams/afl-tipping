@@ -107,6 +107,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             >
               <NavItem href="/round/2026" label="Rounds" />
               <NavItem href="/leaderboard/2026" label="Leaderboard" />
+              <NavItem href="/info" label="Rules" />
               {isAdmin && <NavItem href="/admin" label="Admin" />}
 
               <div style={{ flex: 1 }} />

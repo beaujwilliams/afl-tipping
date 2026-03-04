@@ -18,6 +18,7 @@ type ReactionRow = {
 };
 
 const REACTIONS = ["👍", "😂", "😭", "❤️", "🔥", "😮"] as const;
+const ADMIN_EMAIL = "beau.j.williams@gmail.com";
 
 function fmtMelbourne(iso: string) {
   const d = new Date(iso);
@@ -34,6 +35,7 @@ function fmtMelbourne(iso: string) {
 export default function ChatPage() {
   const [ready, setReady] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const [email, setEmail] = useState<string | null>(null);
 
   const [messages, setMessages] = useState<MsgRow[]>([]);
   const [nameByUserId, setNameByUserId] = useState<Record<string, string>>({});
@@ -42,9 +44,12 @@ export default function ChatPage() {
   const [text, setText] = useState("");
   const [msg, setMsg] = useState<string>("");
   const [sending, setSending] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const refreshTimer = useRef<any>(null);
+
+  const isAdmin = (email ?? "").toLowerCase() === ADMIN_EMAIL;
 
   async function ensureSession() {
     const { data } = await supabaseBrowser.auth.getSession();
@@ -52,7 +57,12 @@ export default function ChatPage() {
       window.location.href = "/login";
       return;
     }
+
     setUserId(data.session.user.id);
+
+    const { data: u } = await supabaseBrowser.auth.getUser();
+    setEmail(u.user?.email ?? null);
+
     setReady(true);
   }
 
@@ -76,8 +86,10 @@ export default function ChatPage() {
 
     const userIds = Array.from(new Set(asc.map((m) => m.user_id)));
     if (userIds.length) {
-      // Pull display names from your profiles table
-      const { data: profs } = await supabaseBrowser.from("profiles").select("id, display_name").in("id", userIds);
+      const { data: profs } = await supabaseBrowser
+        .from("profiles")
+        .select("id, display_name")
+        .in("id", userIds);
 
       const map: Record<string, string> = {};
       (profs ?? []).forEach((p: any) => {
@@ -90,12 +102,12 @@ export default function ChatPage() {
 
     const msgIds = asc.map((m) => m.id);
     if (msgIds.length) {
-      const { data: rs } = await supabaseBrowser
+      const { data: rs, error: rErr } = await supabaseBrowser
         .from("chat_reactions")
         .select("message_id, user_id, emoji")
         .in("message_id", msgIds);
 
-      setReactions((rs ?? []) as ReactionRow[]);
+      if (!rErr) setReactions((rs ?? []) as ReactionRow[]);
     }
   }
 
@@ -122,16 +134,8 @@ export default function ChatPage() {
 
     const channel = supabaseBrowser
       .channel("public-chat")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "chat_messages" },
-        () => scheduleRefresh()
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "chat_reactions" },
-        () => scheduleRefresh()
-      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "chat_messages" }, () => scheduleRefresh())
+      .on("postgres_changes", { event: "*", schema: "public", table: "chat_reactions" }, () => scheduleRefresh())
       .subscribe();
 
     return () => {
@@ -146,10 +150,7 @@ export default function ChatPage() {
   }, [messages.length]);
 
   const reactionsByMessage = useMemo(() => {
-    const out: Record<
-      string,
-      { counts: Record<string, number>; mine: Record<string, boolean> }
-    > = {};
+    const out: Record<string, { counts: Record<string, number>; mine: Record<string, boolean> }> = {};
 
     for (const r of reactions) {
       if (!out[r.message_id]) out[r.message_id] = { counts: {}, mine: {} };
@@ -179,7 +180,6 @@ export default function ChatPage() {
     }
 
     setText("");
-    // realtime will refresh; but this feels snappier:
     scheduleRefresh();
   }
 
@@ -202,6 +202,30 @@ export default function ChatPage() {
         emoji,
       });
     }
+  }
+
+  async function deleteMessage(messageId: string, ownerId: string) {
+    if (!userId) return;
+
+    const canDelete = isAdmin || ownerId === userId;
+    if (!canDelete) return;
+
+    const ok = confirm("Delete this message?");
+    if (!ok) return;
+
+    setDeletingId(messageId);
+    setMsg("");
+
+    const { error } = await supabaseBrowser.from("chat_messages").delete().eq("id", messageId);
+
+    setDeletingId(null);
+
+    if (error) {
+      setMsg(error.message);
+      return;
+    }
+
+    scheduleRefresh();
   }
 
   return (
@@ -230,12 +254,36 @@ export default function ChatPage() {
             const who = nameByUserId[m.user_id] || "Anonymous tipster";
             const r = reactionsByMessage[m.id]?.counts ?? {};
             const mine = reactionsByMessage[m.id]?.mine ?? {};
+            const canDelete = isAdmin || (userId && m.user_id === userId);
 
             return (
               <div key={m.id} style={{ paddingBottom: 10, borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, opacity: 0.85 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, opacity: 0.9, alignItems: "center" }}>
                   <div style={{ fontWeight: 800 }}>{who}</div>
-                  <div style={{ fontSize: 12 }}>{fmtMelbourne(m.created_at)}</div>
+
+                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                    <div style={{ fontSize: 12 }}>{fmtMelbourne(m.created_at)}</div>
+
+                    {canDelete && (
+                      <button
+                        type="button"
+                        onClick={() => deleteMessage(m.id, m.user_id)}
+                        disabled={deletingId === m.id}
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 10,
+                          border: "1px solid rgba(255,255,255,0.14)",
+                          background: "rgba(255,255,255,0.04)",
+                          color: "var(--foreground)",
+                          cursor: deletingId === m.id ? "not-allowed" : "pointer",
+                          fontWeight: 800,
+                          opacity: deletingId === m.id ? 0.6 : 1,
+                        }}
+                      >
+                        {deletingId === m.id ? "Deleting…" : "Delete"}
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div style={{ marginTop: 6, whiteSpace: "pre-wrap", lineHeight: 1.35 }}>

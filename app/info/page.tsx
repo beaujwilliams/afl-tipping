@@ -60,7 +60,7 @@ export default function InfoPage() {
           <h2 style={{ marginBottom: 8 }}>6. Allocation of prize money</h2>
           <p>
             Prize money distribution will be determined after Round 3 once total sign-ups are known.
-            It may be winner-takes-all or split between 1st, 2nd, and 3rd place.
+            It may be winner-takes-all or split between 1st, 2nd, and 3rd place. Also app troubleshooting is required of all participants when directed by admin.
           </p>
         </div>
 

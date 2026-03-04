@@ -37,6 +37,8 @@ export default function ChatPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
 
+  const isAdmin = (email ?? "").toLowerCase() === ADMIN_EMAIL.toLowerCase();
+
   const [messages, setMessages] = useState<MsgRow[]>([]);
   const [nameByUserId, setNameByUserId] = useState<Record<string, string>>({});
   const [reactions, setReactions] = useState<ReactionRow[]>([]);
@@ -44,21 +46,44 @@ export default function ChatPage() {
   const [text, setText] = useState("");
   const [msg, setMsg] = useState<string>("");
   const [sending, setSending] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // --- scroll lock + new messages button ---
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
-  const refreshTimer = useRef<any>(null);
 
-  const isAdmin = (email ?? "").toLowerCase() === ADMIN_EMAIL;
+  const [atBottom, setAtBottom] = useState(true);
+  const atBottomRef = useRef(true);
+
+  const [newCount, setNewCount] = useState(0);
+
+  const refreshTimer = useRef<any>(null);
+  const knownIdsRef = useRef<Set<string>>(new Set());
+
+  function scrollToBottom(smooth = true) {
+    bottomRef.current?.scrollIntoView({ behavior: smooth ? "smooth" : "auto" });
+    setNewCount(0);
+  }
+
+  function onScroll() {
+    const el = scrollerRef.current;
+    if (!el) return;
+
+    const threshold = 40; // px
+    const isBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+
+    setAtBottom(isBottom);
+    atBottomRef.current = isBottom;
+
+    if (isBottom) setNewCount(0);
+  }
 
   async function ensureSession() {
-    const { data } = await supabaseBrowser.auth.getSession();
-    if (!data.session) {
+    const { data: s } = await supabaseBrowser.auth.getSession();
+    if (!s.session) {
       window.location.href = "/login";
       return;
     }
-
-    setUserId(data.session.user.id);
+    setUserId(s.session.user.id);
 
     const { data: u } = await supabaseBrowser.auth.getUser();
     setEmail(u.user?.email ?? null);
@@ -82,8 +107,18 @@ export default function ChatPage() {
 
     const list = (rows ?? []) as MsgRow[];
     const asc = [...list].reverse();
+
+    // new message detection (for "New messages ↓" button)
+    const prevKnown = knownIdsRef.current;
+    let newlySeen = 0;
+    for (const m of asc) {
+      if (!prevKnown.has(m.id)) newlySeen++;
+    }
+    knownIdsRef.current = new Set(asc.map((m) => m.id));
+
     setMessages(asc);
 
+    // Pull display names
     const userIds = Array.from(new Set(asc.map((m) => m.user_id)));
     if (userIds.length) {
       const { data: profs } = await supabaseBrowser
@@ -96,18 +131,30 @@ export default function ChatPage() {
         const name = (p.display_name ?? "").trim();
         if (name) map[String(p.id)] = name;
       });
-
       setNameByUserId((prev) => ({ ...prev, ...map }));
     }
 
+    // Pull reactions for these messages
     const msgIds = asc.map((m) => m.id);
     if (msgIds.length) {
-      const { data: rs, error: rErr } = await supabaseBrowser
+      const { data: rs } = await supabaseBrowser
         .from("chat_reactions")
         .select("message_id, user_id, emoji")
         .in("message_id", msgIds);
 
-      if (!rErr) setReactions((rs ?? []) as ReactionRow[]);
+      setReactions((rs ?? []) as ReactionRow[]);
+    }
+
+    // Auto-scroll behavior:
+    // - If you're at bottom, scroll to bottom on new messages
+    // - If you're not at bottom, increment the counter and show button
+    if (newlySeen > 0) {
+      if (atBottomRef.current) {
+        // let the DOM paint first
+        setTimeout(() => scrollToBottom(false), 0);
+      } else {
+        setNewCount((c) => c + newlySeen);
+      }
     }
   }
 
@@ -116,7 +163,7 @@ export default function ChatPage() {
     refreshTimer.current = setTimeout(async () => {
       refreshTimer.current = null;
       await loadRecent();
-    }, 400);
+    }, 350);
   }
 
   useEffect(() => {
@@ -125,10 +172,14 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (!ready) return;
-    loadRecent();
+    loadRecent().then(() => {
+      // after first load, jump to bottom
+      setTimeout(() => scrollToBottom(false), 0);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready]);
 
-  // Realtime: refresh on inserts/deletes/reactions
+  // Realtime refresh
   useEffect(() => {
     if (!ready) return;
 
@@ -144,14 +195,8 @@ export default function ChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready]);
 
-  // Auto-scroll to bottom when new messages load
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length]);
-
   const reactionsByMessage = useMemo(() => {
     const out: Record<string, { counts: Record<string, number>; mine: Record<string, boolean> }> = {};
-
     for (const r of reactions) {
       if (!out[r.message_id]) out[r.message_id] = { counts: {}, mine: {} };
       out[r.message_id].counts[r.emoji] = (out[r.message_id].counts[r.emoji] ?? 0) + 1;
@@ -180,7 +225,10 @@ export default function ChatPage() {
     }
 
     setText("");
+    // if you send, assume you want bottom
+    setNewCount(0);
     scheduleRefresh();
+    setTimeout(() => scrollToBottom(true), 0);
   }
 
   async function toggleReaction(messageId: string, emoji: string) {
@@ -204,24 +252,18 @@ export default function ChatPage() {
     }
   }
 
-  async function deleteMessage(messageId: string, ownerId: string) {
+  async function deleteMessage(messageId: string) {
     if (!userId) return;
 
-    const canDelete = isAdmin || ownerId === userId;
-    if (!canDelete) return;
-
-    const ok = confirm("Delete this message?");
+    const ok = confirm("Delete this message? (Hard delete)");
     if (!ok) return;
 
-    setDeletingId(messageId);
-    setMsg("");
+    // delete reactions first (avoids FK issues if you don't have cascade)
+    await supabaseBrowser.from("chat_reactions").delete().eq("message_id", messageId);
 
     const { error } = await supabaseBrowser.from("chat_messages").delete().eq("id", messageId);
-
-    setDeletingId(null);
-
     if (error) {
-      setMsg(error.message);
+      alert(error.message);
       return;
     }
 
@@ -244,81 +286,121 @@ export default function ChatPage() {
           borderRadius: 14,
           border: "1px solid rgba(255,255,255,0.12)",
           background: "rgba(255,255,255,0.04)",
-          minHeight: 420,
         }}
       >
         {msg && <div style={{ marginBottom: 10, color: "crimson" }}>{msg}</div>}
 
-        <div style={{ display: "grid", gap: 12 }}>
-          {messages.map((m) => {
-            const who = nameByUserId[m.user_id] || "Anonymous tipster";
-            const r = reactionsByMessage[m.id]?.counts ?? {};
-            const mine = reactionsByMessage[m.id]?.mine ?? {};
-            const canDelete = isAdmin || (userId && m.user_id === userId);
+        {/* Scrollable message area */}
+        <div
+          ref={scrollerRef}
+          onScroll={onScroll}
+          style={{
+            position: "relative",
+            maxHeight: "60vh",
+            overflowY: "auto",
+            paddingRight: 6,
+          }}
+        >
+          <div style={{ display: "grid", gap: 12 }}>
+            {messages.map((m) => {
+              const who = nameByUserId[m.user_id] || "Anonymous tipster";
+              const r = reactionsByMessage[m.id]?.counts ?? {};
+              const mine = reactionsByMessage[m.id]?.mine ?? {};
+              const canDelete = isAdmin || (userId && m.user_id === userId);
 
-            return (
-              <div key={m.id} style={{ paddingBottom: 10, borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, opacity: 0.9, alignItems: "center" }}>
-                  <div style={{ fontWeight: 800 }}>{who}</div>
-
-                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                    <div style={{ fontSize: 12 }}>{fmtMelbourne(m.created_at)}</div>
+              return (
+                <div key={m.id} style={{ paddingBottom: 10, borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, opacity: 0.9 }}>
+                    <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
+                      <div style={{ fontWeight: 900 }}>{who}</div>
+                      <div style={{ fontSize: 12, opacity: 0.75 }}>{fmtMelbourne(m.created_at)}</div>
+                    </div>
 
                     {canDelete && (
                       <button
-                        type="button"
-                        onClick={() => deleteMessage(m.id, m.user_id)}
-                        disabled={deletingId === m.id}
+                        onClick={() => deleteMessage(m.id)}
                         style={{
-                          padding: "6px 10px",
-                          borderRadius: 10,
                           border: "1px solid rgba(255,255,255,0.14)",
                           background: "rgba(255,255,255,0.04)",
                           color: "var(--foreground)",
-                          cursor: deletingId === m.id ? "not-allowed" : "pointer",
+                          padding: "6px 10px",
+                          borderRadius: 10,
+                          cursor: "pointer",
                           fontWeight: 800,
-                          opacity: deletingId === m.id ? 0.6 : 1,
+                          fontSize: 12,
+                          opacity: 0.9,
                         }}
+                        type="button"
+                        aria-label="Delete message"
                       >
-                        {deletingId === m.id ? "Deleting…" : "Delete"}
+                        Delete
                       </button>
                     )}
                   </div>
-                </div>
 
-                <div style={{ marginTop: 6, whiteSpace: "pre-wrap", lineHeight: 1.35 }}>
-                  {m.body}
-                </div>
+                  <div style={{ marginTop: 6, whiteSpace: "pre-wrap", lineHeight: 1.35 }}>{m.body}</div>
 
-                <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {REACTIONS.map((e) => (
-                    <button
-                      key={e}
-                      onClick={() => toggleReaction(m.id, e)}
-                      style={{
-                        padding: "6px 10px",
-                        borderRadius: 999,
-                        border: "1px solid rgba(255,255,255,0.14)",
-                        background: mine[e] ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.04)",
-                        color: "var(--foreground)",
-                        cursor: "pointer",
-                        fontWeight: 700,
-                      }}
-                      aria-label={`React ${e}`}
-                      type="button"
-                    >
-                      {e} {r[e] ? <span style={{ opacity: 0.85 }}>{r[e]}</span> : null}
-                    </button>
-                  ))}
+                  <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {REACTIONS.map((e) => (
+                      <button
+                        key={e}
+                        onClick={() => toggleReaction(m.id, e)}
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 999,
+                          border: "1px solid rgba(255,255,255,0.14)",
+                          background: mine[e] ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.04)",
+                          color: "var(--foreground)",
+                          cursor: "pointer",
+                          fontWeight: 800,
+                        }}
+                        aria-label={`React ${e}`}
+                        type="button"
+                      >
+                        {e} {r[e] ? <span style={{ opacity: 0.85 }}>{r[e]}</span> : null}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
+
+          <div ref={bottomRef} />
+
+          {/* New messages button (only when not at bottom) */}
+          {newCount > 0 && !atBottom && (
+            <div
+              style={{
+                position: "sticky",
+                bottom: 10,
+                display: "flex",
+                justifyContent: "center",
+                pointerEvents: "none",
+              }}
+            >
+              <button
+                onClick={() => scrollToBottom(true)}
+                style={{
+                  pointerEvents: "auto",
+                  border: "1px solid rgba(255,255,255,0.18)",
+                  background: "rgba(255,255,255,0.12)",
+                  color: "var(--foreground)",
+                  padding: "10px 12px",
+                  borderRadius: 999,
+                  cursor: "pointer",
+                  fontWeight: 900,
+                }}
+                type="button"
+              >
+                New messages ({newCount}) ↓
+              </button>
+            </div>
+          )}
         </div>
-
-        <div ref={bottomRef} />
       </div>
 
+      {/* Composer */}
       <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
         <input
           value={text}

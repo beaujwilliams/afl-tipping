@@ -38,7 +38,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const isAdmin = (email ?? "").toLowerCase() === ADMIN_EMAIL;
 
   function NavItem({ href, label }: { href: string; label: string }) {
-    const active = pathname?.startsWith(href);
+    const active =
+      href === "/"
+        ? pathname === "/"
+        : (pathname ?? "").startsWith(href);
 
     return (
       <Link
@@ -107,6 +110,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             >
               <NavItem href="/round/2026" label="Rounds" />
               <NavItem href="/leaderboard/2026" label="Leaderboard" />
+              <NavItem href="/chat" label="Chat" />
               <NavItem href="/info" label="Rules" />
               {isAdmin && <NavItem href="/admin" label="Admin" />}
 
@@ -134,23 +138,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     {email}
                   </div>
 
-                  <div
-                    style={{
-                      fontSize: 12,
-                      opacity: 0.45,
-                    }}
-                  >
+                  <div style={{ fontSize: 12, opacity: 0.45 }}>
                     {BUILD_LABEL}
                   </div>
                 </div>
               )}
 
               {email && (
-                <div
-                  style={{
-                    marginLeft: 10,
-                  }}
-                >
+                <div style={{ marginLeft: 10 }}>
                   <LogoutButton />
                 </div>
               )}

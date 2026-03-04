@@ -31,24 +31,47 @@ export function ReactionPill({ messageId, emoji, count }: Props) {
 
     setLoading(true);
 
-    const { data, error } = await supabase
+    // 1) get user_ids who reacted
+    const { data: rs, error: rErr } = await supabase
       .from("chat_reactions")
-      .select("user_id, profiles:profiles(display_name)")
+      .select("user_id")
       .eq("message_id", messageId)
       .eq("emoji", emoji);
 
-    setLoading(false);
-
-    if (error) {
+    if (rErr) {
+      setLoading(false);
       setNames(["(couldn't load)"]);
       return;
     }
 
-    const list =
-      (data ?? [])
-        .map((r: any) => r.profiles?.display_name)
-        .filter(Boolean) as string[];
+    const userIds = Array.from(new Set((rs ?? []).map((x: any) => String(x.user_id))));
+    if (userIds.length === 0) {
+      setLoading(false);
+      cache.set(key, { names: [], ts: Date.now() });
+      setNames([]);
+      return;
+    }
 
+    // 2) fetch display_names for those user_ids
+    const { data: profs, error: pErr } = await supabase
+      .from("profiles")
+      .select("id, display_name")
+      .in("id", userIds);
+
+    setLoading(false);
+
+    if (pErr) {
+      setNames(["(couldn't load)"]);
+      return;
+    }
+
+    const byId: Record<string, string> = {};
+    (profs ?? []).forEach((p: any) => {
+      const name = (p.display_name ?? "").trim();
+      if (name) byId[String(p.id)] = name;
+    });
+
+    const list = userIds.map((id) => byId[id]).filter(Boolean);
     cache.set(key, { names: list, ts: Date.now() });
     setNames(list);
   }

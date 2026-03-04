@@ -14,8 +14,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const [email, setEmail] = useState<string | null>(null);
   const pathname = usePathname();
 
-  // 🔴 chat activity dot
-  const [hasNewChat, setHasNewChat] = useState(false);
+  const [unreadChat, setUnreadChat] = useState(0);
 
   function getLastChatSeenMs() {
     if (typeof window === "undefined") return 0;
@@ -32,20 +31,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     const { data } = await supabaseBrowser.auth.getSession();
     if (!data.session) return;
 
-    const { data: rows, error } = await supabaseBrowser
+    const lastSeen = getLastChatSeenMs();
+
+    const { data: rows } = await supabaseBrowser
       .from("chat_messages")
       .select("created_at")
-      .order("created_at", { ascending: false })
-      .limit(1);
+      .gt("created_at", new Date(lastSeen).toISOString());
 
-    if (error) return;
-
-    const latest = rows?.[0]?.created_at
-      ? new Date(rows[0].created_at).getTime()
-      : 0;
-
-    const lastSeen = getLastChatSeenMs();
-    setHasNewChat(latest > lastSeen);
+    setUnreadChat(rows?.length ?? 0);
   }
 
   useEffect(() => {
@@ -69,27 +62,30 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     };
   }, []);
 
-  // Mark chat as seen when user visits /chat; otherwise poll for activity
   useEffect(() => {
     if (!pathname) return;
 
     if (pathname.startsWith("/chat")) {
       markChatSeenNow();
-      setHasNewChat(false);
+      setUnreadChat(0);
       return;
     }
 
     refreshChatActivity();
-    const t = setInterval(() => refreshChatActivity(), 60_000);
+
+    const t = setInterval(() => refreshChatActivity(), 30000);
     return () => clearInterval(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname, email]);
 
   const isAdmin = (email ?? "").toLowerCase() === ADMIN_EMAIL;
 
   function NavItem({ href, label }: { href: string; label: string }) {
-    const active = href === "/" ? pathname === "/" : (pathname ?? "").startsWith(href);
-    const showDot = href === "/chat" && hasNewChat;
+    const active =
+      href === "/"
+        ? pathname === "/"
+        : (pathname ?? "").startsWith(href);
+
+    const isChat = href === "/chat";
 
     return (
       <Link
@@ -104,21 +100,24 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           color: "inherit",
           display: "inline-flex",
           alignItems: "center",
-          gap: 8,
+          gap: 6,
         }}
       >
         {label}
-        {showDot && (
+        {isChat && unreadChat > 0 && (
           <span
-            aria-label="New chat messages"
             style={{
-              width: 8,
-              height: 8,
-              borderRadius: 999,
+              fontSize: 12,
+              fontWeight: 900,
               background: "rgb(239,68,68)",
-              display: "inline-block",
+              color: "white",
+              borderRadius: 999,
+              padding: "2px 7px",
+              lineHeight: 1,
             }}
-          />
+          >
+            {unreadChat}
+          </span>
         )}
       </Link>
     );
@@ -149,7 +148,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               gap: 14,
             }}
           >
-            {/* Title */}
             <Link
               href="/"
               style={{
@@ -162,7 +160,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               Needlessly Complicated AFL Tipping
             </Link>
 
-            {/* Navigation */}
             <div
               style={{
                 display: "flex",
@@ -201,7 +198,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     {email}
                   </div>
 
-                  <div style={{ fontSize: 12, opacity: 0.45 }}>{BUILD_LABEL}</div>
+                  <div style={{ fontSize: 12, opacity: 0.45 }}>
+                    {BUILD_LABEL}
+                  </div>
                 </div>
               )}
 

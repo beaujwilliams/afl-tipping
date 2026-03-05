@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
@@ -32,6 +32,41 @@ type LeaderboardResponse = {
   error?: string;
 };
 
+type SortKey =
+  | "rank"
+  | "display_name"
+  | "total_points"
+  | "correct_tips"
+  | "accuracy_pct"
+  | "tips_submitted"
+  | "missed_tips"
+  | "round_score"
+  | "movement"
+  | "behind_leader"
+  | "current_streak"
+  | "avg_winning_odds";
+
+type SortDirection = "asc" | "desc";
+type NumericSortKey = Exclude<SortKey, "display_name">;
+
+const DEFAULT_SORT_DIR: Record<SortKey, SortDirection> = {
+  rank: "asc",
+  display_name: "asc",
+  total_points: "desc",
+  correct_tips: "desc",
+  accuracy_pct: "desc",
+  tips_submitted: "desc",
+  missed_tips: "asc",
+  round_score: "desc",
+  movement: "desc",
+  behind_leader: "asc",
+  current_streak: "desc",
+  avg_winning_odds: "desc",
+};
+
+const RANK_COL_WIDTH = 72;
+const TIPSTER_COL_WIDTH = 190;
+
 function fmtPts(n: number) {
   return Number(n ?? 0).toFixed(2);
 }
@@ -52,6 +87,33 @@ function movementColor(movement: number) {
   return "var(--muted)";
 }
 
+function numericSortValue(row: LeaderboardRow, key: NumericSortKey) {
+  if (key === "rank") return row.rank;
+  if (key === "total_points") return row.total_points;
+  if (key === "correct_tips") return row.correct_tips;
+  if (key === "accuracy_pct") return row.accuracy_pct;
+  if (key === "tips_submitted") return row.tips_submitted;
+  if (key === "missed_tips") return row.missed_tips;
+  if (key === "round_score") return row.round_score;
+  if (key === "movement") return row.movement;
+  if (key === "behind_leader") return row.behind_leader;
+  if (key === "current_streak") return row.current_streak;
+  return row.avg_winning_odds;
+}
+
+function stickyColumnStyle(col: 1 | 2, isHeader: boolean) {
+  return {
+    position: "sticky" as const,
+    left: col === 1 ? 0 : RANK_COL_WIDTH,
+    zIndex: isHeader ? (col === 1 ? 5 : 4) : (col === 1 ? 3 : 2),
+    background: isHeader ? "var(--card-soft)" : "var(--card)",
+    width: col === 1 ? RANK_COL_WIDTH : TIPSTER_COL_WIDTH,
+    minWidth: col === 1 ? RANK_COL_WIDTH : TIPSTER_COL_WIDTH,
+    maxWidth: col === 1 ? RANK_COL_WIDTH : TIPSTER_COL_WIDTH,
+    boxShadow: col === 2 ? "2px 0 0 var(--border)" : "none",
+  };
+}
+
 export default function LeaderboardPage() {
   const params = useParams<{ season: string }>();
   const season = Number(params.season);
@@ -61,6 +123,8 @@ export default function LeaderboardPage() {
   const [previousRoundForMovement, setPreviousRoundForMovement] = useState<number | null>(null);
   const [matchesScored, setMatchesScored] = useState(0);
   const [msg, setMsg] = useState("Loading...");
+  const [sortBy, setSortBy] = useState<SortKey>("total_points");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
   useEffect(() => {
     (async () => {
@@ -89,6 +153,79 @@ export default function LeaderboardPage() {
       setMsg("");
     })();
   }, [season]);
+
+  const sortedRows = useMemo(() => {
+    const list = [...rows];
+
+    list.sort((a, b) => {
+      let cmp = 0;
+
+      if (sortBy === "display_name") {
+        cmp = a.display_name.localeCompare(b.display_name, "en", { sensitivity: "base" });
+      } else {
+        cmp = numericSortValue(a, sortBy) - numericSortValue(b, sortBy);
+      }
+
+      if (cmp === 0) {
+        cmp = a.rank - b.rank;
+      }
+      if (cmp === 0) {
+        cmp = a.display_name.localeCompare(b.display_name, "en", { sensitivity: "base" });
+      }
+
+      return sortDirection === "asc" ? cmp : -cmp;
+    });
+
+    return list;
+  }, [rows, sortBy, sortDirection]);
+
+  function onSort(nextKey: SortKey) {
+    if (sortBy === nextKey) {
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortBy(nextKey);
+    setSortDirection(DEFAULT_SORT_DIR[nextKey]);
+  }
+
+  function sortMarker(key: SortKey) {
+    if (sortBy !== key) return "↕";
+    return sortDirection === "asc" ? "↑" : "↓";
+  }
+
+  function sortableHeader(label: string, key: SortKey, stickyCol?: 1 | 2) {
+    return (
+      <th
+        style={{
+          padding: "10px 12px",
+          borderBottom: "1px solid var(--border)",
+          ...(stickyCol ? stickyColumnStyle(stickyCol, true) : {}),
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => onSort(key)}
+          style={{
+            appearance: "none",
+            background: "transparent",
+            border: "none",
+            color: "inherit",
+            cursor: "pointer",
+            font: "inherit",
+            fontWeight: sortBy === key ? 800 : 600,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            padding: 0,
+          }}
+          title={`Sort by ${label}`}
+        >
+          <span>{label}</span>
+          <span style={{ opacity: sortBy === key ? 1 : 0.45, fontSize: 11 }}>{sortMarker(key)}</span>
+        </button>
+      </th>
+    );
+  }
 
   return (
     <main style={{ maxWidth: 1250, margin: "32px auto", padding: 16 }}>
@@ -162,29 +299,44 @@ export default function LeaderboardPage() {
                 <table style={{ width: "100%", minWidth: 1120, borderCollapse: "collapse" }}>
                   <thead>
                     <tr style={{ background: "var(--card-soft)", textAlign: "left", fontSize: 12 }}>
-                      <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>Rank</th>
-                      <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>Tipster</th>
-                      <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>Total Pts</th>
-                      <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>Correct</th>
-                      <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>Accuracy</th>
-                      <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>Tips</th>
-                      <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>Missed</th>
-                      <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>
-                        {latestScoredRound === null ? "Round Score" : `Round Score (R${latestScoredRound})`}
-                      </th>
-                      <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>Move</th>
-                      <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>Behind</th>
-                      <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>Streak</th>
-                      <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>Avg Win Odds</th>
+                      {sortableHeader("Rank", "rank", 1)}
+                      {sortableHeader("Tipster", "display_name", 2)}
+                      {sortableHeader("Total Pts", "total_points")}
+                      {sortableHeader("Correct", "correct_tips")}
+                      {sortableHeader("Accuracy", "accuracy_pct")}
+                      {sortableHeader("Tips", "tips_submitted")}
+                      {sortableHeader("Missed", "missed_tips")}
+                      {sortableHeader(
+                        latestScoredRound === null ? "Round Score" : `Round Score (R${latestScoredRound})`,
+                        "round_score"
+                      )}
+                      {sortableHeader("Move", "movement")}
+                      {sortableHeader("Behind", "behind_leader")}
+                      {sortableHeader("Streak", "current_streak")}
+                      {sortableHeader("Avg Win Odds", "avg_winning_odds")}
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((r) => (
+                    {sortedRows.map((r) => (
                       <tr key={r.user_id}>
-                        <td style={{ padding: "12px", borderTop: "1px solid var(--border)", fontWeight: 900 }}>
+                        <td
+                          style={{
+                            padding: "12px",
+                            borderTop: "1px solid var(--border)",
+                            fontWeight: 900,
+                            ...stickyColumnStyle(1, false),
+                          }}
+                        >
                           #{r.rank}
                         </td>
-                        <td style={{ padding: "12px", borderTop: "1px solid var(--border)", fontWeight: 700 }}>
+                        <td
+                          style={{
+                            padding: "12px",
+                            borderTop: "1px solid var(--border)",
+                            fontWeight: 700,
+                            ...stickyColumnStyle(2, false),
+                          }}
+                        >
                           {r.display_name}
                         </td>
                         <td style={{ padding: "12px", borderTop: "1px solid var(--border)", fontWeight: 800 }}>

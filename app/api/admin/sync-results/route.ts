@@ -51,6 +51,35 @@ export async function GET(req: Request) {
       mustEnv("SUPABASE_SERVICE_ROLE_KEY")
     );
 
+    // single-comp MVP (we still use this to scope rounds)
+    const { data: comp, error: compErr } = await supabase
+      .from("competitions")
+      .select("id")
+      .limit(1)
+      .single();
+
+    if (compErr || !comp) {
+      return NextResponse.json({ error: "No competition", details: compErr?.message }, { status: 500 });
+    }
+
+    const competitionId = String(comp.id);
+
+    // Load all rounds for the season so we can map matches -> season via round_id
+    const { data: rounds, error: roundsErr } = await supabase
+      .from("rounds")
+      .select("id")
+      .eq("competition_id", competitionId)
+      .eq("season", season);
+
+    if (roundsErr) {
+      return NextResponse.json({ error: roundsErr.message }, { status: 500 });
+    }
+
+    const roundIds = (rounds ?? []).map((r: any) => String(r.id));
+    if (roundIds.length === 0) {
+      return NextResponse.json({ ok: true, season, updated: 0, note: "No rounds found for this season." });
+    }
+
     const gamesUrl = `https://api.squiggle.com.au/?q=games;year=${season};complete=100;format=json`;
     const resp = await fetch(gamesUrl, {
       cache: "no-store",
@@ -88,12 +117,11 @@ export async function GET(req: Request) {
 
       consideredFinal++;
 
-      // ✅ Find the DB match by season + external id (no competition_id column)
-      // If your matches table doesn't have season either, we'll adjust next.
+      // ✅ find match within this season by scoping to round_ids
       const { data: matchRow, error: findErr } = await supabase
         .from("matches")
         .select("id")
-        .eq("season", season)
+        .in("round_id", roundIds)
         .eq("match_external_id", String(gameId))
         .limit(1)
         .maybeSingle();
@@ -136,7 +164,7 @@ export async function GET(req: Request) {
       updated,
       skipped: { skippedNoGameId, skippedNoWinner, noDbMatch },
       updateErrors,
-      note: "Find match by (season, match_external_id), then update winner_team by id.",
+      note: "Find match via rounds(season)->round_id, then update winner_team.",
     });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? "Unknown error" }, { status: 500 });

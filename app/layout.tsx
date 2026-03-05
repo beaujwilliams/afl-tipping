@@ -173,6 +173,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               }}
             >
               <NavItem href="/round/2026" label="Rounds" />
+              <NavItem href="/results/2026" label="Results" />
               <NavItem href="/leaderboard/2026" label="Leaderboard" />
               <NavItem href="/chat" label="Chat" />
               <NavItem href="/info" label="Rules" />

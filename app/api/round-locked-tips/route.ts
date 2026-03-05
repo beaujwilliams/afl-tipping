@@ -49,9 +49,21 @@ export async function GET(req: Request) {
 
     const roundId = String((roundRow as any).id);
     const snapshotForTimeUtc = (roundRow as any).odds_snapshot_for_time_utc ?? null;
+    const lockTimeUtc = (roundRow as any).lock_time_utc ?? null;
+    const lockMs = lockTimeUtc ? new Date(lockTimeUtc).getTime() : NaN;
 
-    const lockMs = new Date((roundRow as any).lock_time_utc).getTime();
-    const isLocked = Number.isFinite(lockMs) ? Date.now() >= lockMs : true;
+    if (!Number.isFinite(lockMs) || Date.now() < lockMs) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Everyone’s tips are available only after the round locks.",
+          lock_time_utc: lockTimeUtc,
+        },
+        { status: 403 }
+      );
+    }
+
+    const isLocked = true;
 
     // ✅ 1) If locked, try cache first (cheap)
     if (isLocked) {

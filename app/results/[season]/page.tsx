@@ -150,6 +150,13 @@ export default function SeasonResultsPage() {
 
   const hasRows = useMemo(() => rows.length > 0, [rows.length]);
   const [nowMs] = useState<number>(() => Date.now());
+  const visibleRows = useMemo(() => {
+    return rows.filter((r) => {
+      const lock = melbourneMs(r.lock_time_utc);
+      return lock ? nowMs >= lock : false;
+    });
+  }, [rows, nowMs]);
+  const hiddenCount = rows.length - visibleRows.length;
 
   return (
     <main style={{ maxWidth: 900, margin: "26px auto", padding: 16 }}>
@@ -171,10 +178,20 @@ export default function SeasonResultsPage() {
       {msg && <p style={{ marginTop: 14, opacity: 0.8 }}>{msg}</p>}
 
       {!msg && !hasRows && <div style={{ marginTop: 16, opacity: 0.75 }}>No rounds found.</div>}
+      {!msg && hasRows && visibleRows.length === 0 && (
+        <div style={{ marginTop: 16, opacity: 0.75 }}>
+          No round results are visible yet. Results appear once each round locks.
+        </div>
+      )}
+      {!msg && hiddenCount > 0 && visibleRows.length > 0 && (
+        <div style={{ marginTop: 12, opacity: 0.7, fontSize: 12 }}>
+          {hiddenCount} future round{hiddenCount === 1 ? "" : "s"} hidden until lock time.
+        </div>
+      )}
 
-      {!msg && hasRows && (
+      {!msg && visibleRows.length > 0 && (
         <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
-          {rows.map((r) => {
+          {visibleRows.map((r) => {
             const lock = melbourneMs(r.lock_time_utc);
             const locked = lock ? nowMs >= lock : false;
             const stats = statsByRoundId[r.id] ?? { total: 0, finished: 0 };

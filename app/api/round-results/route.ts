@@ -74,6 +74,20 @@ export async function GET(req: Request) {
 
     const roundId = String(roundRow.id);
     const snapshotForTimeUtc = roundRow.odds_snapshot_for_time_utc ?? null;
+    const lockTimeUtc = roundRow.lock_time_utc ?? null;
+    const lockMs = lockTimeUtc ? new Date(lockTimeUtc).getTime() : NaN;
+
+    // Never expose round results before lock.
+    if (!Number.isFinite(lockMs) || Date.now() < lockMs) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Round results are available only after the round locks.",
+          lock_time_utc: lockTimeUtc,
+        },
+        { status: 403 }
+      );
+    }
 
     const { data: matches, error: mErr } = await supabase
       .from("matches")
@@ -94,7 +108,7 @@ export async function GET(req: Request) {
         season,
         round,
         round_id: roundId,
-        lock_time_utc: roundRow.lock_time_utc,
+        lock_time_utc: lockTimeUtc,
         snapshot_for_time_utc: snapshotForTimeUtc,
         matches: [],
         players: [],
@@ -260,7 +274,7 @@ export async function GET(req: Request) {
       season,
       round,
       round_id: roundId,
-      lock_time_utc: roundRow.lock_time_utc,
+      lock_time_utc: lockTimeUtc,
       snapshot_for_time_utc: snapshotForTimeUtc,
       matches: matchesOut,
       players,

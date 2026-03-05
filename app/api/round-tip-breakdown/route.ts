@@ -45,6 +45,19 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Round not found" }, { status: 404 });
     }
 
+    const lockTimeUtc = (roundRow as any).lock_time_utc ?? null;
+    const lockMs = lockTimeUtc ? new Date(lockTimeUtc).getTime() : NaN;
+    if (!Number.isFinite(lockMs) || Date.now() < lockMs) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Tip breakdown is available only after the round locks.",
+          lock_time_utc: lockTimeUtc,
+        },
+        { status: 403 }
+      );
+    }
+
     const { data: matches } = await supabase
       .from("matches")
       .select("id, home_team, away_team")

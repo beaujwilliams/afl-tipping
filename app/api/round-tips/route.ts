@@ -15,6 +15,13 @@ export async function GET(req: Request) {
   const season = Number(searchParams.get("season"));
   const round = Number(searchParams.get("round"));
 
+  if (!Number.isFinite(season) || !Number.isFinite(round) || round < 0) {
+    return NextResponse.json(
+      { ok: false, error: "Provide valid season and round" },
+      { status: 400 }
+    );
+  }
+
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -30,13 +37,26 @@ export async function GET(req: Request) {
 
   const { data: roundRow } = await supabase
     .from("rounds")
-    .select("id, odds_snapshot_for_time_utc")
+    .select("id, lock_time_utc, odds_snapshot_for_time_utc")
     .eq("competition_id", comp.id)
     .eq("season", season)
     .eq("round_number", round)
     .single();
 
   if (!roundRow) return NextResponse.json({ ok: false });
+
+  const lockTimeUtc = roundRow.lock_time_utc ?? null;
+  const lockMs = lockTimeUtc ? new Date(lockTimeUtc).getTime() : NaN;
+  if (!Number.isFinite(lockMs) || Date.now() < lockMs) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Round tips are available only after the round locks.",
+        lock_time_utc: lockTimeUtc,
+      },
+      { status: 403 }
+    );
+  }
 
   const { data: matches } = await supabase
     .from("matches")

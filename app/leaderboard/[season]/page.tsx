@@ -158,22 +158,26 @@ export default function LeaderboardPage() {
     const list = [...rows];
 
     list.sort((a, b) => {
-      let cmp = 0;
+      let primaryCmp = 0;
 
       if (sortBy === "display_name") {
-        cmp = a.display_name.localeCompare(b.display_name, "en", { sensitivity: "base" });
+        primaryCmp = a.display_name.localeCompare(b.display_name, "en", { sensitivity: "base" });
       } else {
-        cmp = numericSortValue(a, sortBy) - numericSortValue(b, sortBy);
+        primaryCmp = numericSortValue(a, sortBy) - numericSortValue(b, sortBy);
       }
 
-      if (cmp === 0) {
-        cmp = a.rank - b.rank;
-      }
-      if (cmp === 0) {
-        cmp = a.display_name.localeCompare(b.display_name, "en", { sensitivity: "base" });
+      const directionalPrimary = sortDirection === "asc" ? primaryCmp : -primaryCmp;
+      if (directionalPrimary !== 0) {
+        return directionalPrimary;
       }
 
-      return sortDirection === "asc" ? cmp : -cmp;
+      // Keep season rank as a stable reference when values tie.
+      const rankTieBreak = a.rank - b.rank;
+      if (rankTieBreak !== 0) {
+        return rankTieBreak;
+      }
+
+      return a.display_name.localeCompare(b.display_name, "en", { sensitivity: "base" });
     });
 
     return list;

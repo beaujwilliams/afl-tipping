@@ -8,34 +8,80 @@ export default function AdminPage() {
   const router = useRouter();
 
   const [season, setSeason] = useState<number>(2026);
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<unknown>(null);
   const [loading, setLoading] = useState<string | null>(null);
+  const isRunning = loading !== null;
+
+  async function getToken() {
+    const { data } = await supabaseBrowser.auth.getSession();
+    return data.session?.access_token ?? null;
+  }
+
+  async function callAdmin(path: string, token: string) {
+    const res = await fetch(path, {
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const json = await res.json().catch(() => ({}));
+    return { ok: res.ok, status: res.status, json };
+  }
 
   async function run(path: string) {
     try {
       setLoading(path);
       setResult(null);
 
-      // 🔐 Get current session access token
-      const { data } = await supabaseBrowser.auth.getSession();
-      const token = data.session?.access_token;
+      const token = await getToken();
 
       if (!token) {
         setResult({ error: "Not authenticated." });
         return;
       }
 
-      const res = await fetch(path, {
-        cache: "no-store",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      const json = await res.json();
+      const { json } = await callAdmin(path, token);
       setResult(json);
-    } catch (err: any) {
-      setResult({ error: err?.message ?? "Unknown error" });
+    } catch (err: unknown) {
+      setResult({ error: err instanceof Error ? err.message : "Unknown error" });
+    } finally {
+      setLoading(null);
+    }
+  }
+
+  async function runSyncAndRecalc() {
+    try {
+      setLoading("sync-and-recalc");
+      setResult(null);
+
+      const token = await getToken();
+      if (!token) {
+        setResult({ error: "Not authenticated." });
+        return;
+      }
+
+      const sync = await callAdmin(`/api/admin/sync-results?season=${season}`, token);
+      if (!sync.ok) {
+        setResult({
+          ok: false,
+          step: "sync-results",
+          status: sync.status,
+          result: sync.json,
+        });
+        return;
+      }
+
+      const recalc = await callAdmin(`/api/admin/recalc-leaderboard?season=${season}`, token);
+      setResult({
+        ok: recalc.ok,
+        season,
+        action: "sync-results-and-recalc-leaderboard",
+        syncResults: sync.json,
+        recalcLeaderboard: recalc.json,
+      });
+    } catch (err: unknown) {
+      setResult({ error: err instanceof Error ? err.message : "Unknown error" });
     } finally {
       setLoading(null);
     }
@@ -55,7 +101,7 @@ export default function AdminPage() {
             marginLeft: 10,
             padding: 8,
             borderRadius: 8,
-            border: "1px solid #ccc",
+            border: "1px solid var(--border)",
             width: 120,
           }}
         />
@@ -68,54 +114,93 @@ export default function AdminPage() {
           gap: 12,
         }}
       >
+        <button
+          disabled={isRunning}
+          onClick={runSyncAndRecalc}
+          style={{
+            ...btnStyle,
+            background: "var(--foreground)",
+            color: "var(--background)",
+            border: "1px solid var(--foreground)",
+            fontWeight: 800,
+            opacity: isRunning ? 0.6 : 1,
+            cursor: isRunning ? "not-allowed" : "pointer",
+          }}
+        >
+          Sync Results + Recalculate Leaderboard
+        </button>
+
         {/* SNAPSHOT ODDS */}
         <button
+          disabled={isRunning}
           onClick={() =>
             run(`/api/admin/snapshot-odds-all-due?season=${season}`)
           }
-          style={btnStyle}
+          style={{
+            ...btnStyle,
+            opacity: isRunning ? 0.6 : 1,
+            cursor: isRunning ? "not-allowed" : "pointer",
+          }}
         >
-          1️⃣ Snapshot Next Due Round
+          Snapshot Next Due Round
         </button>
 
         {/* FORCE SNAPSHOT */}
         <button
+          disabled={isRunning}
           onClick={() =>
             run(`/api/admin/snapshot-odds-all-due?season=${season}&force=1`)
           }
-          style={btnStyle}
+          style={{
+            ...btnStyle,
+            opacity: isRunning ? 0.6 : 1,
+            cursor: isRunning ? "not-allowed" : "pointer",
+          }}
         >
-          1️⃣ Force Snapshot (Testing)
+          Force Snapshot (Testing)
         </button>
 
         {/* SYNC RESULTS */}
         <button
+          disabled={isRunning}
           onClick={() =>
             run(`/api/admin/sync-results?season=${season}`)
           }
-          style={btnStyle}
+          style={{
+            ...btnStyle,
+            opacity: isRunning ? 0.6 : 1,
+            cursor: isRunning ? "not-allowed" : "pointer",
+          }}
         >
-          2️⃣ Sync Results (Squiggle)
+          Sync Results (Squiggle)
         </button>
 
         {/* RECALC LEADERBOARD */}
         <button
+          disabled={isRunning}
           onClick={() =>
             run(`/api/admin/recalc-leaderboard?season=${season}`)
           }
-          style={btnStyle}
+          style={{
+            ...btnStyle,
+            opacity: isRunning ? 0.6 : 1,
+            cursor: isRunning ? "not-allowed" : "pointer",
+          }}
         >
-          3️⃣ Recalculate Leaderboard
+          Recalculate Leaderboard
         </button>
 
         {/* MEMBERS */}
         <button
+          disabled={isRunning}
           onClick={() => router.push("/admin/members")}
           style={{
             ...btnStyle,
-            background: "#111",
-            color: "white",
+            background: "var(--card-soft)",
+            color: "var(--foreground)",
             fontWeight: 800,
+            opacity: isRunning ? 0.6 : 1,
+            cursor: isRunning ? "not-allowed" : "pointer",
           }}
         >
           Manage Members
@@ -128,8 +213,9 @@ export default function AdminPage() {
             marginTop: 30,
             padding: 16,
             borderRadius: 12,
-            border: "1px solid #ddd",
-            background: "#f9f9f9",
+            border: "1px solid var(--border)",
+            background: "var(--card-soft)",
+            color: "var(--foreground)",
             fontSize: 13,
             overflowX: "auto",
           }}
@@ -153,8 +239,9 @@ export default function AdminPage() {
 const btnStyle: React.CSSProperties = {
   padding: "12px 14px",
   borderRadius: 10,
-  border: "1px solid #ccc",
-  background: "white",
+  border: "1px solid var(--border)",
+  background: "var(--card)",
+  color: "var(--foreground)",
   fontWeight: 600,
   cursor: "pointer",
 };

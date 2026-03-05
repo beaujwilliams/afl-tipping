@@ -8,7 +8,7 @@ const CRON_SECRET = "q1w2e3r4t5y6u7i8o9p0";
 type RunResult = {
   ok?: boolean;
   error?: string;
-  [key: string]: any;
+  [key: string]: unknown;
 };
 
 export default function AdminPage() {
@@ -44,16 +44,59 @@ export default function AdminPage() {
       const res = await fetch(fullUrl, { method: "GET" });
       const text = await res.text();
 
-      let json: any;
+      let json: RunResult;
       try {
-        json = JSON.parse(text);
+        json = JSON.parse(text) as RunResult;
       } catch {
         json = { error: "Non-JSON response", bodyHead: text.slice(0, 500) };
       }
 
       setLastResult(json);
-    } catch (e: any) {
-      setLastResult({ error: e?.message ?? "Unknown error" });
+    } catch (e: unknown) {
+      setLastResult({ error: e instanceof Error ? e.message : "Unknown error" });
+    } finally {
+      setRunning(null);
+    }
+  }
+
+  async function runSyncAndRecalc() {
+    setRunning("sync-and-recalc");
+    setLastResult(null);
+
+    try {
+      const syncRes = await fetch(
+        `${baseUrl}/api/admin/sync-results?season=${season}&secret=${CRON_SECRET}`,
+        { method: "GET" }
+      );
+      const syncText = await syncRes.text();
+      const syncJson = JSON.parse(syncText);
+
+      if (!syncRes.ok) {
+        setLastResult({
+          ok: false,
+          step: "sync-results",
+          status: syncRes.status,
+          result: syncJson,
+        });
+        return;
+      }
+
+      const recalcRes = await fetch(
+        `${baseUrl}/api/admin/recalc-leaderboard?season=${season}&secret=${CRON_SECRET}`,
+        { method: "GET" }
+      );
+      const recalcText = await recalcRes.text();
+      const recalcJson = JSON.parse(recalcText);
+
+      setLastResult({
+        ok: recalcRes.ok,
+        season,
+        action: "sync-results-and-recalc-leaderboard",
+        syncResults: syncJson,
+        recalcLeaderboard: recalcJson,
+      });
+    } catch (e: unknown) {
+      setLastResult({ error: e instanceof Error ? e.message : "Unknown error" });
     } finally {
       setRunning(null);
     }
@@ -63,8 +106,9 @@ export default function AdminPage() {
     width: "100%",
     padding: "16px",
     borderRadius: 14,
-    border: "1px solid #ddd",
-    background: "white",
+    border: "1px solid var(--border)",
+    background: "var(--card)",
+    color: "var(--foreground)",
     cursor: "pointer",
     textAlign: "left",
     fontSize: 16,
@@ -89,7 +133,8 @@ export default function AdminPage() {
             style={{
               marginTop: 12,
               padding: 16,
-              border: "1px solid #eee",
+              border: "1px solid var(--border)",
+              background: "var(--card-soft)",
               borderRadius: 14,
             }}
           >
@@ -109,7 +154,7 @@ export default function AdminPage() {
                     width: 120,
                     padding: 10,
                     borderRadius: 10,
-                    border: "1px solid #ccc",
+                    border: "1px solid var(--border)",
                   }}
                 />
               </label>
@@ -118,13 +163,27 @@ export default function AdminPage() {
 
           <div style={{ marginTop: 20, display: "grid", gap: 14 }}>
             <button
+              style={{
+                ...btnStyle,
+                background: "var(--foreground)",
+                color: "var(--background)",
+                border: "1px solid var(--foreground)",
+                fontWeight: 800,
+              }}
+              disabled={!!running}
+              onClick={runSyncAndRecalc}
+            >
+              Sync Results + Recalculate Leaderboard
+            </button>
+
+            <button
               style={btnStyle}
               disabled={!!running}
               onClick={() =>
                 run(`/api/admin/snapshot-odds-all-due?season=${season}&force=1`)
               }
             >
-              1️⃣ Snapshot Odds (ALL DUE – Force)
+              Snapshot Odds (ALL DUE - Force)
               <div style={smallStyle}>
                 Captures Sportsbet decimal odds for rounds that are due.
               </div>
@@ -137,7 +196,7 @@ export default function AdminPage() {
                 run(`/api/admin/sync-results?season=${season}`)
               }
             >
-              2️⃣ Sync Results (Squiggle)
+              Sync Results (Squiggle)
               <div style={smallStyle}>
                 Updates winner_team for finished matches.
               </div>
@@ -150,7 +209,7 @@ export default function AdminPage() {
                 run(`/api/admin/recalc-leaderboard?season=${season}`)
               }
             >
-              3️⃣ Recalculate Leaderboard
+              Recalculate Leaderboard
               <div style={smallStyle}>
                 Scores tips using your 12pm snapshot rule.
               </div>
@@ -164,8 +223,9 @@ export default function AdminPage() {
                 marginTop: 8,
                 padding: 14,
                 borderRadius: 14,
-                border: "1px solid #eee",
-                background: "#fafafa",
+                border: "1px solid var(--border)",
+                background: "var(--card-soft)",
+                color: "var(--foreground)",
                 overflow: "auto",
               }}
             >

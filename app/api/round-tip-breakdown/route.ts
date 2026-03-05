@@ -1,21 +1,22 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase-server";
-
-function mustEnv(name: string) {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing env var: ${name}`);
-  return v;
-}
 
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
-    const season = Number(url.searchParams.get("season"));
-    const round = Number(url.searchParams.get("round"));
 
-    if (!season || !round) {
-      return NextResponse.json({ error: "Provide season and round" }, { status: 400 });
+    const seasonParam = url.searchParams.get("season");
+    const roundParam = url.searchParams.get("round");
+
+    const season = Number(seasonParam);
+    const round = Number(roundParam);
+
+    // ✅ allow round = 0 but reject invalid numbers
+    if (!Number.isFinite(season) || !Number.isFinite(round) || round < 0) {
+      return NextResponse.json(
+        { error: "Provide valid season and round" },
+        { status: 400 }
+      );
     }
 
     // service role (server-only)
@@ -28,7 +29,9 @@ export async function GET(req: Request) {
       .limit(1)
       .single();
 
-    if (!comp) return NextResponse.json({ error: "No competition" }, { status: 404 });
+    if (!comp) {
+      return NextResponse.json({ error: "No competition" }, { status: 404 });
+    }
 
     const { data: roundRow } = await supabase
       .from("rounds")
@@ -38,7 +41,9 @@ export async function GET(req: Request) {
       .eq("round_number", round)
       .single();
 
-    if (!roundRow) return NextResponse.json({ error: "Round not found" }, { status: 404 });
+    if (!roundRow) {
+      return NextResponse.json({ error: "Round not found" }, { status: 404 });
+    }
 
     const { data: matches } = await supabase
       .from("matches")
@@ -46,8 +51,14 @@ export async function GET(req: Request) {
       .eq("round_id", roundRow.id);
 
     const matchIds = (matches ?? []).map((m: any) => String(m.id));
+
     if (!matchIds.length) {
-      return NextResponse.json({ ok: true, season, round, byMatch: {} });
+      return NextResponse.json({
+        ok: true,
+        season,
+        round,
+        byMatch: {},
+      });
     }
 
     // Pull all tips for those matches
@@ -63,10 +74,13 @@ export async function GET(req: Request) {
 
     // Aggregate
     const byMatch: Record<string, Record<string, number>> = {};
+
     for (const t of tips ?? []) {
       const mid = String((t as any).match_id);
       const team = String((t as any).picked_team ?? "");
+
       if (!team) continue;
+
       if (!byMatch[mid]) byMatch[mid] = {};
       byMatch[mid][team] = (byMatch[mid][team] ?? 0) + 1;
     }
@@ -78,7 +92,11 @@ export async function GET(req: Request) {
       competition_id: comp.id,
       byMatch,
     });
+
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? "Unknown error" }, { status: 500 });
+    return NextResponse.json(
+      { error: e?.message ?? "Unknown error" },
+      { status: 500 }
+    );
   }
 }

@@ -51,21 +51,6 @@ export async function GET(req: Request) {
       mustEnv("SUPABASE_SERVICE_ROLE_KEY")
     );
 
-    const { data: comp, error: compErr } = await supabase
-      .from("competitions")
-      .select("id")
-      .limit(1)
-      .single();
-
-    if (compErr || !comp) {
-      return NextResponse.json(
-        { error: "Competition not found", details: compErr?.message },
-        { status: 500 }
-      );
-    }
-
-    const competitionId = String(comp.id);
-
     const gamesUrl = `https://api.squiggle.com.au/?q=games;year=${season};complete=100;format=json`;
     const resp = await fetch(gamesUrl, {
       cache: "no-store",
@@ -103,29 +88,37 @@ export async function GET(req: Request) {
 
       consideredFinal++;
 
-      // ✅ Only update winner_team (no score columns)
-      const patch: any = { winner_team: String(winner) };
-
-      const { data: upd, error: updErr } = await supabase
+      // ✅ Find the DB match by season + external id (no competition_id column)
+      // If your matches table doesn't have season either, we'll adjust next.
+      const { data: matchRow, error: findErr } = await supabase
         .from("matches")
-        .update(patch)
-        .eq("competition_id", competitionId)
+        .select("id")
         .eq("season", season)
         .eq("match_external_id", String(gameId))
-        .select("id")
-        .limit(1);
+        .limit(1)
+        .maybeSingle();
 
-      if (updErr) {
-        updateErrors.push({
-          gameId,
-          message: updErr.message,
-          code: (updErr as any).code ?? null,
-        });
+      if (findErr) {
+        updateErrors.push({ gameId, step: "find", message: findErr.message, code: (findErr as any).code ?? null });
         continue;
       }
 
-      if ((upd?.length ?? 0) > 0) updated++;
-      else noDbMatch++;
+      if (!matchRow?.id) {
+        noDbMatch++;
+        continue;
+      }
+
+      const { error: updErr } = await supabase
+        .from("matches")
+        .update({ winner_team: String(winner) })
+        .eq("id", String(matchRow.id));
+
+      if (updErr) {
+        updateErrors.push({ gameId, step: "update", message: updErr.message, code: (updErr as any).code ?? null });
+        continue;
+      }
+
+      updated++;
     }
 
     return NextResponse.json({
@@ -143,7 +136,7 @@ export async function GET(req: Request) {
       updated,
       skipped: { skippedNoGameId, skippedNoWinner, noDbMatch },
       updateErrors,
-      note: "Updates winner_team only (no home_score/away_score columns required).",
+      note: "Find match by (season, match_external_id), then update winner_team by id.",
     });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? "Unknown error" }, { status: 500 });

@@ -81,6 +81,25 @@ export default function AdminPage() {
         return;
       }
 
+      const syncUpdated =
+        typeof syncJson === "object" &&
+        syncJson !== null &&
+        typeof (syncJson as Record<string, unknown>).updated === "number"
+          ? ((syncJson as Record<string, unknown>).updated as number)
+          : null;
+
+      if (syncUpdated === 0) {
+        setLastResult({
+          ok: true,
+          season,
+          action: "sync-results-and-recalc-leaderboard",
+          syncResults: syncJson,
+          recalcSkipped: true,
+          note: "Skipped recalculate leaderboard because sync-results.updated was 0.",
+        });
+        return;
+      }
+
       const recalcRes = await fetch(
         `${baseUrl}/api/admin/recalc-leaderboard?season=${season}&secret=${CRON_SECRET}`,
         { method: "GET" }

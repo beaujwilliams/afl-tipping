@@ -54,7 +54,7 @@ export default function LeaderboardPage() {
         return;
       }
 
-      setRows((data ?? []) as Row[]);
+      setRows((data ?? []) as unknown as Row[]);
       setMsg("");
     })();
   }, [season]);

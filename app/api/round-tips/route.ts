@@ -1,6 +1,14 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+type OddsRow = {
+  match_id: string;
+  home_team: string;
+  away_team: string;
+  home_odds: number;
+  away_odds: number;
+};
+
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
 
@@ -22,7 +30,7 @@ export async function GET(req: Request) {
 
   const { data: roundRow } = await supabase
     .from("rounds")
-    .select("id")
+    .select("id, odds_snapshot_for_time_utc")
     .eq("competition_id", comp.id)
     .eq("season", season)
     .eq("round_number", round)
@@ -40,22 +48,41 @@ export async function GET(req: Request) {
   const { data: tips } = await supabase
     .from("tips")
     .select("user_id, match_id, picked_team")
+    .eq("competition_id", comp.id)
     .in("match_id", matchIds);
 
   const { data: players } = await supabase
     .from("competition_members")
-    .select("user_id, profiles(display_name)");
+    .select("user_id, profiles(display_name)")
+    .eq("competition_id", comp.id);
 
-  const { data: odds } = await supabase
-    .from("match_odds")
-    .select("match_id, home_team, away_team, home_odds, away_odds");
+  const snapshotForTimeUtc = roundRow.odds_snapshot_for_time_utc ?? null;
+  let odds: OddsRow[] = [];
+  if (matchIds.length > 0) {
+    let q = supabase
+      .from("match_odds")
+      .select("match_id, home_team, away_team, home_odds, away_odds")
+      .eq("competition_id", comp.id)
+      .in("match_id", matchIds);
 
-  const oddsMap: Record<string, any> = {};
-  odds?.forEach(o => {
-    oddsMap[o.match_id] = o;
+    if (snapshotForTimeUtc) {
+      q = q.eq("snapshot_for_time_utc", snapshotForTimeUtc);
+    } else {
+      q = q.order("snapshot_for_time_utc", { ascending: false });
+    }
+
+    q = q.order("captured_at_utc", { ascending: false });
+
+    const { data: oddsRows } = await q;
+    odds = (oddsRows ?? []) as OddsRow[];
+  }
+
+  const oddsMap: Record<string, OddsRow> = {};
+  odds.forEach((o) => {
+    if (!oddsMap[o.match_id]) oddsMap[o.match_id] = o;
   });
 
-  const playerMap: Record<string, any> = {};
+  const playerMap: Record<string, { user_id: string; display_name: string; picks: Record<string, { team: string; odds: number }>; potential: number; }> = {};
 
   players?.forEach(p => {
     playerMap[p.user_id] = {
@@ -68,6 +95,9 @@ export async function GET(req: Request) {
 
   tips?.forEach(t => {
     const odds = oddsMap[t.match_id];
+    if (!odds) return;
+    if (!playerMap[t.user_id]) return;
+
     const pickedOdds =
       t.picked_team === odds.home_team
         ? odds.home_odds

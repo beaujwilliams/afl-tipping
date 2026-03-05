@@ -18,6 +18,11 @@ type ReactionRow = {
   emoji: string;
 };
 
+type ProfileRow = {
+  id: string;
+  display_name: string | null;
+};
+
 const REACTIONS = ["👍", "😂", "😭", "❤️", "🔥", "😮"] as const;
 const ADMIN_EMAIL = "beau.j.williams@gmail.com";
 
@@ -57,7 +62,7 @@ export default function ChatPage() {
 
   const [newCount, setNewCount] = useState(0);
 
-  const refreshTimer = useRef<any>(null);
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const knownIdsRef = useRef<Set<string>>(new Set());
 
   function scrollToBottom(smooth = true) {
@@ -119,28 +124,35 @@ export default function ChatPage() {
 
     setMessages(asc);
 
-    // Pull display names
-    const userIds = Array.from(new Set(asc.map((m) => m.user_id)));
-    if (userIds.length) {
-      const { data: profs } = await supabaseBrowser.from("profiles").select("id, display_name").in("id", userIds);
-
-      const map: Record<string, string> = {};
-      (profs ?? []).forEach((p: any) => {
-        const name = (p.display_name ?? "").trim();
-        if (name) map[String(p.id)] = name;
-      });
-      setNameByUserId((prev) => ({ ...prev, ...map }));
-    }
-
     // Pull reactions for these messages
     const msgIds = asc.map((m) => m.id);
+    let reactionList: ReactionRow[] = [];
     if (msgIds.length) {
       const { data: rs } = await supabaseBrowser.from("chat_reactions").select("message_id, user_id, emoji").in(
         "message_id",
         msgIds
       );
 
-      setReactions((rs ?? []) as ReactionRow[]);
+      reactionList = (rs ?? []) as ReactionRow[];
+      setReactions(reactionList);
+    } else {
+      setReactions([]);
+    }
+
+    // Pull display names for message authors + reactors in one query
+    const nameUserIds = new Set<string>(asc.map((m) => m.user_id));
+    reactionList.forEach((r) => nameUserIds.add(r.user_id));
+    const userIds = Array.from(nameUserIds);
+
+    if (userIds.length) {
+      const { data: profs } = await supabaseBrowser.from("profiles").select("id, display_name").in("id", userIds);
+
+      const map: Record<string, string> = {};
+      (profs as ProfileRow[] | null)?.forEach((p) => {
+        const name = (p.display_name ?? "").trim();
+        if (name) map[String(p.id)] = name;
+      });
+      setNameByUserId((prev) => ({ ...prev, ...map }));
     }
 
     // Auto-scroll behavior:
@@ -202,6 +214,26 @@ export default function ChatPage() {
     }
     return out;
   }, [reactions, userId]);
+
+  const reactionNamesByMessage = useMemo(() => {
+    const out: Record<string, Record<string, string[]>> = {};
+    const seen: Record<string, Record<string, Set<string>>> = {};
+
+    for (const r of reactions) {
+      if (!out[r.message_id]) out[r.message_id] = {};
+      if (!seen[r.message_id]) seen[r.message_id] = {};
+      if (!out[r.message_id][r.emoji]) out[r.message_id][r.emoji] = [];
+      if (!seen[r.message_id][r.emoji]) seen[r.message_id][r.emoji] = new Set();
+
+      const name = nameByUserId[r.user_id] ?? "Anonymous tipster";
+      if (seen[r.message_id][r.emoji].has(name)) continue;
+
+      seen[r.message_id][r.emoji].add(name);
+      out[r.message_id][r.emoji].push(name);
+    }
+
+    return out;
+  }, [reactions, nameByUserId]);
 
   async function send() {
     const body = text.trim();
@@ -356,7 +388,11 @@ export default function ChatPage() {
                           role="button"
                           aria-label={`React ${e}`}
                         >
-                          <ReactionPill messageId={m.id} emoji={e} count={count} />
+                          <ReactionPill
+                            emoji={e}
+                            count={count}
+                            names={reactionNamesByMessage[m.id]?.[e] ?? []}
+                          />
                         </span>
                       );
                     })}

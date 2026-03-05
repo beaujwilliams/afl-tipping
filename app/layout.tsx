@@ -29,16 +29,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
   async function refreshChatActivity() {
     const { data } = await supabaseBrowser.auth.getSession();
-    if (!data.session) return;
+    if (!data.session) {
+      setUnreadChat(0);
+      return;
+    }
 
     const lastSeen = getLastChatSeenMs();
 
-    const { data: rows } = await supabaseBrowser
+    const { count, error } = await supabaseBrowser
       .from("chat_messages")
-      .select("created_at")
+      .select("id", { count: "exact", head: true })
       .gt("created_at", new Date(lastSeen).toISOString());
 
-    setUnreadChat(rows?.length ?? 0);
+    if (error) return;
+    setUnreadChat(count ?? 0);
   }
 
   useEffect(() => {

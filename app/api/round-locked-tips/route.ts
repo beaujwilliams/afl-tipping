@@ -37,7 +37,7 @@ export async function GET(req: Request) {
 
     const { data: roundRow, error: rErr } = await supabase
       .from("rounds")
-      .select("id, odds_snapshot_for_time_utc")
+      .select("id, lock_time_utc, odds_snapshot_for_time_utc")
       .eq("competition_id", comp.id)
       .eq("season", season)
       .eq("round_number", round)
@@ -49,6 +49,30 @@ export async function GET(req: Request) {
 
     const roundId = String((roundRow as any).id);
     const snapshotForTimeUtc = (roundRow as any).odds_snapshot_for_time_utc ?? null;
+
+    const lockMs = new Date((roundRow as any).lock_time_utc).getTime();
+    const isLocked = Number.isFinite(lockMs) ? Date.now() >= lockMs : true;
+
+    // ✅ 1) If locked, try cache first (cheap)
+    if (isLocked) {
+      const { data: cached, error: cacheErr } = await supabase
+        .from("round_locked_tips_cache")
+        .select("players, computed_at")
+        .eq("competition_id", comp.id)
+        .eq("round_id", roundId)
+        .maybeSingle();
+
+      if (!cacheErr && cached?.players) {
+        return NextResponse.json({
+          ok: true,
+          season,
+          round,
+          players: cached.players,
+          cached: true,
+          computed_at: cached.computed_at,
+        });
+      }
+    }
 
     // Matches in this round
     const { data: matches, error: mErr } = await supabase
@@ -64,7 +88,19 @@ export async function GET(req: Request) {
     const matchIds = matchList.map((m) => String(m.id));
 
     if (matchIds.length === 0) {
-      return NextResponse.json({ ok: true, season, round, players: [] });
+      const players: any[] = [];
+      if (isLocked) {
+        await supabase.from("round_locked_tips_cache").upsert({
+          competition_id: comp.id,
+          round_id: roundId,
+          season,
+          round_number: round,
+          snapshot_for_time_utc: snapshotForTimeUtc,
+          computed_at: new Date().toISOString(),
+          players,
+        });
+      }
+      return NextResponse.json({ ok: true, season, round, players, cached: false });
     }
 
     // Build match team lookup
@@ -86,7 +122,19 @@ export async function GET(req: Request) {
 
     const tipRows = (tips ?? []) as any[];
     if (tipRows.length === 0) {
-      return NextResponse.json({ ok: true, season, round, players: [] });
+      const players: any[] = [];
+      if (isLocked) {
+        await supabase.from("round_locked_tips_cache").upsert({
+          competition_id: comp.id,
+          round_id: roundId,
+          season,
+          round_number: round,
+          snapshot_for_time_utc: snapshotForTimeUtc,
+          computed_at: new Date().toISOString(),
+          players,
+        });
+      }
+      return NextResponse.json({ ok: true, season, round, players, cached: false });
     }
 
     // Collect user ids
@@ -107,9 +155,7 @@ export async function GET(req: Request) {
       nameById[String(p.id)] = p.display_name ?? null;
     });
 
-    // ✅ Odds: fetch only the latest row per match_id (big compute saver)
-    // We'll use a SQL RPC-free approach by querying and then selecting first per match on the server,
-    // BUT we reduce rows dramatically by ordering and then taking first-per-match in one pass.
+    // Odds: latest per match_id
     let oq = supabase
       .from("match_odds")
       .select("match_id, home_odds, away_odds, captured_at_utc, snapshot_for_time_utc")
@@ -141,7 +187,7 @@ export async function GET(req: Request) {
       }
     }
 
-    // Aggregate into players in one pass
+    // Aggregate into players
     const byUser: Record<string, PlayerRow> = {};
 
     for (const t of tipRows) {
@@ -166,18 +212,30 @@ export async function GET(req: Request) {
       let odds = 0;
 
       if (o) {
-        if (team === matchTeams.home) odds = Number(o.home_odds ?? 0);
-        else if (team === matchTeams.away) odds = Number(o.away_odds ?? 0);
+        if (team === matchTeams.home) odds = o.home_odds;
+        else if (team === matchTeams.away) odds = o.away_odds;
       }
 
       byUser[uid].picks[matchId] = { team, odds };
       byUser[uid].potential += odds;
     }
 
-    const players = Object.values(byUser);
-    players.sort((a, b) => Number(b.potential ?? 0) - Number(a.potential ?? 0));
+    const players = Object.values(byUser).sort((a, b) => Number(b.potential) - Number(a.potential));
 
-    return NextResponse.json({ ok: true, season, round, players });
+    // ✅ 2) If locked, write cache once (future loads are cheap)
+    if (isLocked) {
+      await supabase.from("round_locked_tips_cache").upsert({
+        competition_id: comp.id,
+        round_id: roundId,
+        season,
+        round_number: round,
+        snapshot_for_time_utc: snapshotForTimeUtc,
+        computed_at: new Date().toISOString(),
+        players,
+      });
+    }
+
+    return NextResponse.json({ ok: true, season, round, players, cached: false });
   } catch (e: any) {
     return NextResponse.json(
       { ok: false, error: e?.message ?? "Unknown error" },

@@ -28,31 +28,6 @@ async function isAdminOrCron(req: Request): Promise<boolean> {
   return (data.user?.email ?? null) === "beau.j.williams@gmail.com";
 }
 
-function parseTotalScore(v: any): number | null {
-  if (v === null || v === undefined) return null;
-  if (typeof v === "number" && Number.isFinite(v)) return v;
-
-  const s = String(v).trim();
-  if (!s) return null;
-
-  if (s.includes(".")) {
-    const parts = s.split(".").map((x) => x.trim()).filter(Boolean);
-    const last = parts[parts.length - 1];
-    const n = Number(last);
-    return Number.isFinite(n) ? n : null;
-  }
-
-  const n = Number(s);
-  return Number.isFinite(n) ? n : null;
-}
-
-function isFinalGame(g: any): boolean {
-  if (Number(g?.complete) === 100) return true;
-  const hs = parseTotalScore(g?.hscore);
-  const as = parseTotalScore(g?.ascore);
-  return hs !== null && as !== null;
-}
-
 function pickGameId(g: any): string | null {
   const candidates = [g?.id, g?.gameid, g?.game, g?.uid, g?.matchid];
   for (const c of candidates) {
@@ -61,25 +36,6 @@ function pickGameId(g: any): string | null {
     if (s) return s;
   }
   return null;
-}
-
-function winnerFromTotals(g: any): { winner: string | null; homeTotal: number | null; awayTotal: number | null } {
-  const homeTotal = parseTotalScore(g?.hscore);
-  const awayTotal = parseTotalScore(g?.ascore);
-
-  const explicitWinner = g?.winner ?? g?.winnerteam ?? null;
-  if (explicitWinner) return { winner: String(explicitWinner), homeTotal, awayTotal };
-
-  const hName = g?.hteam ?? null;
-  const aName = g?.ateam ?? null;
-
-  if (homeTotal === null || awayTotal === null) return { winner: null, homeTotal, awayTotal };
-  if (!hName || !aName) return { winner: null, homeTotal, awayTotal };
-
-  if (homeTotal > awayTotal) return { winner: String(hName), homeTotal, awayTotal };
-  if (awayTotal > homeTotal) return { winner: String(aName), homeTotal, awayTotal };
-
-  return { winner: null, homeTotal, awayTotal };
 }
 
 export async function GET(req: Request) {
@@ -120,19 +76,16 @@ export async function GET(req: Request) {
     });
 
     const body = await resp.json();
-
     const rawGames: any[] = Array.isArray(body?.games) ? body.games : [];
     const games = rawGames.filter((g) => g && typeof g === "object" && !("error" in g) && !("warning" in g));
 
-    let updated = 0;
     let consideredFinal = 0;
+    let updated = 0;
 
     let skippedNoGameId = 0;
-    let skippedNotFinal = 0;
     let skippedNoWinner = 0;
     let noDbMatch = 0;
 
-    // ✅ NEW: surface DB update errors
     const updateErrors: any[] = [];
 
     for (const g of games) {
@@ -142,12 +95,7 @@ export async function GET(req: Request) {
         continue;
       }
 
-      if (!isFinalGame(g)) {
-        skippedNotFinal++;
-        continue;
-      }
-
-      const { winner, homeTotal, awayTotal } = winnerFromTotals(g);
+      const winner = g?.winner ?? g?.winnerteam ?? null;
       if (!winner) {
         skippedNoWinner++;
         continue;
@@ -155,14 +103,8 @@ export async function GET(req: Request) {
 
       consideredFinal++;
 
-      // Keep patch minimal (avoids “column does not exist” problems)
-      const patch: any = {
-        winner_team: String(winner),
-      };
-
-      // only include scores if we actually parsed them
-      if (homeTotal !== null) patch.home_score = homeTotal;
-      if (awayTotal !== null) patch.away_score = awayTotal;
+      // ✅ Only update winner_team (no score columns)
+      const patch: any = { winner_team: String(winner) };
 
       const { data: upd, error: updErr } = await supabase
         .from("matches")
@@ -177,8 +119,6 @@ export async function GET(req: Request) {
         updateErrors.push({
           gameId,
           message: updErr.message,
-          details: (updErr as any).details ?? null,
-          hint: (updErr as any).hint ?? null,
           code: (updErr as any).code ?? null,
         });
         continue;
@@ -198,11 +138,12 @@ export async function GET(req: Request) {
         finalGamesFound: games.length,
         finalDataSource: "complete=100",
       },
+      gamesFetched: games.length,
       consideredFinal,
       updated,
-      skipped: { skippedNoGameId, skippedNotFinal, skippedNoWinner, noDbMatch },
-      updateErrors, // ✅ this is what we need to see
-      debug: { firstGameKeys: games[0] ? Object.keys(games[0]).slice(0, 50) : [] },
+      skipped: { skippedNoGameId, skippedNoWinner, noDbMatch },
+      updateErrors,
+      note: "Updates winner_team only (no home_score/away_score columns required).",
     });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? "Unknown error" }, { status: 500 });

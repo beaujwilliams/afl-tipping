@@ -29,13 +29,10 @@ async function isAdminOrCron(req: Request): Promise<boolean> {
 }
 
 function pickGameId(g: any): string | null {
-  const candidates = [g?.id, g?.gameid, g?.game, g?.uid, g?.matchid];
-  for (const c of candidates) {
-    if (c === null || c === undefined) continue;
-    const s = String(c).trim();
-    if (s) return s;
-  }
-  return null;
+  const c = g?.id ?? g?.gameid ?? g?.game ?? g?.uid ?? g?.matchid ?? null;
+  if (c === null || c === undefined) return null;
+  const s = String(c).trim();
+  return s ? s : null;
 }
 
 export async function GET(req: Request) {
@@ -51,7 +48,7 @@ export async function GET(req: Request) {
       mustEnv("SUPABASE_SERVICE_ROLE_KEY")
     );
 
-    // single-comp MVP (we still use this to scope rounds)
+    // single-comp MVP
     const { data: comp, error: compErr } = await supabase
       .from("competitions")
       .select("id")
@@ -64,16 +61,14 @@ export async function GET(req: Request) {
 
     const competitionId = String(comp.id);
 
-    // Load all rounds for the season so we can map matches -> season via round_id
+    // rounds for season -> scope matches
     const { data: rounds, error: roundsErr } = await supabase
       .from("rounds")
       .select("id")
       .eq("competition_id", competitionId)
       .eq("season", season);
 
-    if (roundsErr) {
-      return NextResponse.json({ error: roundsErr.message }, { status: 500 });
-    }
+    if (roundsErr) return NextResponse.json({ error: roundsErr.message }, { status: 500 });
 
     const roundIds = (rounds ?? []).map((r: any) => String(r.id));
     if (roundIds.length === 0) {
@@ -81,15 +76,9 @@ export async function GET(req: Request) {
     }
 
     const gamesUrl = `https://api.squiggle.com.au/?q=games;year=${season};complete=100;format=json`;
-    const resp = await fetch(gamesUrl, {
-      cache: "no-store",
-      headers: {
-        "User-Agent": "complicatedtips/1.0 (admin sync-results)",
-        Accept: "application/json",
-      },
-    });
-
+    const resp = await fetch(gamesUrl, { cache: "no-store" });
     const body = await resp.json();
+
     const rawGames: any[] = Array.isArray(body?.games) ? body.games : [];
     const games = rawGames.filter((g) => g && typeof g === "object" && !("error" in g) && !("warning" in g));
 
@@ -117,12 +106,11 @@ export async function GET(req: Request) {
 
       consideredFinal++;
 
-      // ✅ find match within this season by scoping to round_ids
       const { data: matchRow, error: findErr } = await supabase
         .from("matches")
         .select("id")
         .in("round_id", roundIds)
-        .eq("match_external_id", String(gameId))
+        .eq("squiggle_game_id", String(gameId))
         .limit(1)
         .maybeSingle();
 
@@ -164,7 +152,7 @@ export async function GET(req: Request) {
       updated,
       skipped: { skippedNoGameId, skippedNoWinner, noDbMatch },
       updateErrors,
-      note: "Find match via rounds(season)->round_id, then update winner_team.",
+      note: "Uses matches.squiggle_game_id (you must populate it during fixture sync).",
     });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? "Unknown error" }, { status: 500 });

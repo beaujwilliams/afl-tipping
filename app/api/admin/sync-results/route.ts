@@ -62,14 +62,21 @@ export async function GET(req: Request) {
     );
 
     const gamesUrl = `https://api.squiggle.com.au/?q=games;year=${season};complete=100;format=json`;
-    const resp = await fetch(gamesUrl, { cache: "no-store" });
-    const body = await resp.json();
 
+    // ✅ headers reduce “warning/error object” responses
+    const resp = await fetch(gamesUrl, {
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "afl-tipping/1.0 (results-sync)",
+      },
+    });
+
+    const body = await resp.json().catch(() => null);
     const games: any[] = Array.isArray(body?.games) ? body.games : [];
     const rawGamesCount = games.length;
 
-    // ✅ complete=100 already means “final games” — don’t filter again.
-    const finals = games;
+    const finals = games; // complete=100 already filters
     const finalGamesFound = finals.length;
 
     let consideredFinal = 0;
@@ -80,11 +87,42 @@ export async function GET(req: Request) {
       skippedNoWinner: 0,
       noDbMatch: 0,
       alreadySet: 0,
+      skippedApiErrorRow: 0,
     };
 
     const updateErrors: Array<{ gameId: string | null; step: string; message: string; code?: string }> = [];
 
+    const first = finals[0] ?? null;
+    const firstGameKeys = first && typeof first === "object" ? Object.keys(first) : [];
+    const firstGameIdGuess = first ? pickGameId(first) : null;
+
+    // ✅ If Squiggle returned an error/warning row in games[], surface it clearly
+    if (first && (first.error || first.warning) && finalGamesFound === 1 && !firstGameIdGuess) {
+      return NextResponse.json({
+        ok: false,
+        season,
+        error: "Squiggle returned an error/warning payload instead of a game row.",
+        fetchAttempt: {
+          url: gamesUrl,
+          httpStatus: resp.status,
+          rawGamesCount,
+          finalGamesFound,
+          finalDataSource: "complete=100",
+        },
+        debug: {
+          firstGameKeys,
+          firstGameSample: first,
+        },
+      }, { status: 502 });
+    }
+
     for (const g of finals) {
+      // skip “api payload rows” defensively
+      if (g && (g.error || g.warning) && !pickGameId(g)) {
+        skipped.skippedApiErrorRow++;
+        continue;
+      }
+
       const gameId = pickGameId(g);
       if (!gameId) {
         skipped.skippedNoGameId++;
@@ -99,7 +137,6 @@ export async function GET(req: Request) {
 
       consideredFinal++;
 
-      // Find the match by squiggle_game_id (must be stored during fixture sync)
       const { data: matchRow, error: findErr } = await supabase
         .from("matches")
         .select("id, winner_team")
@@ -116,7 +153,6 @@ export async function GET(req: Request) {
         continue;
       }
 
-      // avoid pointless writes (cheaper)
       if (String(matchRow.winner_team ?? "") === winner) {
         skipped.alreadySet++;
         continue;
@@ -150,6 +186,10 @@ export async function GET(req: Request) {
       updated,
       skipped,
       updateErrors,
+      debug: {
+        firstGameKeys,
+        firstGameIdGuess,
+      },
       note: "Uses complete=100 so all returned games are treated as finals. Uses matches.squiggle_game_id to find matches.",
     });
   } catch (e: any) {

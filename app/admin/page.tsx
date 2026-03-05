@@ -207,7 +207,7 @@ export default function AdminPage() {
         </button>
       </div>
 
-      {result && (
+      {result !== null && (
         <div
           style={{
             marginTop: 30,

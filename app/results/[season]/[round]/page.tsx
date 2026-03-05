@@ -5,14 +5,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
-type MatchTip = {
-  user_id: string;
-  display_name: string;
-  picked_team: string;
-  is_correct: boolean | null;
-  points: number;
-};
-
 type MatchResultRow = {
   id: string;
   commence_time_utc: string;
@@ -30,7 +22,6 @@ type MatchResultRow = {
     home_pct: number;
     away_pct: number;
   };
-  tipped_by: MatchTip[];
 };
 
 type PlayerRoundScore = {
@@ -50,8 +41,6 @@ type RoundResultsResponse = {
   snapshot_for_time_utc: string | null;
   matches: MatchResultRow[];
   players: PlayerRoundScore[];
-  top_score: number;
-  top_scorers: PlayerRoundScore[];
   error?: string;
 };
 
@@ -122,8 +111,6 @@ export default function RoundResultsDetailPage() {
   const [msg, setMsg] = useState<string>("Checking session…");
   const [matches, setMatches] = useState<MatchResultRow[]>([]);
   const [players, setPlayers] = useState<PlayerRoundScore[]>([]);
-  const [topScore, setTopScore] = useState(0);
-  const [topScorers, setTopScorers] = useState<PlayerRoundScore[]>([]);
   const [lockTimeUtc, setLockTimeUtc] = useState<string | null>(null);
   const invalidParams = !Number.isFinite(season) || !Number.isFinite(round);
 
@@ -185,8 +172,6 @@ export default function RoundResultsDetailPage() {
 
         setMatches(Array.isArray(json.matches) ? json.matches : []);
         setPlayers(Array.isArray(json.players) ? json.players : []);
-        setTopScore(Number(json.top_score ?? 0));
-        setTopScorers(Array.isArray(json.top_scorers) ? json.top_scorers : []);
         setLockTimeUtc(json.lock_time_utc ?? null);
         setMsg("");
       } catch {
@@ -269,42 +254,6 @@ export default function RoundResultsDetailPage() {
               <div style={{ fontSize: 11, opacity: 0.72 }}>Total tips</div>
               <div style={{ marginTop: 5, fontSize: 22, fontWeight: 900 }}>{tipsPlaced}</div>
             </div>
-          </div>
-
-          <div
-            style={{
-              marginTop: 12,
-              border: "1px solid var(--border)",
-              borderRadius: 14,
-              padding: 12,
-              background: "var(--card-soft)",
-            }}
-          >
-            <div style={{ fontWeight: 900, fontSize: 15 }}>Top scorer(s) this round</div>
-            {topScorers.length > 0 ? (
-              <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
-                {topScorers.map((p) => (
-                  <div
-                    key={p.user_id}
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: 8,
-                      borderTop: "1px solid rgba(127,127,127,0.25)",
-                      paddingTop: 7,
-                      fontSize: 13,
-                    }}
-                  >
-                    <span style={{ fontWeight: 800 }}>{p.display_name}</span>
-                    <span style={{ fontWeight: 900 }}>{fmtPts(topScore)} pts</span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div style={{ marginTop: 8, opacity: 0.72, fontSize: 12 }}>
-                No round leader yet (results may still be pending).
-              </div>
-            )}
           </div>
 
           <div
@@ -457,44 +406,6 @@ export default function RoundResultsDetailPage() {
                         </div>
                       </div>
                     </div>
-                  </div>
-
-                  <div style={{ marginTop: 10 }}>
-                    <div style={{ fontSize: 12, fontWeight: 800 }}>Who tipped what</div>
-                    {m.tipped_by.length === 0 ? (
-                      <div style={{ marginTop: 6, opacity: 0.72, fontSize: 12 }}>No tips for this match.</div>
-                    ) : (
-                      <div style={{ marginTop: 6, display: "grid", gap: 6 }}>
-                        {m.tipped_by.map((t) => (
-                          <div
-                            key={`${m.id}:${t.user_id}`}
-                            style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              gap: 8,
-                              borderTop: "1px solid rgba(127,127,127,0.25)",
-                              paddingTop: 6,
-                              fontSize: 12,
-                            }}
-                          >
-                            <span style={{ fontWeight: 700 }}>{t.display_name}</span>
-                            <span>
-                              {t.picked_team}
-                              {t.is_correct === true && (
-                                <span style={{ marginLeft: 8, color: "rgb(16,185,129)", fontWeight: 800 }}>
-                                  +{fmtPts(t.points)}
-                                </span>
-                              )}
-                              {t.is_correct === false && (
-                                <span style={{ marginLeft: 8, color: "rgb(239,68,68)", fontWeight: 800 }}>
-                                  0
-                                </span>
-                              )}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 </article>
               );

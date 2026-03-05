@@ -98,8 +98,6 @@ export async function GET(req: Request) {
         snapshot_for_time_utc: snapshotForTimeUtc,
         matches: [],
         players: [],
-        top_score: 0,
-        top_scorers: [],
       });
     }
 
@@ -165,10 +163,7 @@ export async function GET(req: Request) {
     });
 
     const teamCountByMatch: Record<string, Record<string, number>> = {};
-    const tipsByMatch: Record<
-      string,
-      Array<{ user_id: string; display_name: string; picked_team: string; is_correct: boolean | null; points: number }>
-    > = {};
+    const totalTipsByMatch: Record<string, number> = {};
 
     const playersById: Record<
       string,
@@ -197,6 +192,7 @@ export async function GET(req: Request) {
 
       if (!teamCountByMatch[mid]) teamCountByMatch[mid] = {};
       teamCountByMatch[mid][pickedTeam] = (teamCountByMatch[mid][pickedTeam] ?? 0) + 1;
+      totalTipsByMatch[mid] = (totalTipsByMatch[mid] ?? 0) + 1;
 
       const odds = oddsByMatchId[mid];
       let points = 0;
@@ -209,15 +205,6 @@ export async function GET(req: Request) {
           else if (winner === m.away_team) points = Number(odds.away_odds ?? 0);
         }
       }
-
-      if (!tipsByMatch[mid]) tipsByMatch[mid] = [];
-      tipsByMatch[mid].push({
-        user_id: uid,
-        display_name: nameByUserId[uid] ?? "Anonymous tipster",
-        picked_team: pickedTeam,
-        is_correct: isCorrect,
-        points,
-      });
 
       if (!playersById[uid]) {
         playersById[uid] = {
@@ -241,16 +228,12 @@ export async function GET(req: Request) {
 
     const matchesOut = matchList.map((m) => {
       const mid = m.id;
-      const totalTips = (tipsByMatch[mid] ?? []).length;
+      const totalTips = totalTipsByMatch[mid] ?? 0;
       const byTeam = teamCountByMatch[mid] ?? {};
       const homeCount = byTeam[m.home_team] ?? 0;
       const awayCount = byTeam[m.away_team] ?? 0;
       const homePct = totalTips ? Math.round((homeCount / totalTips) * 100) : 0;
       const awayPct = totalTips ? Math.round((awayCount / totalTips) * 100) : 0;
-
-      const tippedBy = [...(tipsByMatch[mid] ?? [])].sort((a, b) =>
-        a.display_name.localeCompare(b.display_name)
-      );
 
       return {
         ...m,
@@ -263,7 +246,6 @@ export async function GET(req: Request) {
           home_pct: homePct,
           away_pct: awayPct,
         },
-        tipped_by: tippedBy,
       };
     });
 
@@ -272,9 +254,6 @@ export async function GET(req: Request) {
       if (b.correct_tips !== a.correct_tips) return b.correct_tips - a.correct_tips;
       return a.display_name.localeCompare(b.display_name);
     });
-
-    const topScore = players.length ? players[0].round_score : 0;
-    const topScorers = players.filter((p) => p.round_score === topScore && topScore > 0);
 
     return NextResponse.json({
       ok: true,
@@ -285,8 +264,6 @@ export async function GET(req: Request) {
       snapshot_for_time_utc: snapshotForTimeUtc,
       matches: matchesOut,
       players,
-      top_score: topScore,
-      top_scorers: topScorers,
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : "Unknown error";

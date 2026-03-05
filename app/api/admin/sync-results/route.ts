@@ -10,12 +10,10 @@ function mustEnv(name: string) {
 async function isAdminOrCron(req: Request): Promise<boolean> {
   const url = new URL(req.url);
 
-  // cron secret auth
   const secret = url.searchParams.get("secret");
   const cronSecret = process.env.CRON_SECRET;
   if (secret && cronSecret && secret === cronSecret) return true;
 
-  // bearer auth (admin)
   const authHeader = req.headers.get("authorization") || req.headers.get("Authorization");
   if (!authHeader?.toLowerCase().startsWith("bearer ")) return false;
   const token = authHeader.slice(7).trim();
@@ -30,17 +28,7 @@ async function isAdminOrCron(req: Request): Promise<boolean> {
   return (data.user?.email ?? null) === "beau.j.williams@gmail.com";
 }
 
-function isFinalGame(g: any) {
-  const complete = Number(g?.complete ?? 0);
-  const winner = String(g?.winner ?? "").trim();
-  const timestr = String(g?.timestr ?? "").toLowerCase();
-
-  // ✅ Squiggle sometimes returns is_final=0 even when complete=100
-  return complete === 100 || !!winner || timestr.includes("full time");
-}
-
 function pickGameId(g: any) {
-  // Squiggle uses "id" (sometimes "game" on older payloads)
   const id = g?.id ?? g?.game ?? g?.gameid ?? null;
   if (id === null || id === undefined) return null;
   const n = Number(id);
@@ -51,14 +39,12 @@ function pickWinner(g: any) {
   const winner = g?.winner ?? g?.winnerteam ?? null;
   if (winner) return String(winner);
 
-  // fallback from scores
-  const hs = typeof g?.hscore === "number" ? g.hscore : Number(g?.hscore ?? NaN);
-  const as = typeof g?.ascore === "number" ? g.ascore : Number(g?.ascore ?? NaN);
+  const hs = Number(g?.hscore ?? NaN);
+  const as = Number(g?.ascore ?? NaN);
   if (Number.isFinite(hs) && Number.isFinite(as)) {
     if (hs > as) return String(g?.hteam ?? "");
     if (as > hs) return String(g?.ateam ?? "");
   }
-
   return null;
 }
 
@@ -75,20 +61,6 @@ export async function GET(req: Request) {
       mustEnv("SUPABASE_SERVICE_ROLE_KEY")
     );
 
-    // single-comp MVP
-    const { data: comp, error: compErr } = await supabase
-      .from("competitions")
-      .select("id")
-      .limit(1)
-      .single();
-
-    if (compErr || !comp) {
-      return NextResponse.json(
-        { ok: false, error: "Competition not found", details: compErr?.message ?? null },
-        { status: 500 }
-      );
-    }
-
     const gamesUrl = `https://api.squiggle.com.au/?q=games;year=${season};complete=100;format=json`;
     const resp = await fetch(gamesUrl, { cache: "no-store" });
     const body = await resp.json();
@@ -96,8 +68,8 @@ export async function GET(req: Request) {
     const games: any[] = Array.isArray(body?.games) ? body.games : [];
     const rawGamesCount = games.length;
 
-    // ✅ Filter finals robustly (do NOT rely on is_final)
-    const finals = games.filter(isFinalGame);
+    // ✅ complete=100 already means “final games” — don’t filter again.
+    const finals = games;
     const finalGamesFound = finals.length;
 
     let consideredFinal = 0;
@@ -107,6 +79,7 @@ export async function GET(req: Request) {
       skippedNoGameId: 0,
       skippedNoWinner: 0,
       noDbMatch: 0,
+      alreadySet: 0,
     };
 
     const updateErrors: Array<{ gameId: string | null; step: string; message: string; code?: string }> = [];
@@ -126,10 +99,10 @@ export async function GET(req: Request) {
 
       consideredFinal++;
 
-      // ✅ Your DB schema: match lookup is by matches.squiggle_game_id
+      // Find the match by squiggle_game_id (must be stored during fixture sync)
       const { data: matchRow, error: findErr } = await supabase
         .from("matches")
-        .select("id, winner_team, status")
+        .select("id, winner_team")
         .eq("squiggle_game_id", Number(gameId))
         .maybeSingle();
 
@@ -143,12 +116,15 @@ export async function GET(req: Request) {
         continue;
       }
 
+      // avoid pointless writes (cheaper)
+      if (String(matchRow.winner_team ?? "") === winner) {
+        skipped.alreadySet++;
+        continue;
+      }
+
       const { error: updErr } = await supabase
         .from("matches")
-        .update({
-          winner_team: winner,
-          status: "final",
-        })
+        .update({ winner_team: winner, status: "final" })
         .eq("id", matchRow.id);
 
       if (updErr) {
@@ -174,7 +150,7 @@ export async function GET(req: Request) {
       updated,
       skipped,
       updateErrors,
-      note: "Final game detection uses complete=100 OR winner OR timestr includes 'Full Time' (does not rely on is_final). Uses matches.squiggle_game_id to find matches.",
+      note: "Uses complete=100 so all returned games are treated as finals. Uses matches.squiggle_game_id to find matches.",
     });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message ?? "Unknown error" }, { status: 500 });

@@ -68,42 +68,47 @@ export default function AdminPage() {
           gap: 12,
         }}
       >
+        {/* SNAPSHOT ODDS */}
         <button
           onClick={() =>
             run(`/api/admin/snapshot-odds-all-due?season=${season}`)
           }
           style={btnStyle}
         >
-          Snapshot Next Due Round
+          1️⃣ Snapshot Next Due Round
         </button>
 
+        {/* FORCE SNAPSHOT */}
         <button
           onClick={() =>
             run(`/api/admin/snapshot-odds-all-due?season=${season}&force=1`)
           }
           style={btnStyle}
         >
-          Force Snapshot (Testing)
+          1️⃣ Force Snapshot (Testing)
         </button>
 
+        {/* SYNC RESULTS */}
         <button
           onClick={() =>
             run(`/api/admin/sync-results?season=${season}`)
           }
           style={btnStyle}
         >
-          Sync Results
+          2️⃣ Sync Results (Squiggle)
         </button>
 
+        {/* RECALC LEADERBOARD */}
         <button
           onClick={() =>
             run(`/api/admin/recalc-leaderboard?season=${season}`)
           }
           style={btnStyle}
         >
-          Recalculate Leaderboard
+          3️⃣ Recalculate Leaderboard
         </button>
 
+        {/* MEMBERS */}
         <button
           onClick={() => router.push("/admin/members")}
           style={{

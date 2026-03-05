@@ -48,8 +48,8 @@ function parseTotalScore(v: any): number | null {
 
 function isFinalGame(g: any): boolean {
   if (Number(g?.complete) === 100) return true;
-  const hs = parseTotalScore(g?.hscore ?? g?.home_score ?? g?.home_total);
-  const as = parseTotalScore(g?.ascore ?? g?.away_score ?? g?.away_total);
+  const hs = parseTotalScore(g?.hscore);
+  const as = parseTotalScore(g?.ascore);
   return hs !== null && as !== null;
 }
 
@@ -64,14 +64,14 @@ function pickGameId(g: any): string | null {
 }
 
 function winnerFromTotals(g: any): { winner: string | null; homeTotal: number | null; awayTotal: number | null } {
-  const homeTotal = parseTotalScore(g?.hscore ?? g?.home_score ?? g?.home_total);
-  const awayTotal = parseTotalScore(g?.ascore ?? g?.away_score ?? g?.away_total);
+  const homeTotal = parseTotalScore(g?.hscore);
+  const awayTotal = parseTotalScore(g?.ascore);
 
   const explicitWinner = g?.winner ?? g?.winnerteam ?? null;
   if (explicitWinner) return { winner: String(explicitWinner), homeTotal, awayTotal };
 
-  const hName = g?.hteam ?? g?.hometeam ?? g?.home_team ?? null;
-  const aName = g?.ateam ?? g?.awayteam ?? g?.away_team ?? null;
+  const hName = g?.hteam ?? null;
+  const aName = g?.ateam ?? null;
 
   if (homeTotal === null || awayTotal === null) return { winner: null, homeTotal, awayTotal };
   if (!hName || !aName) return { winner: null, homeTotal, awayTotal };
@@ -111,30 +111,18 @@ export async function GET(req: Request) {
     const competitionId = String(comp.id);
 
     const gamesUrl = `https://api.squiggle.com.au/?q=games;year=${season};complete=100;format=json`;
-
-    // ✅ Squiggle can reject requests without a user-agent
     const resp = await fetch(gamesUrl, {
       cache: "no-store",
       headers: {
         "User-Agent": "complicatedtips/1.0 (admin sync-results)",
-        "Accept": "application/json",
+        Accept: "application/json",
       },
     });
 
     const body = await resp.json();
 
     const rawGames: any[] = Array.isArray(body?.games) ? body.games : [];
-
-    // If the first "game" is actually an error payload, surface it clearly
-    const first = rawGames[0] ?? null;
-    const firstLooksLikeError = first && typeof first === "object" && ("error" in first || "warning" in first);
-
-    // Filter out error-shaped objects
-    const games = rawGames.filter(
-      (g) => g && typeof g === "object" && !("error" in g) && !("warning" in g)
-    );
-
-    const finalGamesFound = games.length;
+    const games = rawGames.filter((g) => g && typeof g === "object" && !("error" in g) && !("warning" in g));
 
     let updated = 0;
     let consideredFinal = 0;
@@ -143,6 +131,9 @@ export async function GET(req: Request) {
     let skippedNotFinal = 0;
     let skippedNoWinner = 0;
     let noDbMatch = 0;
+
+    // ✅ NEW: surface DB update errors
+    const updateErrors: any[] = [];
 
     for (const g of games) {
       const gameId = pickGameId(g);
@@ -164,7 +155,12 @@ export async function GET(req: Request) {
 
       consideredFinal++;
 
-      const patch: any = { winner_team: String(winner), is_final: true };
+      // Keep patch minimal (avoids “column does not exist” problems)
+      const patch: any = {
+        winner_team: String(winner),
+      };
+
+      // only include scores if we actually parsed them
       if (homeTotal !== null) patch.home_score = homeTotal;
       if (awayTotal !== null) patch.away_score = awayTotal;
 
@@ -177,7 +173,16 @@ export async function GET(req: Request) {
         .select("id")
         .limit(1);
 
-      if (updErr) continue;
+      if (updErr) {
+        updateErrors.push({
+          gameId,
+          message: updErr.message,
+          details: (updErr as any).details ?? null,
+          hint: (updErr as any).hint ?? null,
+          code: (updErr as any).code ?? null,
+        });
+        continue;
+      }
 
       if ((upd?.length ?? 0) > 0) updated++;
       else noDbMatch++;
@@ -190,15 +195,14 @@ export async function GET(req: Request) {
         url: gamesUrl,
         httpStatus: resp.status,
         rawGamesCount: rawGames.length,
-        finalGamesFound,
+        finalGamesFound: games.length,
         finalDataSource: "complete=100",
       },
       consideredFinal,
       updated,
       skipped: { skippedNoGameId, skippedNotFinal, skippedNoWinner, noDbMatch },
-      debug: firstLooksLikeError
-        ? { squiggleError: first?.error ?? null, squiggleWarning: first?.warning ?? null }
-        : { firstGameKeys: games[0] ? Object.keys(games[0]).slice(0, 50) : [] },
+      updateErrors, // ✅ this is what we need to see
+      debug: { firstGameKeys: games[0] ? Object.keys(games[0]).slice(0, 50) : [] },
     });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? "Unknown error" }, { status: 500 });

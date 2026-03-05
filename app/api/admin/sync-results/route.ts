@@ -28,10 +28,6 @@ async function isAdminOrCron(req: Request): Promise<boolean> {
   return (data.user?.email ?? null) === "beau.j.williams@gmail.com";
 }
 
-// Squiggle score parsing:
-// - sometimes number: 70
-// - sometimes string: "10.10.70" (goals.behinds.total)
-// - sometimes string: "70"
 function parseTotalScore(v: any): number | null {
   if (v === null || v === undefined) return null;
 
@@ -40,6 +36,7 @@ function parseTotalScore(v: any): number | null {
   const s = String(v).trim();
   if (!s) return null;
 
+  // e.g. "10.10.70"
   if (s.includes(".")) {
     const parts = s
       .split(".")
@@ -62,20 +59,44 @@ function isFinalGame(g: any): boolean {
   return hs !== null && as !== null;
 }
 
+function pickGameId(g: any): string | null {
+  const candidates = [
+    g?.id,
+    g?.gameid,
+    g?.game,     // common alt
+    g?.uid,      // sometimes used
+    g?.matchid,  // sometimes used
+  ];
+
+  for (const c of candidates) {
+    if (c === null || c === undefined) continue;
+    const s = String(c).trim();
+    if (s) return s;
+  }
+
+  return null;
+}
+
 function winnerFromTotals(g: any): { winner: string | null; homeTotal: number | null; awayTotal: number | null } {
   const homeTotal = parseTotalScore(g?.hscore ?? g?.home_score ?? g?.home_total);
   const awayTotal = parseTotalScore(g?.ascore ?? g?.away_score ?? g?.away_total);
 
-  if (homeTotal === null || awayTotal === null) {
-    // try explicit winner field if present
-    const w = g?.winner ?? g?.winnerteam ?? null;
-    return { winner: w ? String(w) : null, homeTotal, awayTotal };
+  // prefer explicit winner fields if they exist
+  const explicitWinner = g?.winner ?? g?.winnerteam ?? null;
+  if (explicitWinner) {
+    return { winner: String(explicitWinner), homeTotal, awayTotal };
   }
 
-  if (homeTotal > awayTotal) return { winner: g?.hteam ? String(g.hteam) : null, homeTotal, awayTotal };
-  if (awayTotal > homeTotal) return { winner: g?.ateam ? String(g.ateam) : null, homeTotal, awayTotal };
+  // otherwise compute from totals (requires team name fields)
+  const hName = g?.hteam ?? g?.hometeam ?? g?.home_team ?? null;
+  const aName = g?.ateam ?? g?.awayteam ?? g?.away_team ?? null;
 
-  // draw
+  if (homeTotal === null || awayTotal === null) return { winner: null, homeTotal, awayTotal };
+  if (!hName || !aName) return { winner: null, homeTotal, awayTotal };
+
+  if (homeTotal > awayTotal) return { winner: String(hName), homeTotal, awayTotal };
+  if (awayTotal > homeTotal) return { winner: String(aName), homeTotal, awayTotal };
+
   return { winner: null, homeTotal, awayTotal };
 }
 
@@ -107,7 +128,6 @@ export async function GET(req: Request) {
 
     const competitionId = String(comp.id);
 
-    // Use complete=100 to minimize payload, but still parse robustly.
     const gamesUrl = `https://api.squiggle.com.au/?q=games;year=${season};complete=100;format=json`;
     const resp = await fetch(gamesUrl, { cache: "no-store" });
     const body = await resp.json();
@@ -118,13 +138,21 @@ export async function GET(req: Request) {
     let updated = 0;
     let consideredFinal = 0;
 
+    let skippedNoGameId = 0;
     let skippedNotFinal = 0;
     let skippedNoWinner = 0;
     let noDbMatch = 0;
 
+    // debug: show what keys the first game has (helps pinpoint field names fast)
+    const debugFirstGameKeys = games[0] ? Object.keys(games[0]).slice(0, 50) : [];
+    const debugFirstGameIdGuess = games[0] ? pickGameId(games[0]) : null;
+
     for (const g of games) {
-      const gameId = g?.id ?? g?.gameid ?? null;
-      if (!gameId) continue;
+      const gameId = pickGameId(g);
+      if (!gameId) {
+        skippedNoGameId++;
+        continue;
+      }
 
       if (!isFinalGame(g)) {
         skippedNotFinal++;
@@ -133,8 +161,6 @@ export async function GET(req: Request) {
 
       const { winner, homeTotal, awayTotal } = winnerFromTotals(g);
 
-      // If it's a draw, winner will be null (we still may want to store scores + is_final)
-      // But your existing DB likely expects winner_team for scoring, so we skip draws for now.
       if (!winner) {
         skippedNoWinner++;
         continue;
@@ -161,11 +187,8 @@ export async function GET(req: Request) {
 
       if (updErr) continue;
 
-      if ((upd?.length ?? 0) > 0) {
-        updated++;
-      } else {
-        noDbMatch++;
-      }
+      if ((upd?.length ?? 0) > 0) updated++;
+      else noDbMatch++;
     }
 
     return NextResponse.json({
@@ -175,8 +198,9 @@ export async function GET(req: Request) {
       gamesFetched: finalGamesFound,
       consideredFinal,
       updated,
-      skipped: { skippedNotFinal, skippedNoWinner, noDbMatch },
-      note: "Using complete=100 (final games only); scores parsed from number or 'goals.behinds.total' string.",
+      skipped: { skippedNoGameId, skippedNotFinal, skippedNoWinner, noDbMatch },
+      debug: { firstGameKeys: debugFirstGameKeys, firstGameIdGuess: debugFirstGameIdGuess },
+      note: "Using complete=100 (final games only); robust id+score parsing + debug fields added.",
     });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? "Unknown error" }, { status: 500 });

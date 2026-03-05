@@ -7,6 +7,9 @@ import { supabaseBrowser } from "@/lib/supabase-browser";
 type Row = {
   user_id: string;
   total_points: number;
+  profiles: {
+    display_name: string | null;
+  } | null;
 };
 
 export default function LeaderboardPage() {
@@ -37,7 +40,11 @@ export default function LeaderboardPage() {
 
       const { data, error } = await supabaseBrowser
         .from("leaderboard_entries")
-        .select("user_id, total_points")
+        .select(`
+          user_id,
+          total_points,
+          profiles:profiles(display_name)
+        `)
         .eq("competition_id", comp.id)
         .eq("season", season)
         .order("total_points", { ascending: false });
@@ -58,9 +65,19 @@ export default function LeaderboardPage() {
       {msg && <p style={{ marginTop: 16 }}>{msg}</p>}
 
       {!msg && (
-        <div style={{ marginTop: 16, border: "1px solid #eee", borderRadius: 12, overflow: "hidden" }}>
+        <div
+          style={{
+            marginTop: 16,
+            border: "1px solid #eee",
+            borderRadius: 12,
+            overflow: "hidden",
+          }}
+        >
           {rows.length === 0 ? (
-            <div style={{ padding: 16 }}>No scores yet — once matches finish and you run scoring, this will populate.</div>
+            <div style={{ padding: 16 }}>
+              No scores yet — once matches finish and you run scoring, this will
+              populate.
+            </div>
           ) : (
             rows.map((r, i) => (
               <div
@@ -73,9 +90,15 @@ export default function LeaderboardPage() {
                 }}
               >
                 <div>
-                  <b>#{i + 1}</b> <span style={{ opacity: 0.8 }}>{r.user_id.slice(0, 8)}…</span>
+                  <b>#{i + 1}</b>{" "}
+                  <span style={{ opacity: 0.8 }}>
+                    {r.profiles?.display_name ?? "Unknown"}
+                  </span>
                 </div>
-                <div style={{ fontWeight: 700 }}>{Number(r.total_points).toFixed(2)}</div>
+
+                <div style={{ fontWeight: 700 }}>
+                  {Number(r.total_points).toFixed(2)}
+                </div>
               </div>
             ))
           )}

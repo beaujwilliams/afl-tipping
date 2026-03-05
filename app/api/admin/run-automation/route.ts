@@ -35,16 +35,35 @@ export async function GET(req: Request) {
     try {
       return { status: res.status, json: JSON.parse(text) };
     } catch {
-      return { status: res.status, json: { error: "Non-JSON response", bodyHead: text.slice(0, 500) } };
+      return {
+        status: res.status,
+        json: { error: "Non-JSON response", bodyHead: text.slice(0, 500) },
+      };
     }
   }
 
   // ✅ forward secret to cron-only endpoints
   const secretQS = okBySecret ? `&secret=${encodeURIComponent(secret)}` : "";
 
-  const snapshot_next_due = await call(`/api/admin/snapshot-odds-all-due?season=${season}&limit=1${secretQS}`);
-  const sync_results = await call(`/api/admin/sync-results?season=${season}${secretQS}`);
-  const recalc_leaderboard = await call(`/api/admin/recalc-leaderboard?season=${season}${secretQS}`);
+  const snapshot_next_due = await call(
+    `/api/admin/snapshot-odds-all-due?season=${season}&limit=1${secretQS}`
+  );
 
-  return NextResponse.json({ ok: true, season, steps: { snapshot_next_due, sync_results, recalc_leaderboard } });
+  const sync_results = await call(`/api/admin/sync-results?season=${season}${secretQS}`);
+
+  // ✅ Only recalc if sync-results succeeded (saves compute + avoids stale/partial updates)
+  const syncOk =
+    sync_results.status >= 200 &&
+    sync_results.status < 300 &&
+    (sync_results.json?.ok === true || sync_results.json?.success === true);
+
+  const recalc_leaderboard = syncOk
+    ? await call(`/api/admin/recalc-leaderboard?season=${season}${secretQS}`)
+    : { status: 412, json: { ok: false, error: "Skipped recalc because sync-results failed" } };
+
+  return NextResponse.json({
+    ok: true,
+    season,
+    steps: { snapshot_next_due, sync_results, recalc_leaderboard },
+  });
 }

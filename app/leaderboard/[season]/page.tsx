@@ -64,8 +64,29 @@ const DEFAULT_SORT_DIR: Record<SortKey, SortDirection> = {
   avg_winning_odds: "desc",
 };
 
-const RANK_COL_WIDTH = 72;
-const TIPSTER_COL_WIDTH = 190;
+const ALL_COLUMNS: SortKey[] = [
+  "rank",
+  "display_name",
+  "total_points",
+  "correct_tips",
+  "accuracy_pct",
+  "tips_submitted",
+  "missed_tips",
+  "round_score",
+  "movement",
+  "behind_leader",
+  "current_streak",
+  "avg_winning_odds",
+];
+
+const MOBILE_CORE_COLUMNS: SortKey[] = [
+  "rank",
+  "display_name",
+  "total_points",
+  "movement",
+  "correct_tips",
+  "accuracy_pct",
+];
 
 function fmtPts(n: number) {
   return Number(n ?? 0).toFixed(2);
@@ -101,19 +122,6 @@ function numericSortValue(row: LeaderboardRow, key: NumericSortKey) {
   return row.avg_winning_odds;
 }
 
-function stickyColumnStyle(col: 1 | 2, isHeader: boolean) {
-  return {
-    position: "sticky" as const,
-    left: col === 1 ? 0 : RANK_COL_WIDTH,
-    zIndex: isHeader ? (col === 1 ? 5 : 4) : (col === 1 ? 3 : 2),
-    background: isHeader ? "var(--card-soft)" : "var(--card)",
-    width: col === 1 ? RANK_COL_WIDTH : TIPSTER_COL_WIDTH,
-    minWidth: col === 1 ? RANK_COL_WIDTH : TIPSTER_COL_WIDTH,
-    maxWidth: col === 1 ? RANK_COL_WIDTH : TIPSTER_COL_WIDTH,
-    boxShadow: col === 2 ? "2px 0 0 var(--border)" : "none",
-  };
-}
-
 export default function LeaderboardPage() {
   const params = useParams<{ season: string }>();
   const season = Number(params.season);
@@ -125,6 +133,8 @@ export default function LeaderboardPage() {
   const [msg, setMsg] = useState("Loading...");
   const [sortBy, setSortBy] = useState<SortKey>("total_points");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [isMobile, setIsMobile] = useState(false);
+  const [showMoreMobileStats, setShowMoreMobileStats] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -154,19 +164,68 @@ export default function LeaderboardPage() {
     })();
   }, [season]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const media = window.matchMedia("(max-width: 640px)");
+    const onChange = () => setIsMobile(media.matches);
+    onChange();
+
+    if (typeof media.addEventListener === "function") {
+      media.addEventListener("change", onChange);
+      return () => media.removeEventListener("change", onChange);
+    }
+
+    media.addListener(onChange);
+    return () => media.removeListener(onChange);
+  }, []);
+
+  const showExtendedStats = !isMobile || showMoreMobileStats;
+
+  const visibleColumns = useMemo(() => {
+    if (showExtendedStats) {
+      return new Set<SortKey>(ALL_COLUMNS);
+    }
+    return new Set<SortKey>(MOBILE_CORE_COLUMNS);
+  }, [showExtendedStats]);
+
+  const activeSortBy: SortKey = visibleColumns.has(sortBy) ? sortBy : "total_points";
+  const activeSortDirection: SortDirection = visibleColumns.has(sortBy) ? sortDirection : "desc";
+
+  const rankColWidth = isMobile ? 56 : 72;
+  const tipsterColWidth = isMobile ? 138 : 190;
+  const tableMinWidth = isMobile ? (showMoreMobileStats ? 980 : 760) : 1120;
+
+  function stickyColumnStyle(col: 1 | 2, isHeader: boolean) {
+    return {
+      position: "sticky" as const,
+      left: col === 1 ? 0 : rankColWidth,
+      zIndex: isHeader ? (col === 1 ? 5 : 4) : (col === 1 ? 3 : 2),
+      background: isHeader ? "var(--card-soft)" : "var(--card)",
+      width: col === 1 ? rankColWidth : tipsterColWidth,
+      minWidth: col === 1 ? rankColWidth : tipsterColWidth,
+      maxWidth: col === 1 ? rankColWidth : tipsterColWidth,
+      boxShadow: col === 2 ? "2px 0 0 var(--border)" : "none",
+    };
+  }
+
+  function showColumn(key: SortKey) {
+    return visibleColumns.has(key);
+  }
+
   const sortedRows = useMemo(() => {
     const list = [...rows];
 
     list.sort((a, b) => {
       let primaryCmp = 0;
 
-      if (sortBy === "display_name") {
+      if (activeSortBy === "display_name") {
         primaryCmp = a.display_name.localeCompare(b.display_name, "en", { sensitivity: "base" });
       } else {
-        primaryCmp = numericSortValue(a, sortBy) - numericSortValue(b, sortBy);
+        primaryCmp = numericSortValue(a, activeSortBy) - numericSortValue(b, activeSortBy);
       }
 
-      const directionalPrimary = sortDirection === "asc" ? primaryCmp : -primaryCmp;
+      const directionalPrimary = activeSortDirection === "asc" ? primaryCmp : -primaryCmp;
       if (directionalPrimary !== 0) {
         return directionalPrimary;
       }
@@ -181,7 +240,7 @@ export default function LeaderboardPage() {
     });
 
     return list;
-  }, [rows, sortBy, sortDirection]);
+  }, [rows, activeSortBy, activeSortDirection]);
 
   function onSort(nextKey: SortKey) {
     if (sortBy === nextKey) {
@@ -193,8 +252,8 @@ export default function LeaderboardPage() {
   }
 
   function sortMarker(key: SortKey) {
-    if (sortBy !== key) return "↕";
-    return sortDirection === "asc" ? "↑" : "↓";
+    if (activeSortBy !== key) return "↕";
+    return activeSortDirection === "asc" ? "↑" : "↓";
   }
 
   function sortableHeader(label: string, key: SortKey, stickyCol?: 1 | 2) {
@@ -216,11 +275,12 @@ export default function LeaderboardPage() {
             color: "inherit",
             cursor: "pointer",
             font: "inherit",
-            fontWeight: sortBy === key ? 800 : 600,
+            fontWeight: activeSortBy === key ? 800 : 600,
             display: "inline-flex",
             alignItems: "center",
             gap: 6,
             padding: 0,
+            whiteSpace: "nowrap",
           }}
           title={`Sort by ${label}`}
         >
@@ -300,87 +360,150 @@ export default function LeaderboardPage() {
               <div style={{ padding: 16, opacity: 0.82 }}>No leaderboard data yet.</div>
             ) : (
               <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", minWidth: 1120, borderCollapse: "collapse" }}>
+                {isMobile && (
+                  <div
+                    style={{
+                      padding: "10px 12px",
+                      borderBottom: "1px solid var(--border)",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 10,
+                      background: "var(--card-soft)",
+                    }}
+                  >
+                    <div style={{ fontSize: 12, opacity: 0.8 }}>
+                      {showMoreMobileStats ? "Showing all stats" : "Showing core stats"}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowMoreMobileStats((prev) => !prev)}
+                      style={{
+                        border: "1px solid var(--border)",
+                        borderRadius: 8,
+                        padding: "6px 10px",
+                        background: "var(--card)",
+                        color: "inherit",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {showMoreMobileStats ? "Show fewer" : "More stats"}
+                    </button>
+                  </div>
+                )}
+
+                <table style={{ width: "100%", minWidth: tableMinWidth, borderCollapse: "collapse" }}>
                   <thead>
                     <tr style={{ background: "var(--card-soft)", textAlign: "left", fontSize: 12 }}>
-                      {sortableHeader("Rank", "rank", 1)}
-                      {sortableHeader("Tipster", "display_name", 2)}
-                      {sortableHeader("Total Pts", "total_points")}
-                      {sortableHeader("Correct", "correct_tips")}
-                      {sortableHeader("Accuracy", "accuracy_pct")}
-                      {sortableHeader("Tips", "tips_submitted")}
-                      {sortableHeader("Missed", "missed_tips")}
-                      {sortableHeader(
-                        latestScoredRound === null ? "Round Score" : `Round Score (R${latestScoredRound})`,
-                        "round_score"
-                      )}
-                      {sortableHeader("Move", "movement")}
-                      {sortableHeader("Behind", "behind_leader")}
-                      {sortableHeader("Streak", "current_streak")}
-                      {sortableHeader("Avg Win Odds", "avg_winning_odds")}
+                      {showColumn("rank") && sortableHeader("Rank", "rank", 1)}
+                      {showColumn("display_name") && sortableHeader("Tipster", "display_name", 2)}
+                      {showColumn("total_points") && sortableHeader("Total Pts", "total_points")}
+                      {showColumn("correct_tips") && sortableHeader("Correct", "correct_tips")}
+                      {showColumn("accuracy_pct") && sortableHeader("Accuracy", "accuracy_pct")}
+                      {showColumn("tips_submitted") && sortableHeader("Tips", "tips_submitted")}
+                      {showColumn("missed_tips") && sortableHeader("Missed", "missed_tips")}
+                      {showColumn("round_score") &&
+                        sortableHeader(
+                          latestScoredRound === null ? "Round Score" : `Round Score (R${latestScoredRound})`,
+                          "round_score"
+                        )}
+                      {showColumn("movement") && sortableHeader("Move", "movement")}
+                      {showColumn("behind_leader") && sortableHeader("Behind", "behind_leader")}
+                      {showColumn("current_streak") && sortableHeader("Streak", "current_streak")}
+                      {showColumn("avg_winning_odds") && sortableHeader("Avg Win Odds", "avg_winning_odds")}
                     </tr>
                   </thead>
                   <tbody>
                     {sortedRows.map((r) => (
                       <tr key={r.user_id}>
-                        <td
-                          style={{
-                            padding: "12px",
-                            borderTop: "1px solid var(--border)",
-                            fontWeight: 900,
-                            ...stickyColumnStyle(1, false),
-                          }}
-                        >
-                          #{r.rank}
-                        </td>
-                        <td
-                          style={{
-                            padding: "12px",
-                            borderTop: "1px solid var(--border)",
-                            fontWeight: 700,
-                            ...stickyColumnStyle(2, false),
-                          }}
-                        >
-                          {r.display_name}
-                        </td>
-                        <td style={{ padding: "12px", borderTop: "1px solid var(--border)", fontWeight: 800 }}>
-                          {fmtPts(r.total_points)}
-                        </td>
-                        <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
-                          {r.correct_tips}
-                        </td>
-                        <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
-                          {fmtPct(r.accuracy_pct)}
-                        </td>
-                        <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
-                          {r.tips_submitted}/{r.tips_possible}
-                        </td>
-                        <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
-                          {r.missed_tips}
-                        </td>
-                        <td style={{ padding: "12px", borderTop: "1px solid var(--border)", fontWeight: 700 }}>
-                          {fmtPts(r.round_score)}
-                        </td>
-                        <td
-                          style={{
-                            padding: "12px",
-                            borderTop: "1px solid var(--border)",
-                            color: movementColor(r.movement),
-                            fontWeight: 800,
-                          }}
-                          title={r.previous_rank ? `Previously #${r.previous_rank}` : "No previous round baseline"}
-                        >
-                          {movementText(r.movement)}
-                        </td>
-                        <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
-                          {r.behind_leader <= 0 ? "-" : fmtPts(r.behind_leader)}
-                        </td>
-                        <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
-                          {r.current_streak}
-                        </td>
-                        <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
-                          {fmtPts(r.avg_winning_odds)}
-                        </td>
+                        {showColumn("rank") && (
+                          <td
+                            style={{
+                              padding: "12px",
+                              borderTop: "1px solid var(--border)",
+                              fontWeight: 900,
+                              ...stickyColumnStyle(1, false),
+                            }}
+                          >
+                            #{r.rank}
+                          </td>
+                        )}
+                        {showColumn("display_name") && (
+                          <td
+                            style={{
+                              padding: "12px",
+                              borderTop: "1px solid var(--border)",
+                              fontWeight: 700,
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              ...stickyColumnStyle(2, false),
+                            }}
+                            title={r.display_name}
+                          >
+                            {r.display_name}
+                          </td>
+                        )}
+                        {showColumn("total_points") && (
+                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)", fontWeight: 800 }}>
+                            {fmtPts(r.total_points)}
+                          </td>
+                        )}
+                        {showColumn("correct_tips") && (
+                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
+                            {r.correct_tips}
+                          </td>
+                        )}
+                        {showColumn("accuracy_pct") && (
+                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
+                            {fmtPct(r.accuracy_pct)}
+                          </td>
+                        )}
+                        {showColumn("tips_submitted") && (
+                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
+                            {r.tips_submitted}/{r.tips_possible}
+                          </td>
+                        )}
+                        {showColumn("missed_tips") && (
+                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
+                            {r.missed_tips}
+                          </td>
+                        )}
+                        {showColumn("round_score") && (
+                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)", fontWeight: 700 }}>
+                            {fmtPts(r.round_score)}
+                          </td>
+                        )}
+                        {showColumn("movement") && (
+                          <td
+                            style={{
+                              padding: "12px",
+                              borderTop: "1px solid var(--border)",
+                              color: movementColor(r.movement),
+                              fontWeight: 800,
+                            }}
+                            title={r.previous_rank ? `Previously #${r.previous_rank}` : "No previous round baseline"}
+                          >
+                            {movementText(r.movement)}
+                          </td>
+                        )}
+                        {showColumn("behind_leader") && (
+                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
+                            {r.behind_leader <= 0 ? "-" : fmtPts(r.behind_leader)}
+                          </td>
+                        )}
+                        {showColumn("current_streak") && (
+                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
+                            {r.current_streak}
+                          </td>
+                        )}
+                        {showColumn("avg_winning_odds") && (
+                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
+                            {fmtPts(r.avg_winning_odds)}
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>

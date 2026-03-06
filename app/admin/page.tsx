@@ -106,6 +106,18 @@ export default function AdminPage() {
     }
   }
 
+  const buttonStateStyle: React.CSSProperties = {
+    opacity: isRunning ? 0.6 : 1,
+    cursor: isRunning ? "not-allowed" : "pointer",
+  };
+
+  const summaryStyle: React.CSSProperties = {
+    fontSize: 13,
+    opacity: 0.75,
+    lineHeight: 1.4,
+    marginTop: 6,
+  };
+
   return (
     <main style={{ maxWidth: 900, margin: "40px auto", padding: 16 }}>
       <h1>Admin Panel</h1>
@@ -130,100 +142,123 @@ export default function AdminPage() {
         style={{
           marginTop: 30,
           display: "grid",
-          gap: 12,
+          gap: 16,
         }}
       >
-        <button
-          disabled={isRunning}
-          onClick={runSyncAndRecalc}
-          style={{
-            ...btnStyle,
-            background: "var(--foreground)",
-            color: "var(--background)",
-            border: "1px solid var(--foreground)",
-            fontWeight: 800,
-            opacity: isRunning ? 0.6 : 1,
-            cursor: isRunning ? "not-allowed" : "pointer",
-          }}
-        >
-          Sync Results + Recalculate Leaderboard
-        </button>
+        <div>
+          <button
+            disabled={isRunning}
+            onClick={runSyncAndRecalc}
+            style={{
+              ...btnStyle,
+              ...buttonStateStyle,
+              background: "var(--foreground)",
+              color: "var(--background)",
+              border: "1px solid var(--foreground)",
+              fontWeight: 800,
+            }}
+          >
+            Sync Results + Recalculate Leaderboard
+          </button>
+          <div style={summaryStyle}>
+            Pulls finished game winners from Squiggle, then updates leaderboard scores. If no new results are found, it skips recalculation.
+          </div>
+        </div>
 
-        {/* SNAPSHOT ODDS */}
-        <button
-          disabled={isRunning}
-          onClick={() =>
-            run(`/api/admin/snapshot-odds-all-due?season=${season}`)
-          }
-          style={{
-            ...btnStyle,
-            opacity: isRunning ? 0.6 : 1,
-            cursor: isRunning ? "not-allowed" : "pointer",
-          }}
-        >
-          Snapshot Next Due Round
-        </button>
+        <div>
+          <button
+            disabled={isRunning}
+            onClick={() => router.push("/admin/members")}
+            style={{
+              ...btnStyle,
+              ...buttonStateStyle,
+              background: "var(--card-soft)",
+              color: "var(--foreground)",
+              fontWeight: 800,
+            }}
+          >
+            Manage Members
+          </button>
+          <div style={summaryStyle}>
+            Opens member management so you can rename participants or remove people from the competition.
+          </div>
+        </div>
 
-        {/* FORCE SNAPSHOT */}
-        <button
-          disabled={isRunning}
-          onClick={() =>
-            run(`/api/admin/snapshot-odds-all-due?season=${season}&force=1`)
-          }
-          style={{
-            ...btnStyle,
-            opacity: isRunning ? 0.6 : 1,
-            cursor: isRunning ? "not-allowed" : "pointer",
-          }}
-        >
-          Force Snapshot (Testing)
-        </button>
+        <div style={{ marginTop: 4, fontSize: 13, fontWeight: 800, opacity: 0.7 }}>
+          Other Admin Tools
+        </div>
 
-        {/* SYNC RESULTS */}
-        <button
-          disabled={isRunning}
-          onClick={() =>
-            run(`/api/admin/sync-results?season=${season}`)
-          }
-          style={{
-            ...btnStyle,
-            opacity: isRunning ? 0.6 : 1,
-            cursor: isRunning ? "not-allowed" : "pointer",
-          }}
-        >
-          Sync Results (Squiggle)
-        </button>
+        <div>
+          <button
+            disabled={isRunning}
+            onClick={() =>
+              run(`/api/admin/snapshot-odds-all-due?season=${season}`)
+            }
+            style={{
+              ...btnStyle,
+              ...buttonStateStyle,
+            }}
+          >
+            Snapshot Next Due Round
+          </button>
+          <div style={summaryStyle}>
+            Captures odds for the next round when its snapshot window is due.
+          </div>
+        </div>
 
-        {/* RECALC LEADERBOARD */}
-        <button
-          disabled={isRunning}
-          onClick={() =>
-            run(`/api/admin/recalc-leaderboard?season=${season}`)
-          }
-          style={{
-            ...btnStyle,
-            opacity: isRunning ? 0.6 : 1,
-            cursor: isRunning ? "not-allowed" : "pointer",
-          }}
-        >
-          Recalculate Leaderboard
-        </button>
+        <div>
+          <button
+            disabled={isRunning}
+            onClick={() =>
+              run(`/api/admin/snapshot-odds-all-due?season=${season}&force=1`)
+            }
+            style={{
+              ...btnStyle,
+              ...buttonStateStyle,
+            }}
+          >
+            Force Snapshot (Testing)
+          </button>
+          <div style={summaryStyle}>
+            Forces an odds snapshot immediately, even if it is not due yet. Use for testing or backfills.
+          </div>
+        </div>
 
-        {/* MEMBERS */}
-        <button
-          disabled={isRunning}
-          onClick={() => router.push("/admin/members")}
-          style={{
-            ...btnStyle,
-            background: "var(--card-soft)",
-            color: "var(--foreground)",
-            fontWeight: 800,
-            opacity: isRunning ? 0.6 : 1,
-            cursor: isRunning ? "not-allowed" : "pointer",
-          }}
-        >
-          Manage Members
-        </button>
+        <div>
+          <button
+            disabled={isRunning}
+            onClick={() =>
+              run(`/api/admin/sync-results?season=${season}`)
+            }
+            style={{
+              ...btnStyle,
+              ...buttonStateStyle,
+            }}
+          >
+            Sync Results (Squiggle)
+          </button>
+          <div style={summaryStyle}>
+            Updates winners for finished matches only, without recalculating the leaderboard.
+          </div>
+        </div>
+
+        <div>
+          <button
+            disabled={isRunning}
+            onClick={() =>
+              run(`/api/admin/recalc-leaderboard?season=${season}`)
+            }
+            style={{
+              ...btnStyle,
+              ...buttonStateStyle,
+            }}
+          >
+            Recalculate Leaderboard
+          </button>
+          <div style={summaryStyle}>
+            Recomputes leaderboard totals from current match results and stored odds snapshots.
+          </div>
+        </div>
       </div>
 
       {result !== null && (

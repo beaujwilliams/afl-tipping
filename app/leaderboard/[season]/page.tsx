@@ -202,12 +202,17 @@ export default function LeaderboardPage() {
     return {
       position: "sticky" as const,
       left: col === 1 ? 0 : rankColWidth,
-      zIndex: isHeader ? (col === 1 ? 5 : 4) : (col === 1 ? 3 : 2),
-      background: isHeader ? "var(--card-soft)" : "var(--card)",
+      zIndex: isHeader ? (col === 1 ? 20 : 19) : col === 1 ? 10 : 9,
+      background: "var(--card)",
       width: col === 1 ? rankColWidth : tipsterColWidth,
       minWidth: col === 1 ? rankColWidth : tipsterColWidth,
       maxWidth: col === 1 ? rankColWidth : tipsterColWidth,
-      boxShadow: col === 2 ? "2px 0 0 var(--border)" : "none",
+      backgroundClip: "padding-box",
+      overflow: "hidden",
+      boxShadow:
+        col === 2
+          ? "3px 0 0 var(--card), 4px 0 0 var(--border)"
+          : "1px 0 0 var(--border)",
     };
   }
 

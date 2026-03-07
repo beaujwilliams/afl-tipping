@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
@@ -31,11 +32,10 @@ export default function LoginPage() {
 
   const busy = busySignIn || busySignUp;
 
-  const [cooldownLeftMs, setCooldownLeftMs] = useState<number>(0);
+  const [cooldownLeftMs, setCooldownLeftMs] = useState<number>(() => msLeftToCooldown());
   useEffect(() => {
     // tick cooldown text while on page
     const t = setInterval(() => setCooldownLeftMs(msLeftToCooldown()), 500);
-    setCooldownLeftMs(msLeftToCooldown());
     return () => clearInterval(t);
   }, []);
 
@@ -171,6 +171,15 @@ export default function LoginPage() {
         >
           {busySignIn ? "Signing in…" : "Sign in"}
         </button>
+
+        <div style={{ marginTop: 10, textAlign: "right" }}>
+          <Link
+            href="/forgot-password"
+            style={{ fontSize: 13, textDecoration: "underline", opacity: 0.85 }}
+          >
+            Forgot password?
+          </Link>
+        </div>
 
         <button
           type="button"

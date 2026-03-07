@@ -16,6 +16,7 @@ Last updated: 2026-03-07
 | --- | --- | --- | --- | --- | --- |
 | BL-001 | P0 | Done (2026-03-07) | Remove hardcoded cron secret usage in admin UI and rely on secure server env + bearer auth only | Reduces security risk and accidental secret leakage | S |
 | BL-002 | P0 | Done (2026-03-07) | Replace email-based admin checks with role-based authorization from `memberships` (owner/admin role) | More maintainable and supports multiple admins | M |
+| BL-020 | P0 | Done (2026-03-07) | Add forgot/reset password flow (request reset email, secure recovery route, set new password UI) | Prevents account lockouts and reduces admin support burden | S |
 | BL-004 | P0 | Idea | Add player self-service profile page (display name, maybe favorite team) | Removes admin bottleneck and improves user identity in chat/leaderboard | S |
 | BL-005 | P0 | Idea | Add payment tracking in admin (`paid`, `pending`, `waived`) and optional lockout for unpaid users | Aligns entry-fee rules with app behavior | M |
 | BL-006 | P1 | Doing | Pre-lock reminders (T-3h) for members who have not tipped | Improves tip completion and engagement | M |
@@ -36,11 +37,11 @@ Last updated: 2026-03-07
 
 ## Suggested Next 5 to Build
 
-1. `BL-001` security cleanup
-2. `BL-004` self-service profiles
-3. `BL-005` payment tracking
-4. `BL-006` pre-lock reminders
-5. `BL-002` role-based admin auth
+1. `BL-004` self-service profiles
+2. `BL-005` payment tracking
+3. `BL-006` pre-lock reminders
+4. `BL-007` one-click admin reminders
+5. `BL-019` username at sign-up
 
 ## Notes
 

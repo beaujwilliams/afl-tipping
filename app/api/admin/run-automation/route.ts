@@ -45,6 +45,10 @@ export async function GET(req: Request) {
   // ✅ forward secret to cron-only endpoints
   const secretQS = okBySecret ? `&secret=${encodeURIComponent(secret)}` : "";
 
+  const prelock_reminders = await call(
+    `/api/admin/send-prelock-reminders?season=${season}${secretQS}`
+  );
+
   const snapshot_next_due = await call(
     `/api/admin/snapshot-odds-all-due?season=${season}&limit=1${secretQS}`
   );
@@ -64,6 +68,11 @@ export async function GET(req: Request) {
   return NextResponse.json({
     ok: true,
     season,
-    steps: { snapshot_next_due, sync_results, recalc_leaderboard },
+    steps: {
+      prelock_reminders,
+      snapshot_next_due,
+      sync_results,
+      recalc_leaderboard,
+    },
   });
 }

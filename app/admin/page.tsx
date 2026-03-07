@@ -214,6 +214,24 @@ export default function AdminPage() {
               <button
                 disabled={isRunning}
                 onClick={() =>
+                  run(`/api/admin/send-prelock-reminders?season=${season}`)
+                }
+                style={{
+                  ...btnStyle,
+                  ...buttonStateStyle,
+                }}
+              >
+                Send Pre-lock Reminders (3h)
+              </button>
+              <div style={summaryStyle}>
+                Sends reminder emails to members who still have not tipped this round, when the round is ~3 hours from lock.
+              </div>
+            </div>
+
+            <div>
+              <button
+                disabled={isRunning}
+                onClick={() =>
                   run(`/api/admin/snapshot-odds-all-due?season=${season}`)
                 }
                 style={{

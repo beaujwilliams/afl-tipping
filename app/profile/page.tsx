@@ -24,6 +24,11 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
+  async function getAccessToken() {
+    const { data } = await supabaseBrowser.auth.getSession();
+    return data.session?.access_token ?? null;
+  }
+
   useEffect(() => {
     let mounted = true;
 
@@ -39,7 +44,17 @@ export default function ProfilePage() {
       if (!mounted) return;
       setEmail(user.email ?? null);
 
-      const res = await fetch("/api/profile", { cache: "no-store" });
+      const token = await getAccessToken();
+      if (!token) {
+        setMsg("Not authenticated");
+        setLoading(false);
+        return;
+      }
+
+      const res = await fetch("/api/profile", {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const body = (await res.json().catch(() => null)) as ProfileApiResponse | null;
 
       if (!mounted) return;
@@ -69,9 +84,19 @@ export default function ProfilePage() {
     setSaving(true);
     setMsg(null);
 
+    const token = await getAccessToken();
+    if (!token) {
+      setSaving(false);
+      setMsg("Not authenticated");
+      return;
+    }
+
     const res = await fetch("/api/profile", {
       method: "PATCH",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
       body: JSON.stringify({
         display_name: displayName,
         favorite_team: favoriteTeam || null,

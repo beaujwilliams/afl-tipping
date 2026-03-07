@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { isValidAflTeam } from "@/lib/afl-teams";
 import { createClient, createServiceClient } from "@/lib/supabase-server";
+import { getBearer } from "@/lib/admin-auth";
 
 type ProfileRowWithFavorite = {
   id: string;
@@ -26,7 +28,30 @@ function isMissingColumnError(message: string, columnName: string) {
   return m.includes(col) && (m.includes("column") || m.includes("does not exist"));
 }
 
-async function getAuthedUser() {
+function mustEnv(name: string) {
+  const value = process.env[name];
+  if (!value) throw new Error(`Missing env var: ${name}`);
+  return value;
+}
+
+async function getUserFromBearer(req: Request) {
+  const token = getBearer(req);
+  if (!token) return null;
+
+  const authClient = createSupabaseClient(
+    mustEnv("NEXT_PUBLIC_SUPABASE_URL"),
+    mustEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+  );
+
+  const { data, error } = await authClient.auth.getUser(token);
+  if (error || !data.user) return null;
+  return data.user;
+}
+
+async function getAuthedUser(req: Request) {
+  const fromBearer = await getUserFromBearer(req);
+  if (fromBearer) return fromBearer;
+
   const authClient = await createClient();
   const { data, error } = await authClient.auth.getUser();
   if (error || !data.user) return null;
@@ -78,9 +103,9 @@ async function readProfileByUserId(
   };
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const user = await getAuthedUser();
+    const user = await getAuthedUser(req);
     if (!user) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
@@ -104,7 +129,7 @@ export async function GET() {
 
 export async function PATCH(req: Request) {
   try {
-    const user = await getAuthedUser();
+    const user = await getAuthedUser(req);
     if (!user) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }

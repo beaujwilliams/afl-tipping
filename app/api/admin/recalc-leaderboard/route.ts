@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-
-const ADMIN_EMAIL = "beau.j.williams@gmail.com";
+import { requireAdminOrCron } from "@/lib/admin-auth";
 
 function mustEnv(name: string) {
   const v = process.env[name];
@@ -9,30 +8,10 @@ function mustEnv(name: string) {
   return v;
 }
 
-async function isAdminOrCron(req: Request): Promise<boolean> {
-  const url = new URL(req.url);
-
-  // Cron secret allowed
-  const secret = url.searchParams.get("secret");
-  const cronSecret = process.env.CRON_SECRET;
-  if (secret && cronSecret && secret === cronSecret) return true;
-
-  // Bearer token admin allowed (from Admin UI)
-  const authHeader = req.headers.get("authorization") || req.headers.get("Authorization");
-  if (!authHeader?.toLowerCase().startsWith("bearer ")) return false;
-
-  const token = authHeader.slice(7).trim();
-  if (!token) return false;
-
-  const authClient = createClient(mustEnv("NEXT_PUBLIC_SUPABASE_URL"), mustEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"));
-  const { data } = await authClient.auth.getUser(token);
-  return (data.user?.email ?? null) === ADMIN_EMAIL;
-}
-
 export async function GET(req: Request) {
   try {
-    const allowed = await isAdminOrCron(req);
-    if (!allowed) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    const gate = await requireAdminOrCron(req);
+    if (!gate.ok) return NextResponse.json(gate.json, { status: gate.status });
 
     const url = new URL(req.url);
     const season = Number(url.searchParams.get("season") ?? "2026");

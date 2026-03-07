@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase-server";
-
-const ADMIN_EMAIL = "beau.j.williams@gmail.com";
+import { requireAdminOrCron } from "@/lib/admin-auth";
 
 const SPORT_KEY = "aussierules_afl";
 const REGIONS = "au";
@@ -29,46 +27,6 @@ type OddsApiEvent = {
   away_team: string;
   bookmakers: OddsApiBookmaker[];
 };
-
-function mustEnv(name: string) {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing env var: ${name}`);
-  return v;
-}
-
-async function allowBearerOrCron(req: Request): Promise<{
-  ok: boolean;
-  mode?: "cron" | "bearer";
-  token?: string;
-  secret?: string;
-}> {
-  const url = new URL(req.url);
-
-  // ✅ Cron secret mode
-  const secret = url.searchParams.get("secret") || "";
-  const cronSecret = process.env.CRON_SECRET || "";
-  if (cronSecret && secret && secret === cronSecret) {
-    return { ok: true, mode: "cron", secret };
-  }
-
-  // ✅ Bearer mode (admin UI)
-  const authHeader =
-    req.headers.get("authorization") || req.headers.get("Authorization");
-  if (!authHeader?.toLowerCase().startsWith("bearer ")) return { ok: false };
-
-  const token = authHeader.slice(7).trim();
-  if (!token) return { ok: false };
-
-  const authClient = createClient(
-    mustEnv("NEXT_PUBLIC_SUPABASE_URL"),
-    mustEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
-  );
-
-  const { data } = await authClient.auth.getUser(token);
-  if ((data.user?.email ?? "") !== ADMIN_EMAIL) return { ok: false };
-
-  return { ok: true, mode: "bearer", token };
-}
 
 /* ---------------- TEAM NORMALISATION ---------------- */
 
@@ -187,23 +145,13 @@ function toOddsApiUtc(isoWithMs: string) {
 
 export async function GET(req: Request) {
   try {
-    const gate = await allowBearerOrCron(req);
-    if (!gate.ok) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const gate = await requireAdminOrCron(req);
+    if (!gate.ok) return NextResponse.json(gate.json, { status: gate.status });
 
     const url = new URL(req.url);
-    const secret = url.searchParams.get("secret");
     const season = Number(url.searchParams.get("season"));
     const round = Number(url.searchParams.get("round"));
     const force = url.searchParams.get("force") === "1";
-
-    // cron mode validation (bearer mode doesn't need secret param)
-    if (gate.mode === "cron") {
-      if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-      }
-    }
 
     if (!process.env.ODDS_API_KEY) {
       return NextResponse.json({ error: "Missing ODDS_API_KEY" }, { status: 500 });

@@ -1,34 +1,6 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase-server";
-
-const ADMIN_EMAIL = "beau.j.williams@gmail.com";
-
-function mustEnv(name: string) {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing env var: ${name}`);
-  return v;
-}
-
-function getBearer(req: Request) {
-  const h = req.headers.get("authorization") || req.headers.get("Authorization") || "";
-  const m = h.match(/^Bearer\s+(.+)$/i);
-  return m?.[1]?.trim() ?? null;
-}
-
-async function isAdmin(req: Request): Promise<boolean> {
-  const token = getBearer(req);
-  if (!token) return false;
-
-  const authClient = createClient(
-    mustEnv("NEXT_PUBLIC_SUPABASE_URL"),
-    mustEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
-  );
-
-  const { data } = await authClient.auth.getUser(token);
-  const email = (data.user?.email ?? "").toLowerCase();
-  return email === ADMIN_EMAIL.toLowerCase();
-}
+import { getBearer, isAdminBearerForCompetition } from "@/lib/admin-auth";
 
 type RoundRow = {
   id: string;
@@ -65,8 +37,6 @@ export async function GET(req: Request) {
     const season = Number(url.searchParams.get("season") ?? "2026");
 
     const supabase = createServiceClient();
-    const admin = await isAdmin(req);
-
     // single-comp MVP
     const { data: comp, error: cErr } = await supabase
       .from("competitions")
@@ -77,6 +47,7 @@ export async function GET(req: Request) {
     if (cErr || !comp) {
       return NextResponse.json({ error: "No competition found", details: cErr?.message ?? "" }, { status: 404 });
     }
+    const admin = await isAdminBearerForCompetition(req, String(comp.id));
 
     // rounds for season
     const { data: rounds, error: rErr } = await supabase
@@ -207,7 +178,8 @@ export async function GET(req: Request) {
       admin,
       rounds: out,
     });
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? "Unknown error" }, { status: 500 });
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : "Unknown error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

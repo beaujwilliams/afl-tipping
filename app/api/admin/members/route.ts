@@ -1,59 +1,6 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase-server";
-
-function mustEnv(name: string) {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing env var: ${name}`);
-  return v;
-}
-
-function getBearer(req: Request) {
-  const h = req.headers.get("authorization") || "";
-  const m = h.match(/^Bearer\s+(.+)$/i);
-  return m?.[1] ?? null;
-}
-
-async function requireAdminOrCron(req: Request) {
-  const urlObj = new URL(req.url);
-
-  // Allow cron secret too (optional, but keeps consistency with other admin routes)
-  const secret = urlObj.searchParams.get("secret");
-  const cronSecret = process.env.CRON_SECRET;
-  if (secret && cronSecret && secret === cronSecret) {
-    return { ok: true as const, mode: "cron" as const };
-  }
-
-  const token = getBearer(req);
-  if (!token) {
-    return {
-      ok: false as const,
-      status: 401,
-      json: { error: "Missing Bearer token" },
-    };
-  }
-
-  const url = mustEnv("NEXT_PUBLIC_SUPABASE_URL");
-  const anon = mustEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY");
-  const adminEmail = mustEnv("ADMIN_EMAIL");
-
-  // Validate the session token and get the user
-  const userRes = await fetch(`${url}/auth/v1/user`, {
-    headers: { apikey: anon, authorization: `Bearer ${token}` },
-    cache: "no-store",
-  });
-
-  if (!userRes.ok) {
-    return { ok: false as const, status: 401, json: { error: "Invalid session" } };
-  }
-
-  const user = (await userRes.json()) as { email?: string; id?: string };
-  if (!user?.email || user.email.toLowerCase() !== adminEmail.toLowerCase()) {
-    return { ok: false as const, status: 403, json: { error: "Admin only" } };
-  }
-
-  return { ok: true as const, mode: "bearer" as const, token, user };
-}
+import { requireAdminOrCron } from "@/lib/admin-auth";
 
 async function getCompetitionId(supabase: ReturnType<typeof createServiceClient>, req: Request) {
   const url = new URL(req.url);
@@ -111,15 +58,14 @@ type MemberOut = {
 
 export async function GET(req: Request) {
   try {
-    const admin = await requireAdminOrCron(req);
-    if (!admin.ok) return NextResponse.json(admin.json, { status: admin.status });
-
     const supabase = createServiceClient();
 
     const competitionId = await getCompetitionId(supabase, req);
     if (!competitionId) {
       return NextResponse.json({ error: "No competition found" }, { status: 404 });
     }
+    const admin = await requireAdminOrCron(req, { competitionId });
+    if (!admin.ok) return NextResponse.json(admin.json, { status: admin.status });
 
     const { data: members, error: mErr } = await supabase
       .from("memberships")
@@ -197,8 +143,7 @@ export async function GET(req: Request) {
 
 export async function PATCH(req: Request) {
   try {
-    const admin = await requireAdminOrCron(req);
-    if (!admin.ok) return NextResponse.json(admin.json, { status: admin.status });
+    const supabase = createServiceClient();
 
     const body = (await req.json().catch(() => null)) as null | {
       user_id?: string;
@@ -209,8 +154,12 @@ export async function PATCH(req: Request) {
     const display_name = (body?.display_name ?? "").trim();
 
     if (!user_id) return NextResponse.json({ error: "Missing user_id" }, { status: 400 });
-
-    const supabase = createServiceClient();
+    const competitionId = await getCompetitionId(supabase, req);
+    if (!competitionId) {
+      return NextResponse.json({ error: "No competition found" }, { status: 404 });
+    }
+    const admin = await requireAdminOrCron(req, { competitionId });
+    if (!admin.ok) return NextResponse.json(admin.json, { status: admin.status });
 
     const { error } = await supabase.from("profiles").upsert(
       {
@@ -238,19 +187,18 @@ export async function PATCH(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
-    const admin = await requireAdminOrCron(req);
-    if (!admin.ok) return NextResponse.json(admin.json, { status: admin.status });
+    const supabase = createServiceClient();
 
     const body = (await req.json().catch(() => null)) as null | { user_id?: string };
     const user_id = body?.user_id?.trim();
     if (!user_id) return NextResponse.json({ error: "Missing user_id" }, { status: 400 });
 
-    const supabase = createServiceClient();
-
     const competitionId = await getCompetitionId(supabase, req);
     if (!competitionId) {
       return NextResponse.json({ error: "No competition found" }, { status: 404 });
     }
+    const admin = await requireAdminOrCron(req, { competitionId });
+    if (!admin.ok) return NextResponse.json(admin.json, { status: admin.status });
 
     const { error } = await supabase
       .from("memberships")

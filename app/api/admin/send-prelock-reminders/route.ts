@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase-server";
-
-const FALLBACK_ADMIN_EMAIL = "beau.j.williams@gmail.com";
+import { requireAdminOrCron } from "@/lib/admin-auth";
 const DEFAULT_SEASON = 2026;
 const DEFAULT_REMINDER_HOURS = 3;
 const DEFAULT_WINDOW_MINUTES = 30;
@@ -64,19 +62,6 @@ type RoundResult = {
   skipped_no_matches: boolean;
 };
 
-function mustEnv(name: string) {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing env var: ${name}`);
-  return v;
-}
-
-function getBearer(req: Request) {
-  const h = req.headers.get("authorization") || req.headers.get("Authorization");
-  if (!h) return null;
-  const m = h.match(/^Bearer\s+(.+)$/i);
-  return m ? m[1] : null;
-}
-
 function safeDisplayName(name: string | null | undefined, userId: string) {
   const n = String(name ?? "").trim();
   if (n) return n;
@@ -128,37 +113,6 @@ async function getAuthEmailByUserId(userId: string) {
   if (!r.ok) return null;
   const j = (await r.json()) as { email?: string };
   return j.email ?? null;
-}
-
-async function allowBearerOrCron(req: Request): Promise<{
-  ok: boolean;
-  mode?: "cron" | "bearer";
-  token?: string;
-  secret?: string;
-}> {
-  const url = new URL(req.url);
-
-  const secret = url.searchParams.get("secret") || "";
-  const cronSecret = process.env.CRON_SECRET || "";
-  if (cronSecret && secret && secret === cronSecret) {
-    return { ok: true, mode: "cron", secret };
-  }
-
-  const token = getBearer(req);
-  if (!token) return { ok: false };
-
-  const authClient = createClient(
-    mustEnv("NEXT_PUBLIC_SUPABASE_URL"),
-    mustEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
-  );
-
-  const { data } = await authClient.auth.getUser(token);
-  const email = (data.user?.email ?? "").toLowerCase();
-  const adminEmail = (process.env.ADMIN_EMAIL || FALLBACK_ADMIN_EMAIL).toLowerCase();
-
-  if (email !== adminEmail) return { ok: false };
-
-  return { ok: true, mode: "bearer", token };
 }
 
 async function sendReminderEmail(params: {
@@ -272,10 +226,8 @@ async function sendReminderEmail(params: {
 
 export async function GET(req: Request) {
   try {
-    const gate = await allowBearerOrCron(req);
-    if (!gate.ok) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const gate = await requireAdminOrCron(req);
+    if (!gate.ok) return NextResponse.json(gate.json, { status: gate.status });
 
     const url = new URL(req.url);
     const season = Number(url.searchParams.get("season") || String(DEFAULT_SEASON));

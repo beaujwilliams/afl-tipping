@@ -1,28 +1,15 @@
 import { NextResponse } from "next/server";
+import { requireAdminOrCron } from "@/lib/admin-auth";
 
 export const runtime = "nodejs";
-
-function getBearer(req: Request) {
-  const h = req.headers.get("authorization") || req.headers.get("Authorization");
-  if (!h) return null;
-  const m = h.match(/^Bearer\s+(.+)$/i);
-  return m ? m[1] : null;
-}
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const season = Number(url.searchParams.get("season") || "2026");
+  const gate = await requireAdminOrCron(req);
+  if (!gate.ok) return NextResponse.json(gate.json, { status: gate.status });
 
-  const secret = url.searchParams.get("secret") || "";
-  const cronSecret = process.env.CRON_SECRET || "";
-  const bearer = getBearer(req);
-
-  const okBySecret = cronSecret && secret && secret === cronSecret;
-  const okByBearer = !!bearer;
-
-  if (!okBySecret && !okByBearer) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const bearer = gate.mode === "bearer" ? gate.token : null;
 
   const origin = url.origin;
 
@@ -43,7 +30,8 @@ export async function GET(req: Request) {
   }
 
   // ✅ forward secret to cron-only endpoints
-  const secretQS = okBySecret ? `&secret=${encodeURIComponent(secret)}` : "";
+  const secretQS =
+    gate.mode === "cron" ? `&secret=${encodeURIComponent(gate.secret)}` : "";
 
   const prelock_reminders = await call(
     `/api/admin/send-prelock-reminders?season=${season}${secretQS}`

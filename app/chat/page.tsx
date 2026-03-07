@@ -23,8 +23,18 @@ type ProfileRow = {
   display_name: string | null;
 };
 
+type MembershipRoleRow = {
+  role: string | null;
+};
+
 const REACTIONS = ["👍", "😂", "😭", "❤️", "🔥", "😮"] as const;
-const ADMIN_EMAIL = "beau.j.williams@gmail.com";
+
+function isAdminRole(role: string | null | undefined) {
+  const r = String(role ?? "")
+    .trim()
+    .toLowerCase();
+  return r === "owner" || r === "admin";
+}
 
 function fmtMelbourne(iso: string) {
   const d = new Date(iso);
@@ -41,9 +51,7 @@ function fmtMelbourne(iso: string) {
 export default function ChatPage() {
   const [ready, setReady] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
-  const [email, setEmail] = useState<string | null>(null);
-
-  const isAdmin = (email ?? "").toLowerCase() === ADMIN_EMAIL.toLowerCase();
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const [messages, setMessages] = useState<MsgRow[]>([]);
   const [nameByUserId, setNameByUserId] = useState<Record<string, string>>({});
@@ -89,10 +97,28 @@ export default function ChatPage() {
       window.location.href = "/login";
       return;
     }
-    setUserId(s.session.user.id);
+    const currentUserId = s.session.user.id;
+    setUserId(currentUserId);
 
-    const { data: u } = await supabaseBrowser.auth.getUser();
-    setEmail(u.user?.email ?? null);
+    const { data: comp } = await supabaseBrowser
+      .from("competitions")
+      .select("id")
+      .limit(1)
+      .single();
+
+    if (comp?.id) {
+      const { data: membership } = await supabaseBrowser
+        .from("memberships")
+        .select("role")
+        .eq("competition_id", comp.id)
+        .eq("user_id", currentUserId)
+        .maybeSingle();
+
+      const role = (membership as MembershipRoleRow | null)?.role ?? null;
+      setIsAdmin(isAdminRole(role));
+    } else {
+      setIsAdmin(false);
+    }
 
     setReady(true);
   }

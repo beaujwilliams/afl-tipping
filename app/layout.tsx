@@ -7,11 +7,22 @@ import { usePathname } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import LogoutButton from "@/components/LogoutButton";
 
-const ADMIN_EMAIL = "beau.j.williams@gmail.com";
 const BUILD_LABEL = process.env.NEXT_PUBLIC_BUILD_LABEL || "build-2026-03-04";
+
+type MembershipRoleRow = {
+  role: string | null;
+};
+
+function isAdminRole(role: string | null | undefined) {
+  const r = String(role ?? "")
+    .trim()
+    .toLowerCase();
+  return r === "owner" || r === "admin";
+}
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const [email, setEmail] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const pathname = usePathname();
 
   const [unreadChat, setUnreadChat] = useState(0);
@@ -51,7 +62,37 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     async function load() {
       const { data } = await supabaseBrowser.auth.getUser();
       if (!mounted) return;
-      setEmail(data.user?.email ?? null);
+      const user = data.user;
+      setEmail(user?.email ?? null);
+
+      if (!user?.id) {
+        setIsAdmin(false);
+        return;
+      }
+
+      const { data: comp } = await supabaseBrowser
+        .from("competitions")
+        .select("id")
+        .limit(1)
+        .single();
+
+      if (!mounted) return;
+      if (!comp?.id) {
+        setIsAdmin(false);
+        return;
+      }
+
+      const { data: membership } = await supabaseBrowser
+        .from("memberships")
+        .select("role")
+        .eq("competition_id", comp.id)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (!mounted) return;
+
+      const role = (membership as MembershipRoleRow | null)?.role ?? null;
+      setIsAdmin(isAdminRole(role));
     }
 
     load();
@@ -80,8 +121,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     const t = setInterval(() => refreshChatActivity(), 30000);
     return () => clearInterval(t);
   }, [pathname, email]);
-
-  const isAdmin = (email ?? "").toLowerCase() === ADMIN_EMAIL;
 
   function NavItem({ href, label }: { href: string; label: string }) {
     const active =

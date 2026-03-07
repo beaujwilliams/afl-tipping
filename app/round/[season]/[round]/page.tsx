@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { UnpaidTag } from "@/components/UnpaidTag";
 
 type RoundRow = {
   id: string;
@@ -47,6 +48,7 @@ type TipBreakdownResponse = {
 type LockedTipPlayer = {
   user_id: string;
   display_name: string | null;
+  payment_status?: string | null;
   potential: number;
   picks: Record<string, { team: string; odds: number }>;
 };
@@ -57,6 +59,9 @@ type LockedTipsResponse = {
   round: number;
   players: LockedTipPlayer[];
 };
+
+type PaymentStatus = "paid" | "pending" | "waived";
+type MemberRole = "owner" | "admin" | "member";
 
 // Starter AFL venue mapping (brand / friendly names)
 const VENUE_MAP: Record<string, string> = {
@@ -137,6 +142,28 @@ function fmtOdds(n: number | null | undefined) {
   return num.toFixed(2);
 }
 
+function normalizePaymentStatus(status: string | null | undefined): PaymentStatus {
+  const s = String(status ?? "")
+    .trim()
+    .toLowerCase();
+  if (s === "paid" || s === "pending" || s === "waived") return s;
+  return "pending";
+}
+
+function normalizeRole(role: string | null | undefined): MemberRole {
+  const r = String(role ?? "")
+    .trim()
+    .toLowerCase();
+  if (r === "owner" || r === "admin" || r === "member") return r;
+  return "member";
+}
+
+function isMissingColumnError(message: string, columnName: string) {
+  const m = message.toLowerCase();
+  const col = columnName.toLowerCase();
+  return m.includes(col) && (m.includes("column") || m.includes("does not exist"));
+}
+
 export default function RoundPage() {
   const params = useParams<{ season: string; round: string }>();
   const season = Number(params.season);
@@ -151,6 +178,9 @@ export default function RoundPage() {
 
   const [tipsByMatchId, setTipsByMatchId] = useState<Record<string, string>>({});
   const [savingMatchId, setSavingMatchId] = useState<string | null>(null);
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>("pending");
+  const [paymentLocked, setPaymentLocked] = useState(false);
+  const [enforceUnpaidTipLock, setEnforceUnpaidTipLock] = useState(false);
 
   const [oddsByMatchId, setOddsByMatchId] = useState<Record<string, OddsRow>>({});
   const [oddsInfo, setOddsInfo] = useState<string>("");
@@ -243,28 +273,53 @@ export default function RoundPage() {
   async function saveTip(matchId: string, pickedTeam: string) {
     if (!compId || !userId) return;
     if (isLocked) return;
-
-    setSavingMatchId(matchId);
-
-    const { error } = await supabaseBrowser.from("tips").upsert(
-      {
-        match_id: matchId,
-        competition_id: compId,
-        user_id: userId,
-        picked_team: pickedTeam,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "match_id,user_id" }
-    );
-
-    setSavingMatchId(null);
-
-    if (error) {
-      alert(`Could not save tip: ${error.message}`);
+    if (paymentLocked) {
+      alert("Tipping is disabled while your payment status is pending.");
       return;
     }
 
-    setTipsByMatchId((prev) => ({ ...prev, [matchId]: pickedTeam }));
+    setSavingMatchId(matchId);
+    try {
+      const { data: session } = await supabaseBrowser.auth.getSession();
+      const token = session.session?.access_token ?? null;
+      if (!token) {
+        alert("Not authenticated. Please sign in again.");
+        return;
+      }
+
+      const res = await fetch("/api/tips/save", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          season,
+          round,
+          match_id: matchId,
+          picked_team: pickedTeam,
+        }),
+      });
+
+      const json = (await res.json().catch(() => null)) as
+        | { error?: string; code?: string; payment_status?: string }
+        | null;
+
+      if (!res.ok) {
+        if (json?.code === "unpaid_locked") {
+          setPaymentLocked(true);
+          if (json.payment_status) {
+            setPaymentStatus(normalizePaymentStatus(json.payment_status));
+          }
+        }
+        alert(json?.error ?? "Could not save tip.");
+        return;
+      }
+
+      setTipsByMatchId((prev) => ({ ...prev, [matchId]: pickedTeam }));
+    } finally {
+      setSavingMatchId(null);
+    }
   }
 
   function snapshotLabel(snapshot: string | null) {
@@ -370,6 +425,56 @@ export default function RoundPage() {
         return;
       }
       setCompId(comp.id);
+
+      let memberPaymentStatus: PaymentStatus = "pending";
+      let memberRole: MemberRole = "member";
+      let enforceLock = false;
+
+      const membership = await supabaseBrowser
+        .from("memberships")
+        .select("role, payment_status")
+        .eq("competition_id", comp.id)
+        .eq("user_id", auth.user.id)
+        .maybeSingle();
+
+      if (!membership.error && membership.data) {
+        memberRole = normalizeRole(
+          (membership.data as { role?: string | null } | null)?.role ?? null
+        );
+        memberPaymentStatus = normalizePaymentStatus(
+          (membership.data as { payment_status?: string | null } | null)?.payment_status ?? null
+        );
+      } else if (membership.error && isMissingColumnError(membership.error.message, "payment_status")) {
+        // Migration not applied yet: fail open to avoid blocking tipping unexpectedly.
+      } else if (membership.error) {
+        // Unknown lookup error: fail open for stability.
+      }
+
+      const compSettings = await supabaseBrowser
+        .from("competitions")
+        .select("enforce_unpaid_tip_lock")
+        .eq("id", comp.id)
+        .single();
+
+      if (!compSettings.error && compSettings.data) {
+        enforceLock = !!(
+          compSettings.data as { enforce_unpaid_tip_lock?: boolean | null }
+        ).enforce_unpaid_tip_lock;
+      } else if (
+        compSettings.error &&
+        isMissingColumnError(compSettings.error.message, "enforce_unpaid_tip_lock")
+      ) {
+        enforceLock = false;
+      }
+
+      setPaymentStatus(memberPaymentStatus);
+      setEnforceUnpaidTipLock(enforceLock);
+      setPaymentLocked(
+        enforceLock &&
+          memberRole !== "owner" &&
+          memberRole !== "admin" &&
+          memberPaymentStatus === "pending"
+      );
 
       const { data: r, error: rErr } = await supabaseBrowser
         .from("rounds")
@@ -719,6 +824,8 @@ export default function RoundPage() {
 
             {isLocked ? (
               <div style={{ fontWeight: 700, color: "crimson" }}>LOCKED</div>
+            ) : paymentLocked ? (
+              <div style={{ fontWeight: 700, color: "crimson" }}>PAYMENT LOCK</div>
             ) : (
               <div style={{ fontWeight: 700, color: "green" }}>OPEN</div>
             )}
@@ -740,6 +847,31 @@ export default function RoundPage() {
                 </div>
               );
             })}
+          </div>
+
+          {enforceUnpaidTipLock && !isLocked && (
+            <div style={{ marginTop: 10, fontSize: 12, opacity: 0.8 }}>
+              Payment status: <b>{paymentStatus}</b>
+            </div>
+          )}
+        </div>
+      )}
+
+      {paymentLocked && !isLocked && (
+        <div
+          style={{
+            marginTop: 12,
+            padding: 14,
+            borderRadius: 12,
+            border: "1px solid rgba(220, 38, 38, 0.35)",
+            background: "rgba(220, 38, 38, 0.08)",
+          }}
+        >
+          <div style={{ fontWeight: 900, color: "crimson" }}>
+            Tipping is locked until payment is marked paid or waived.
+          </div>
+          <div style={{ marginTop: 6, fontSize: 12, opacity: 0.9 }}>
+            Current payment status: <b>{paymentStatus}</b>. Contact an admin if this is incorrect.
           </div>
         </div>
       )}
@@ -797,8 +929,9 @@ export default function RoundPage() {
                       flexWrap: "wrap",
                     }}
                   >
-                    <div style={{ fontWeight: 900 }}>
-                      {p.display_name?.trim() ? p.display_name : "(no display name)"}
+                    <div style={{ fontWeight: 900, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      <span>{p.display_name?.trim() ? p.display_name : "(no display name)"}</span>
+                      <UnpaidTag paymentStatus={p.payment_status ?? null} />
                     </div>
                     <div style={{ fontSize: 12, opacity: 0.8 }}>
                       Potential: <b>{Number(p.potential ?? 0).toFixed(2)}</b>
@@ -875,7 +1008,7 @@ export default function RoundPage() {
 
               <div style={{ display: "flex", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
                 <button
-                  disabled={isLocked || saving}
+                  disabled={isLocked || saving || paymentLocked}
                   onClick={() => saveTip(g.id, g.home_team)}
                   style={{
                     flex: 1,
@@ -885,10 +1018,10 @@ export default function RoundPage() {
                     background: picked === g.home_team ? "#e6f3ff" : "white",
                     color: "#111",
                     fontWeight: picked === g.home_team ? 700 : 600,
-                    cursor: isLocked ? "not-allowed" : "pointer",
+                    cursor: isLocked || paymentLocked ? "not-allowed" : "pointer",
                     position: "relative",
                     textAlign: "left",
-                    opacity: isLocked || saving ? 0.65 : 1,
+                    opacity: isLocked || saving || paymentLocked ? 0.65 : 1,
                   }}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
@@ -901,7 +1034,7 @@ export default function RoundPage() {
                 </button>
 
                 <button
-                  disabled={isLocked || saving}
+                  disabled={isLocked || saving || paymentLocked}
                   onClick={() => saveTip(g.id, g.away_team)}
                   style={{
                     flex: 1,
@@ -911,10 +1044,10 @@ export default function RoundPage() {
                     background: picked === g.away_team ? "#e6f3ff" : "white",
                     color: "#111",
                     fontWeight: picked === g.away_team ? 700 : 600,
-                    cursor: isLocked ? "not-allowed" : "pointer",
+                    cursor: isLocked || paymentLocked ? "not-allowed" : "pointer",
                     position: "relative",
                     textAlign: "left",
-                    opacity: isLocked || saving ? 0.65 : 1,
+                    opacity: isLocked || saving || paymentLocked ? 0.65 : 1,
                   }}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
@@ -941,6 +1074,12 @@ export default function RoundPage() {
               {!saving && !isLocked && picked && (
                 <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
                   Saved: <b>{picked}</b>
+                </div>
+              )}
+
+              {!isLocked && paymentLocked && (
+                <div style={{ marginTop: 8, fontSize: 12, color: "crimson" }}>
+                  Payment pending — tipping disabled.
                 </div>
               )}
 

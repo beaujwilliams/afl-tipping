@@ -2,6 +2,12 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase-server";
 import { requireAdminOrCron } from "@/lib/admin-auth";
 
+function isMissingColumnError(message: string, columnName: string) {
+  const m = message.toLowerCase();
+  const col = columnName.toLowerCase();
+  return m.includes(col) && (m.includes("column") || m.includes("does not exist"));
+}
+
 async function getCompetitionId(supabase: ReturnType<typeof createServiceClient>, req: Request) {
   const url = new URL(req.url);
   const fromQS = url.searchParams.get("competition_id")?.trim();
@@ -54,6 +60,7 @@ type MemberOut = {
   email: string | null;
   display_name: string | null;
   role: string | null;
+  payment_status: string | null;
   joined_at: string;
 };
 
@@ -61,6 +68,7 @@ type MembershipRow = {
   user_id: string;
   created_at: string;
   role: string | null;
+  payment_status?: string | null;
 };
 
 export async function GET(req: Request) {
@@ -74,11 +82,29 @@ export async function GET(req: Request) {
     const admin = await requireAdminOrCron(req, { competitionId });
     if (!admin.ok) return NextResponse.json(admin.json, { status: admin.status });
 
-    const { data: members, error: mErr } = await supabase
+    let members: MembershipRow[] | null = null;
+    let mErr: { message: string } | null = null;
+    let hasPaymentStatus = true;
+
+    const withPayment = await supabase
       .from("memberships")
-      .select("user_id, created_at, role")
+      .select("user_id, created_at, role, payment_status")
       .eq("competition_id", competitionId)
       .order("created_at", { ascending: true });
+
+    if (withPayment.error && isMissingColumnError(withPayment.error.message, "payment_status")) {
+      hasPaymentStatus = false;
+      const fallback = await supabase
+        .from("memberships")
+        .select("user_id, created_at, role")
+        .eq("competition_id", competitionId)
+        .order("created_at", { ascending: true });
+      members = (fallback.data as MembershipRow[] | null) ?? null;
+      mErr = fallback.error ? { message: fallback.error.message } : null;
+    } else {
+      members = (withPayment.data as MembershipRow[] | null) ?? null;
+      mErr = withPayment.error ? { message: withPayment.error.message } : null;
+    }
 
     if (mErr) {
       return NextResponse.json(
@@ -130,6 +156,7 @@ export async function GET(req: Request) {
         email: p?.email ?? null,
         display_name: p?.display_name ?? null,
         role: m.role ?? null,
+        payment_status: hasPaymentStatus ? m.payment_status ?? "pending" : "pending",
         joined_at: String(m.created_at),
       };
     });
@@ -158,6 +185,7 @@ export async function PATCH(req: Request) {
       user_id?: string;
       display_name?: string;
       role?: string;
+      payment_status?: string;
     };
 
     const user_id = body?.user_id?.trim();
@@ -165,13 +193,23 @@ export async function PATCH(req: Request) {
       typeof body?.display_name === "string" ? body.display_name.trim() : undefined;
     const role =
       typeof body?.role === "string" ? body.role.trim().toLowerCase() : undefined;
+    const payment_status =
+      typeof body?.payment_status === "string"
+        ? body.payment_status.trim().toLowerCase()
+        : undefined;
 
     if (!user_id) return NextResponse.json({ error: "Missing user_id" }, { status: 400 });
-    if (display_name === undefined && role === undefined) {
+    if (display_name === undefined && role === undefined && payment_status === undefined) {
       return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
     }
     if (role !== undefined && !["owner", "admin", "member"].includes(role)) {
       return NextResponse.json({ error: "Invalid role" }, { status: 400 });
+    }
+    if (
+      payment_status !== undefined &&
+      !["paid", "pending", "waived"].includes(payment_status)
+    ) {
+      return NextResponse.json({ error: "Invalid payment_status" }, { status: 400 });
     }
     const competitionId = await getCompetitionId(supabase, req);
     if (!competitionId) {
@@ -197,10 +235,34 @@ export async function PATCH(req: Request) {
       }
     }
 
-    if (role !== undefined) {
+    if (role !== undefined || payment_status !== undefined) {
+      if (payment_status !== undefined) {
+        // Check column availability before attempting update so we can return a clearer error.
+        const check = await supabase
+          .from("memberships")
+          .select("payment_status")
+          .eq("competition_id", competitionId)
+          .limit(1);
+
+        if (check.error && isMissingColumnError(check.error.message, "payment_status")) {
+          return NextResponse.json(
+            {
+              error: "Database is missing memberships.payment_status",
+              details:
+                "Run db/migrations/20260307_memberships_payment_status.sql and redeploy.",
+            },
+            { status: 500 }
+          );
+        }
+      }
+
+      const update: { role?: string; payment_status?: string } = {};
+      if (role !== undefined) update.role = role;
+      if (payment_status !== undefined) update.payment_status = payment_status;
+
       const { error } = await supabase
         .from("memberships")
-        .update({ role })
+        .update(update)
         .eq("competition_id", competitionId)
         .eq("user_id", user_id);
 

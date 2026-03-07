@@ -18,7 +18,7 @@ Last updated: 2026-03-07
 | BL-002 | P0 | Done (2026-03-07) | Replace email-based admin checks with role-based authorization from `memberships` (owner/admin role) | More maintainable and supports multiple admins | M |
 | BL-020 | P0 | Done (2026-03-07) | Add forgot/reset password flow (request reset email, secure recovery route, set new password UI) | Prevents account lockouts and reduces admin support burden | S |
 | BL-004 | P0 | Done (2026-03-07) | Add player self-service profile page (display name, favorite team, read-only email, change-password link) | Removes admin bottleneck and improves user identity in chat/leaderboard | S |
-| BL-005 | P0 | Idea | Add payment tracking in admin (`paid`, `pending`, `waived`) and optional lockout for unpaid users | Aligns entry-fee rules with app behavior | M |
+| BL-005 | P0 | Done (2026-03-07) | Add payment tracking in admin (`paid`, `pending`, `waived`) and optional lockout for unpaid users | Aligns entry-fee rules with app behavior | M |
 | BL-006 | P1 | Done (2026-03-07) | Pre-lock reminders (T-3h) for members who have not tipped | Improves tip completion and engagement | M |
 | BL-007 | P1 | Idea | One-click admin reminders from round screen for users still missing tips | Faster operations on lock day | S |
 | BL-008 | P1 | Idea | Personal stats page per user (best round, upset wins, streak history, missed rounds) | Increases retention and competitiveness | M |
@@ -37,11 +37,11 @@ Last updated: 2026-03-07
 
 ## Suggested Next 5 to Build
 
-1. `BL-005` payment tracking
-2. `BL-007` one-click admin reminders
-3. `BL-019` username at sign-up
-4. `BL-008` personal stats page
-5. `BL-009` weekly recap module
+1. `BL-007` one-click admin reminders
+2. `BL-019` username at sign-up
+3. `BL-008` personal stats page
+4. `BL-009` weekly recap module
+5. `BL-010` tie-breaker policy + UI
 
 ## Notes
 

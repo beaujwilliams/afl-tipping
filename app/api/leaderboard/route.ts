@@ -32,6 +32,7 @@ type TipRow = {
 
 type MembershipRow = {
   user_id: string;
+  payment_status?: string | null;
 };
 
 type ProfileRow = {
@@ -65,6 +66,7 @@ type UserStats = {
 type LeaderboardRow = {
   user_id: string;
   display_name: string;
+  payment_status: string | null;
   rank: number;
   total_points: number;
   correct_tips: number;
@@ -84,6 +86,20 @@ function safeDisplayName(name: string | null | undefined, userId: string) {
   const n = String(name ?? "").trim();
   if (n) return n;
   return `${userId.slice(0, 8)}...`;
+}
+
+function isMissingColumnError(message: string, columnName: string) {
+  const m = message.toLowerCase();
+  const col = columnName.toLowerCase();
+  return m.includes(col) && (m.includes("column") || m.includes("does not exist"));
+}
+
+function normalizePaymentStatus(status: string | null | undefined) {
+  const s = String(status ?? "")
+    .trim()
+    .toLowerCase();
+  if (s === "paid" || s === "pending" || s === "waived") return s;
+  return null;
 }
 
 function round2(v: number) {
@@ -289,21 +305,40 @@ export async function GET(req: Request) {
       tipRows = (tips ?? []) as TipRow[];
     }
 
-    const { data: memberships, error: memErr } = await supabase
+    let memberships: MembershipRow[] = [];
+    const withPayment = await supabase
       .from("memberships")
-      .select("user_id")
+      .select("user_id, payment_status")
       .eq("competition_id", competitionId);
 
-    if (memErr) {
+    if (withPayment.error && isMissingColumnError(withPayment.error.message, "payment_status")) {
+      const fallback = await supabase
+        .from("memberships")
+        .select("user_id")
+        .eq("competition_id", competitionId);
+
+      if (fallback.error) {
+        return NextResponse.json(
+          { ok: false, error: "Failed to read memberships", details: fallback.error.message },
+          { status: 500 }
+        );
+      }
+
+      memberships = (fallback.data ?? []) as MembershipRow[];
+    } else if (withPayment.error) {
       return NextResponse.json(
-        { ok: false, error: "Failed to read memberships", details: memErr.message },
+        { ok: false, error: "Failed to read memberships", details: withPayment.error.message },
         { status: 500 }
       );
+    } else {
+      memberships = (withPayment.data ?? []) as MembershipRow[];
     }
 
-    const memberUserIds = new Set<string>(
-      ((memberships ?? []) as MembershipRow[]).map((m) => String(m.user_id))
-    );
+    const memberUserIds = new Set<string>(memberships.map((m) => String(m.user_id)));
+    const paymentStatusByUserId: Record<string, string | null> = {};
+    memberships.forEach((m) => {
+      paymentStatusByUserId[String(m.user_id)] = normalizePaymentStatus(m.payment_status ?? null);
+    });
 
     const tipUserIds = new Set<string>();
     const picksByUser = new Map<string, Map<string, string>>();
@@ -417,6 +452,7 @@ export async function GET(req: Request) {
       return {
         user_id: stats.user_id,
         display_name: stats.display_name,
+        payment_status: paymentStatusByUserId[stats.user_id] ?? null,
         total_points: Number(stats.total_points),
         correct_tips: Number(stats.correct_tips),
         tips_submitted: Number(stats.tips_submitted),
@@ -481,6 +517,7 @@ export async function GET(req: Request) {
       return {
         user_id: row.user_id,
         display_name: row.display_name,
+        payment_status: row.payment_status,
         rank: row.rank,
         total_points: round2(row.total_points),
         correct_tips: row.correct_tips,

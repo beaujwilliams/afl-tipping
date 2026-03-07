@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { UnpaidTag } from "@/components/UnpaidTag";
 
 type RoundRow = {
   id: string;
@@ -14,6 +15,7 @@ type RoundRow = {
 type MissingPlayer = {
   user_id: string;
   display_name: string | null;
+  payment_status?: string | null;
 };
 
 type TipStatusRound = {
@@ -339,8 +341,9 @@ export default function SeasonRoundsPage() {
                               background: "rgba(255,255,255,0.03)",
                             }}
                           >
-                            <div style={{ fontWeight: 800 }}>
-                              {p.display_name?.trim() ? p.display_name : "(no display name)"}
+                            <div style={{ fontWeight: 800, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                              <span>{p.display_name?.trim() ? p.display_name : "(no display name)"}</span>
+                              <UnpaidTag paymentStatus={p.payment_status ?? null} />
                             </div>
                             <div style={{ fontSize: 12, opacity: 0.65 }}>{shortId(p.user_id)}</div>
                           </div>

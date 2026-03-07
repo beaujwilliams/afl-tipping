@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { UnpaidTag } from "@/components/UnpaidTag";
 
 type MatchResultRow = {
   id: string;
@@ -27,6 +28,7 @@ type MatchResultRow = {
 type PlayerRoundScore = {
   user_id: string;
   display_name: string;
+  payment_status?: string | null;
   round_score: number;
   correct_tips: number;
   total_tips: number;
@@ -284,7 +286,10 @@ export default function RoundResultsDetailPage() {
                   >
                     <div style={{ fontWeight: 900, fontSize: 12, opacity: 0.7 }}>#{idx + 1}</div>
                     <div>
-                      <div style={{ fontWeight: 850, fontSize: 13 }}>{p.display_name}</div>
+                      <div style={{ fontWeight: 850, fontSize: 13, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        <span>{p.display_name}</span>
+                        <UnpaidTag paymentStatus={p.payment_status ?? null} />
+                      </div>
                       <div style={{ marginTop: 3, fontSize: 11, opacity: 0.75 }}>
                         Correct: {p.correct_tips}/{p.total_tips}
                       </div>

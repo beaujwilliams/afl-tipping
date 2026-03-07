@@ -17,6 +17,11 @@ type TipRow = {
   picked_team: string;
 };
 
+type MembershipRow = {
+  user_id: string;
+  payment_status?: string | null;
+};
+
 type OddsRow = {
   match_id: string;
   home_odds: number;
@@ -33,6 +38,20 @@ type ProfileRow = {
 function safeDisplayName(name: string | null | undefined) {
   const n = String(name ?? "").trim();
   return n || "(no display name)";
+}
+
+function isMissingColumnError(message: string, columnName: string) {
+  const m = message.toLowerCase();
+  const col = columnName.toLowerCase();
+  return m.includes(col) && (m.includes("column") || m.includes("does not exist"));
+}
+
+function normalizePaymentStatus(status: string | null | undefined) {
+  const s = String(status ?? "")
+    .trim()
+    .toLowerCase();
+  if (s === "paid" || s === "pending" || s === "waived") return s;
+  return null;
 }
 
 export async function GET(req: Request) {
@@ -130,6 +149,7 @@ export async function GET(req: Request) {
     const userIds = Array.from(new Set(tipRows.map((t) => String(t.user_id))));
 
     const nameByUserId: Record<string, string> = {};
+    const paymentStatusByUserId: Record<string, string | null> = {};
     if (userIds.length) {
       const { data: profiles, error: pErr } = await supabase
         .from("profiles")
@@ -143,6 +163,36 @@ export async function GET(req: Request) {
       (profiles as ProfileRow[] | null)?.forEach((p) => {
         nameByUserId[String(p.id)] = safeDisplayName(p.display_name);
       });
+
+      const withPayment = await supabase
+        .from("memberships")
+        .select("user_id, payment_status")
+        .eq("competition_id", comp.id)
+        .in("user_id", userIds);
+
+      if (withPayment.error && isMissingColumnError(withPayment.error.message, "payment_status")) {
+        const fallback = await supabase
+          .from("memberships")
+          .select("user_id")
+          .eq("competition_id", comp.id)
+          .in("user_id", userIds);
+
+        if (fallback.error) {
+          return NextResponse.json({ ok: false, error: fallback.error.message }, { status: 500 });
+        }
+
+        (fallback.data as MembershipRow[] | null)?.forEach((m) => {
+          paymentStatusByUserId[String(m.user_id)] = null;
+        });
+      } else if (withPayment.error) {
+        return NextResponse.json({ ok: false, error: withPayment.error.message }, { status: 500 });
+      } else {
+        (withPayment.data as MembershipRow[] | null)?.forEach((m) => {
+          paymentStatusByUserId[String(m.user_id)] = normalizePaymentStatus(
+            m.payment_status ?? null
+          );
+        });
+      }
     }
 
     let oddsQuery = supabase
@@ -184,6 +234,7 @@ export async function GET(req: Request) {
       {
         user_id: string;
         display_name: string;
+        payment_status: string | null;
         round_score: number;
         correct_tips: number;
         total_tips: number;
@@ -224,6 +275,7 @@ export async function GET(req: Request) {
         playersById[uid] = {
           user_id: uid,
           display_name: nameByUserId[uid] ?? "Anonymous tipster",
+          payment_status: paymentStatusByUserId[uid] ?? null,
           round_score: 0,
           correct_tips: 0,
           total_tips: 0,

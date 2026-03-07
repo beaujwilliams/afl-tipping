@@ -10,6 +10,7 @@ type RoundRow = {
 
 type MembershipRow = {
   user_id: string;
+  payment_status?: string | null;
 };
 
 type ProfileRow = {
@@ -26,6 +27,20 @@ type TipRow = {
   user_id: string;
   match_id: string;
 };
+
+function isMissingColumnError(message: string, columnName: string) {
+  const m = message.toLowerCase();
+  const col = columnName.toLowerCase();
+  return m.includes(col) && (m.includes("column") || m.includes("does not exist"));
+}
+
+function normalizePaymentStatus(status: string | null | undefined) {
+  const s = String(status ?? "")
+    .trim()
+    .toLowerCase();
+  if (s === "paid" || s === "pending" || s === "waived") return s;
+  return null;
+}
 
 export async function GET(req: Request) {
   try {
@@ -65,18 +80,44 @@ export async function GET(req: Request) {
     const roundIds = roundList.map((r) => r.id);
 
     // all members in comp
-    const { data: memberships, error: memErr } = await supabase
+    let members: MembershipRow[] = [];
+    const withPayment = await supabase
       .from("memberships")
-      .select("user_id")
+      .select("user_id, payment_status")
       .eq("competition_id", comp.id);
 
-    if (memErr) {
-      return NextResponse.json({ error: "Failed to read memberships", details: memErr.message }, { status: 500 });
+    if (withPayment.error && isMissingColumnError(withPayment.error.message, "payment_status")) {
+      const fallback = await supabase
+        .from("memberships")
+        .select("user_id")
+        .eq("competition_id", comp.id);
+
+      if (fallback.error) {
+        return NextResponse.json(
+          { error: "Failed to read memberships", details: fallback.error.message },
+          { status: 500 }
+        );
+      }
+
+      members = (fallback.data ?? []) as MembershipRow[];
+    } else if (withPayment.error) {
+      return NextResponse.json(
+        { error: "Failed to read memberships", details: withPayment.error.message },
+        { status: 500 }
+      );
+    } else {
+      members = (withPayment.data ?? []) as MembershipRow[];
     }
 
-    const members = (memberships ?? []) as MembershipRow[];
     const memberIds = members.map((m) => m.user_id);
     const memberSet = new Set(memberIds);
+    const paymentStatusByUserId = new Map<string, string | null>();
+    members.forEach((m) => {
+      paymentStatusByUserId.set(
+        String(m.user_id),
+        normalizePaymentStatus(m.payment_status ?? null)
+      );
+    });
 
     // profiles (for display names)
     const profileMap = new Map<string, string | null>();
@@ -145,15 +186,18 @@ export async function GET(req: Request) {
       const totalPlayers = memberIds.length;
       const missingCount = Math.max(0, totalPlayers - tippedCount);
 
-      let missing: Array<{ user_id: string; display_name: string | null }> | undefined = undefined;
+      let missing:
+        | Array<{ user_id: string; display_name: string | null; payment_status: string | null }>
+        | undefined = undefined;
 
       if (admin) {
-        const miss: Array<{ user_id: string; display_name: string | null }> = [];
+        const miss: Array<{ user_id: string; display_name: string | null; payment_status: string | null }> = [];
         for (const uid of memberIds) {
           if (!tipped.has(uid)) {
             miss.push({
               user_id: uid,
               display_name: profileMap.get(uid) ?? null,
+              payment_status: paymentStatusByUserId.get(uid) ?? null,
             });
           }
         }

@@ -4,9 +4,70 @@ import { createServiceClient } from "@/lib/supabase-server";
 type PlayerRow = {
   user_id: string;
   display_name: string | null;
+  payment_status?: string | null;
   potential: number;
   picks: Record<string, { team: string; odds: number }>;
 };
+
+type MembershipRow = {
+  user_id: string;
+  payment_status?: string | null;
+};
+
+function isMissingColumnError(message: string, columnName: string) {
+  const m = message.toLowerCase();
+  const col = columnName.toLowerCase();
+  return m.includes(col) && (m.includes("column") || m.includes("does not exist"));
+}
+
+function normalizePaymentStatus(status: string | null | undefined) {
+  const s = String(status ?? "")
+    .trim()
+    .toLowerCase();
+  if (s === "paid" || s === "pending" || s === "waived") return s;
+  return null;
+}
+
+async function getPaymentStatusByUserId(
+  supabase: ReturnType<typeof createServiceClient>,
+  competitionId: string,
+  userIds: string[]
+) {
+  const out: Record<string, string | null> = {};
+  if (!userIds.length) return out;
+
+  const withPayment = await supabase
+    .from("memberships")
+    .select("user_id, payment_status")
+    .eq("competition_id", competitionId)
+    .in("user_id", userIds);
+
+  if (withPayment.error && isMissingColumnError(withPayment.error.message, "payment_status")) {
+    const fallback = await supabase
+      .from("memberships")
+      .select("user_id")
+      .eq("competition_id", competitionId)
+      .in("user_id", userIds);
+
+    if (fallback.error) {
+      throw new Error(fallback.error.message);
+    }
+
+    (fallback.data as MembershipRow[] | null)?.forEach((m) => {
+      out[String(m.user_id)] = null;
+    });
+    return out;
+  }
+
+  if (withPayment.error) {
+    throw new Error(withPayment.error.message);
+  }
+
+  (withPayment.data as MembershipRow[] | null)?.forEach((m) => {
+    out[String(m.user_id)] = normalizePaymentStatus(m.payment_status ?? null);
+  });
+  return out;
+}
 
 export async function GET(req: Request) {
   try {
@@ -75,11 +136,25 @@ export async function GET(req: Request) {
         .maybeSingle();
 
       if (!cacheErr && cached?.players) {
+        const cachedPlayers = (cached.players as PlayerRow[]) ?? [];
+        const cachedUserIds = Array.from(
+          new Set(cachedPlayers.map((p) => String(p.user_id)))
+        );
+        const paymentStatusByUserId = await getPaymentStatusByUserId(
+          supabase,
+          String(comp.id),
+          cachedUserIds
+        );
+        const playersWithPayment = cachedPlayers.map((p) => ({
+          ...p,
+          payment_status: paymentStatusByUserId[String(p.user_id)] ?? null,
+        }));
+
         return NextResponse.json({
           ok: true,
           season,
           round,
-          players: cached.players,
+          players: playersWithPayment,
           cached: true,
           computed_at: cached.computed_at,
         });
@@ -151,6 +226,11 @@ export async function GET(req: Request) {
 
     // Collect user ids
     const userIds = Array.from(new Set(tipRows.map((t: any) => String(t.user_id))));
+    const paymentStatusByUserId = await getPaymentStatusByUserId(
+      supabase,
+      String(comp.id),
+      userIds
+    );
 
     // Load display names
     const { data: profs, error: pErr } = await supabase
@@ -215,6 +295,7 @@ export async function GET(req: Request) {
         byUser[uid] = {
           user_id: uid,
           display_name: nameById[uid] ?? null,
+          payment_status: paymentStatusByUserId[uid] ?? null,
           potential: 0,
           picks: {},
         };

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { ReactionPill } from "@/components/ReactionPill";
+import { UnpaidTag } from "@/components/UnpaidTag";
 
 type MsgRow = {
   id: string;
@@ -28,6 +29,11 @@ type MembershipRoleRow = {
   role: string | null;
 };
 
+type MembershipPaymentRow = {
+  user_id: string;
+  payment_status?: string | null;
+};
+
 const REACTIONS = ["👍", "😂", "😭", "❤️", "🔥", "😮"] as const;
 
 function isAdminRole(role: string | null | undefined) {
@@ -49,14 +55,30 @@ function fmtMelbourne(iso: string) {
   }).format(d);
 }
 
+function isMissingColumnError(message: string, columnName: string) {
+  const m = message.toLowerCase();
+  const col = columnName.toLowerCase();
+  return m.includes(col) && (m.includes("column") || m.includes("does not exist"));
+}
+
+function normalizePaymentStatus(status: string | null | undefined) {
+  const s = String(status ?? "")
+    .trim()
+    .toLowerCase();
+  if (s === "paid" || s === "pending" || s === "waived") return s;
+  return null;
+}
+
 export default function ChatPage() {
   const [ready, setReady] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const [competitionId, setCompetitionId] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
 
   const [messages, setMessages] = useState<MsgRow[]>([]);
   const [nameByUserId, setNameByUserId] = useState<Record<string, string>>({});
   const [favoriteTeamByUserId, setFavoriteTeamByUserId] = useState<Record<string, string>>({});
+  const [paymentStatusByUserId, setPaymentStatusByUserId] = useState<Record<string, string | null>>({});
   const [reactions, setReactions] = useState<ReactionRow[]>([]);
 
   const [text, setText] = useState("");
@@ -109,6 +131,8 @@ export default function ChatPage() {
       .single();
 
     if (comp?.id) {
+      setCompetitionId(String(comp.id));
+
       const { data: membership } = await supabaseBrowser
         .from("memberships")
         .select("role")
@@ -119,6 +143,7 @@ export default function ChatPage() {
       const role = (membership as MembershipRoleRow | null)?.role ?? null;
       setIsAdmin(isAdminRole(role));
     } else {
+      setCompetitionId(null);
       setIsAdmin(false);
     }
 
@@ -203,6 +228,34 @@ export default function ChatPage() {
 
       setNameByUserId((prev) => ({ ...prev, ...nameMap }));
       setFavoriteTeamByUserId((prev) => ({ ...prev, ...teamMap }));
+
+      if (competitionId) {
+        const paymentMap: Record<string, string | null> = {};
+
+        const withPayment = await supabaseBrowser
+          .from("memberships")
+          .select("user_id, payment_status")
+          .eq("competition_id", competitionId)
+          .in("user_id", userIds);
+
+        if (withPayment.error && isMissingColumnError(withPayment.error.message, "payment_status")) {
+          const fallback = await supabaseBrowser
+            .from("memberships")
+            .select("user_id")
+            .eq("competition_id", competitionId)
+            .in("user_id", userIds);
+
+          (fallback.data as MembershipPaymentRow[] | null)?.forEach((m) => {
+            paymentMap[String(m.user_id)] = null;
+          });
+        } else if (!withPayment.error) {
+          (withPayment.data as MembershipPaymentRow[] | null)?.forEach((m) => {
+            paymentMap[String(m.user_id)] = normalizePaymentStatus(m.payment_status ?? null);
+          });
+        }
+
+        setPaymentStatusByUserId((prev) => ({ ...prev, ...paymentMap }));
+      }
     }
 
     // Auto-scroll behavior:
@@ -237,7 +290,7 @@ export default function ChatPage() {
       setTimeout(() => scrollToBottom(false), 0);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready]);
+  }, [ready, competitionId]);
 
   // Realtime refresh
   useEffect(() => {
@@ -276,14 +329,16 @@ export default function ChatPage() {
       if (!seen[r.message_id][r.emoji]) seen[r.message_id][r.emoji] = new Set();
 
       const name = nameByUserId[r.user_id] ?? "Anonymous tipster";
-      if (seen[r.message_id][r.emoji].has(name)) continue;
+      const paymentStatus = paymentStatusByUserId[r.user_id] ?? null;
+      const display = paymentStatus === "pending" ? `${name} (unpaid)` : name;
+      if (seen[r.message_id][r.emoji].has(display)) continue;
 
-      seen[r.message_id][r.emoji].add(name);
-      out[r.message_id][r.emoji].push(name);
+      seen[r.message_id][r.emoji].add(display);
+      out[r.message_id][r.emoji].push(display);
     }
 
     return out;
-  }, [reactions, nameByUserId]);
+  }, [reactions, nameByUserId, paymentStatusByUserId]);
 
   async function send() {
     const body = text.trim();
@@ -385,6 +440,7 @@ export default function ChatPage() {
             {messages.map((m) => {
               const who = nameByUserId[m.user_id] || "Anonymous tipster";
               const team = favoriteTeamByUserId[m.user_id] ?? "";
+              const paymentStatus = paymentStatusByUserId[m.user_id] ?? null;
               const r = reactionsByMessage[m.id]?.counts ?? {};
               const mine = reactionsByMessage[m.id]?.mine ?? {};
               const canDelete = isAdmin || (userId && m.user_id === userId);
@@ -393,7 +449,10 @@ export default function ChatPage() {
                 <div key={m.id} style={{ paddingBottom: 10, borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 10, opacity: 0.9 }}>
                     <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
-                      <div style={{ fontWeight: 900 }}>{who}</div>
+                      <div style={{ fontWeight: 900, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        <span>{who}</span>
+                        <UnpaidTag paymentStatus={paymentStatus} />
+                      </div>
                       {team && (
                         <div
                           style={{
@@ -448,7 +507,7 @@ export default function ChatPage() {
                           onClick={() => toggleReaction(m.id, e)}
                           style={{
                             cursor: "pointer",
-                            // keep the “mine” highlight you had before
+                            // keep the "mine" highlight you had before
                             opacity: 1,
                             filter: mine[e] ? "brightness(1.08)" : "none",
                           }}

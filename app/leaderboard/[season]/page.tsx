@@ -3,10 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { UnpaidTag } from "@/components/UnpaidTag";
 
 type LeaderboardRow = {
   user_id: string;
   display_name: string;
+  payment_status?: string | null;
   rank: number;
   total_points: number;
   correct_tips: number;
@@ -443,7 +445,10 @@ export default function LeaderboardPage() {
                             }}
                             title={r.display_name}
                           >
-                            {r.display_name}
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                              <span>{r.display_name}</span>
+                              <UnpaidTag paymentStatus={r.payment_status ?? null} />
+                            </span>
                           </td>
                         )}
                         {showColumn("total_points") && (

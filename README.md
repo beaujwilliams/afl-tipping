@@ -34,3 +34,16 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Scheduled Pre-lock Reminders
+
+This repo includes a GitHub Actions workflow at `.github/workflows/prelock-reminders.yml` that runs every 30 minutes and calls:
+
+`/api/admin/send-prelock-reminders?season=2026&hours_before_lock=3&window_minutes=30`
+
+The endpoint only sends to members who have not tipped, and deduplicates sends per user/round.
+
+Required GitHub settings:
+
+- Secret: `CRON_SECRET` (must match production `CRON_SECRET`)
+- Optional repository variable: `SITE_URL` (defaults to `https://www.complicatedtips.com`)

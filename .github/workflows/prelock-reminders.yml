@@ -1,0 +1,34 @@
+name: Pre-lock reminders
+
+on:
+  schedule:
+    # Runs every 30 minutes; endpoint only sends within its 3h-before-lock window.
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+jobs:
+  send-reminders:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger pre-lock reminder endpoint
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SEASON: "2026"
+        run: |
+          set -euo pipefail
+
+          BASE_URL="${SITE_URL:-https://www.complicatedtips.com}"
+          BASE_URL="${BASE_URL%/}"
+
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "Missing GitHub secret: CRON_SECRET"
+            exit 1
+          fi
+
+          URL="${BASE_URL}/api/admin/send-prelock-reminders?season=${SEASON}&hours_before_lock=3&window_minutes=30"
+          echo "Calling ${URL}"
+
+          curl -fsS \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${URL}"

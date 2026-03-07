@@ -114,6 +114,9 @@ export async function requireAdminOrCron(
   }
 
   const token = getBearer(req);
+  if (cronSecret && token && token === cronSecret) {
+    return { ok: true, mode: "cron", secret: cronSecret };
+  }
   if (!token) {
     return { ok: false, status: 401, json: { error: "Missing Bearer token" } };
   }

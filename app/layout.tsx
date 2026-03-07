@@ -7,7 +7,7 @@ import { usePathname } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import LogoutButton from "@/components/LogoutButton";
 
-const BUILD_LABEL = process.env.NEXT_PUBLIC_BUILD_LABEL || "build-2026-03-04";
+const BUILD_LABEL = process.env.NEXT_PUBLIC_BUILD_LABEL || "local dev";
 
 type MembershipRoleRow = {
   role: string | null;

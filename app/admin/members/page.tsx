@@ -7,8 +7,19 @@ type Member = {
   user_id: string;
   email: string | null;
   display_name: string | null;
+  role: string | null;
   joined_at: string;
 };
+
+type MemberRole = "owner" | "admin" | "member";
+
+function normalizeRole(role: string | null | undefined): MemberRole {
+  const r = String(role ?? "")
+    .trim()
+    .toLowerCase();
+  if (r === "owner" || r === "admin" || r === "member") return r;
+  return "member";
+}
 
 function fmtMelbourne(iso: string) {
   const d = new Date(iso);
@@ -75,11 +86,12 @@ export default function AdminMembersPage() {
       const a = (m.display_name ?? "").toLowerCase();
       const b = (m.email ?? "").toLowerCase();
       const c = (m.user_id ?? "").toLowerCase();
-      return a.includes(needle) || b.includes(needle) || c.includes(needle);
+      const d = normalizeRole(m.role).toLowerCase();
+      return a.includes(needle) || b.includes(needle) || c.includes(needle) || d.includes(needle);
     });
   }, [members, q]);
 
-  async function saveName(user_id: string, display_name: string) {
+  async function saveMember(user_id: string, display_name: string, role: MemberRole) {
     if (!sessionToken) return;
     setSavingId(user_id);
     setMsg("");
@@ -90,7 +102,7 @@ export default function AdminMembersPage() {
         "Content-Type": "application/json",
         Authorization: `Bearer ${sessionToken}`,
       },
-      body: JSON.stringify({ user_id, display_name }),
+      body: JSON.stringify({ user_id, display_name, role }),
     });
 
     const json = await res.json().catch(() => ({}));
@@ -102,7 +114,11 @@ export default function AdminMembersPage() {
     }
 
     setMembers((prev) =>
-      prev.map((m) => (m.user_id === user_id ? { ...m, display_name: display_name.trim() || null } : m))
+      prev.map((m) =>
+        m.user_id === user_id
+          ? { ...m, display_name: display_name.trim() || null, role }
+          : m
+      )
     );
   }
 
@@ -155,7 +171,7 @@ export default function AdminMembersPage() {
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search name / email / id…"
+          placeholder="Search name / email / role / id…"
           style={{
             flex: 1,
             minWidth: 240,
@@ -184,7 +200,7 @@ export default function AdminMembersPage() {
                 key={m.user_id}
                 m={m}
                 idx={idx}
-                onSave={saveName}
+                onSave={saveMember}
                 onRemove={removeMember}
                 saving={savingId === m.user_id}
                 removing={removingId === m.user_id}
@@ -207,16 +223,18 @@ function MemberRow({
 }: {
   m: Member;
   idx: number;
-  onSave: (user_id: string, display_name: string) => void;
+  onSave: (user_id: string, display_name: string, role: MemberRole) => void;
   onRemove: (user_id: string) => void;
   saving: boolean;
   removing: boolean;
 }) {
   const [name, setName] = useState(m.display_name ?? "");
+  const [role, setRole] = useState<MemberRole>(normalizeRole(m.role));
 
   useEffect(() => {
     setName(m.display_name ?? "");
-  }, [m.display_name]);
+    setRole(normalizeRole(m.role));
+  }, [m.display_name, m.role]);
 
   return (
     <div
@@ -224,7 +242,7 @@ function MemberRow({
         padding: 14,
         borderTop: idx === 0 ? "none" : "1px solid #eee",
         display: "grid",
-        gridTemplateColumns: "1.3fr 1fr 160px",
+        gridTemplateColumns: "1.1fr 1.4fr 160px",
         gap: 12,
         alignItems: "center",
       }}
@@ -236,9 +254,12 @@ function MemberRow({
         <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>
           {m.email ?? `${m.user_id.slice(0, 8)}…`} • joined {fmtMelbourne(m.joined_at)}
         </div>
+        <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
+          Role: <b>{normalizeRole(m.role)}</b>
+        </div>
       </div>
 
-      <div style={{ display: "flex", gap: 8 }}>
+      <div style={{ display: "grid", gap: 8 }}>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -250,19 +271,36 @@ function MemberRow({
             border: "1px solid #ccc",
           }}
         />
-        <button
-          disabled={saving}
-          onClick={() => onSave(m.user_id, name)}
-          style={{
-            padding: "10px 12px",
-            borderRadius: 10,
-            border: "1px solid #ccc",
-            background: saving ? "#f5f5f5" : "white",
-            fontWeight: 800,
-          }}
-        >
-          {saving ? "Saving…" : "Save"}
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <select
+            value={role}
+            onChange={(e) => setRole(e.target.value as MemberRole)}
+            style={{
+              padding: "10px 12px",
+              borderRadius: 10,
+              border: "1px solid #ccc",
+              background: "white",
+              fontWeight: 700,
+            }}
+          >
+            <option value="owner">owner</option>
+            <option value="admin">admin</option>
+            <option value="member">member</option>
+          </select>
+          <button
+            disabled={saving}
+            onClick={() => onSave(m.user_id, name, role)}
+            style={{
+              padding: "10px 12px",
+              borderRadius: 10,
+              border: "1px solid #ccc",
+              background: saving ? "#f5f5f5" : "white",
+              fontWeight: 800,
+            }}
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
       </div>
 
       <div style={{ display: "flex", justifyContent: "flex-end" }}>

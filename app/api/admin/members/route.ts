@@ -53,7 +53,14 @@ type MemberOut = {
   user_id: string;
   email: string | null;
   display_name: string | null;
+  role: string | null;
   joined_at: string;
+};
+
+type MembershipRow = {
+  user_id: string;
+  created_at: string;
+  role: string | null;
 };
 
 export async function GET(req: Request) {
@@ -69,7 +76,7 @@ export async function GET(req: Request) {
 
     const { data: members, error: mErr } = await supabase
       .from("memberships")
-      .select("user_id, created_at")
+      .select("user_id, created_at, role")
       .eq("competition_id", competitionId)
       .order("created_at", { ascending: true });
 
@@ -80,7 +87,8 @@ export async function GET(req: Request) {
       );
     }
 
-    const userIds = (members ?? []).map((m: any) => String(m.user_id));
+    const memberRows = (members ?? []) as MembershipRow[];
+    const userIds = memberRows.map((m) => String(m.user_id));
     if (userIds.length === 0) {
       return NextResponse.json({ ok: true, competition_id: competitionId, members: [] });
     }
@@ -115,12 +123,13 @@ export async function GET(req: Request) {
     }
 
     // Build output; if profiles.email is missing, fetch auth emails with limited concurrency
-    let out: MemberOut[] = (members ?? []).map((m: any) => {
+    let out: MemberOut[] = memberRows.map((m) => {
       const p = profileMap.get(String(m.user_id));
       return {
         user_id: String(m.user_id),
         email: p?.email ?? null,
         display_name: p?.display_name ?? null,
+        role: m.role ?? null,
         joined_at: String(m.created_at),
       };
     });
@@ -148,12 +157,22 @@ export async function PATCH(req: Request) {
     const body = (await req.json().catch(() => null)) as null | {
       user_id?: string;
       display_name?: string;
+      role?: string;
     };
 
     const user_id = body?.user_id?.trim();
-    const display_name = (body?.display_name ?? "").trim();
+    const display_name =
+      typeof body?.display_name === "string" ? body.display_name.trim() : undefined;
+    const role =
+      typeof body?.role === "string" ? body.role.trim().toLowerCase() : undefined;
 
     if (!user_id) return NextResponse.json({ error: "Missing user_id" }, { status: 400 });
+    if (display_name === undefined && role === undefined) {
+      return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
+    }
+    if (role !== undefined && !["owner", "admin", "member"].includes(role)) {
+      return NextResponse.json({ error: "Invalid role" }, { status: 400 });
+    }
     const competitionId = await getCompetitionId(supabase, req);
     if (!competitionId) {
       return NextResponse.json({ error: "No competition found" }, { status: 404 });
@@ -161,19 +180,36 @@ export async function PATCH(req: Request) {
     const admin = await requireAdminOrCron(req, { competitionId });
     if (!admin.ok) return NextResponse.json(admin.json, { status: admin.status });
 
-    const { error } = await supabase.from("profiles").upsert(
-      {
-        id: user_id,
-        display_name: display_name.length ? display_name : null,
-      },
-      { onConflict: "id" }
-    );
-
-    if (error) {
-      return NextResponse.json(
-        { error: "Failed to save display name", details: error.message },
-        { status: 500 }
+    if (display_name !== undefined) {
+      const { error } = await supabase.from("profiles").upsert(
+        {
+          id: user_id,
+          display_name: display_name.length ? display_name : null,
+        },
+        { onConflict: "id" }
       );
+
+      if (error) {
+        return NextResponse.json(
+          { error: "Failed to save display name", details: error.message },
+          { status: 500 }
+        );
+      }
+    }
+
+    if (role !== undefined) {
+      const { error } = await supabase
+        .from("memberships")
+        .update({ role })
+        .eq("competition_id", competitionId)
+        .eq("user_id", user_id);
+
+      if (error) {
+        return NextResponse.json(
+          { error: "Failed to save role", details: error.message },
+          { status: 500 }
+        );
+      }
     }
 
     return NextResponse.json({ ok: true });

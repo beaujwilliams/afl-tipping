@@ -1,0 +1,35 @@
+name: Round recap email
+
+on:
+  schedule:
+    # Runs every 30 minutes; endpoint only sends once a round is complete
+    # and at least 48h after first game start.
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+jobs:
+  send-round-recap:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger round recap endpoint
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SEASON: "2026"
+        run: |
+          set -euo pipefail
+
+          BASE_URL="${SITE_URL:-https://www.complicatedtips.com}"
+          BASE_URL="${BASE_URL%/}"
+
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "Missing GitHub secret: CRON_SECRET"
+            exit 1
+          fi
+
+          URL="${BASE_URL}/api/admin/send-round-recap?season=${SEASON}&hours_after_first=48"
+          echo "Calling ${URL}"
+
+          curl -fsS \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${URL}"

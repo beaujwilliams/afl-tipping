@@ -1,9 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
-
-const CRON_SECRET = "q1w2e3r4t5y6u7i8o9p0";
 
 type RunResult = {
   ok?: boolean;
@@ -30,27 +28,44 @@ export default function AdminPage() {
     })();
   }, []);
 
-  const baseUrl = useMemo(() => {
-    if (typeof window === "undefined") return "";
-    return window.location.origin;
-  }, []);
+  async function getToken() {
+    const { data } = await supabaseBrowser.auth.getSession();
+    return data.session?.access_token ?? null;
+  }
+
+  async function callAdmin(path: string, token: string) {
+    const res = await fetch(path, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      cache: "no-store",
+    });
+
+    const text = await res.text();
+    try {
+      return { ok: res.ok, status: res.status, json: JSON.parse(text) as RunResult };
+    } catch {
+      return {
+        ok: false,
+        status: res.status,
+        json: { error: "Non-JSON response", bodyHead: text.slice(0, 500) } as RunResult,
+      };
+    }
+  }
 
   async function run(path: string) {
     setRunning(path);
     setLastResult(null);
 
     try {
-      const fullUrl = `${baseUrl}${path}&secret=${CRON_SECRET}`;
-      const res = await fetch(fullUrl, { method: "GET" });
-      const text = await res.text();
-
-      let json: RunResult;
-      try {
-        json = JSON.parse(text) as RunResult;
-      } catch {
-        json = { error: "Non-JSON response", bodyHead: text.slice(0, 500) };
+      const token = await getToken();
+      if (!token) {
+        setLastResult({ error: "Not authenticated." });
+        return;
       }
 
+      const { json } = await callAdmin(path, token);
       setLastResult(json);
     } catch (e: unknown) {
       setLastResult({ error: e instanceof Error ? e.message : "Unknown error" });
@@ -64,18 +79,20 @@ export default function AdminPage() {
     setLastResult(null);
 
     try {
-      const syncRes = await fetch(
-        `${baseUrl}/api/admin/sync-results?season=${season}&secret=${CRON_SECRET}`,
-        { method: "GET" }
-      );
-      const syncText = await syncRes.text();
-      const syncJson = JSON.parse(syncText);
+      const token = await getToken();
+      if (!token) {
+        setLastResult({ error: "Not authenticated." });
+        return;
+      }
 
-      if (!syncRes.ok) {
+      const sync = await callAdmin(`/api/admin/sync-results?season=${season}`, token);
+      const syncJson = sync.json;
+
+      if (!sync.ok) {
         setLastResult({
           ok: false,
           step: "sync-results",
-          status: syncRes.status,
+          status: sync.status,
           result: syncJson,
         });
         return;
@@ -100,19 +117,14 @@ export default function AdminPage() {
         return;
       }
 
-      const recalcRes = await fetch(
-        `${baseUrl}/api/admin/recalc-leaderboard?season=${season}&secret=${CRON_SECRET}`,
-        { method: "GET" }
-      );
-      const recalcText = await recalcRes.text();
-      const recalcJson = JSON.parse(recalcText);
+      const recalc = await callAdmin(`/api/admin/recalc-leaderboard?season=${season}`, token);
 
       setLastResult({
-        ok: recalcRes.ok,
+        ok: recalc.ok,
         season,
         action: "sync-results-and-recalc-leaderboard",
         syncResults: syncJson,
-        recalcLeaderboard: recalcJson,
+        recalcLeaderboard: recalc.json,
       });
     } catch (e: unknown) {
       setLastResult({ error: e instanceof Error ? e.message : "Unknown error" });

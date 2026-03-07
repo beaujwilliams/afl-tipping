@@ -14,7 +14,7 @@ Last updated: 2026-03-07
 
 | ID | Priority | Status | Idea | Why it helps | Effort |
 | --- | --- | --- | --- | --- | --- |
-| BL-001 | P0 | Idea | Remove hardcoded cron secret usage in admin UI and rely on secure server env + bearer auth only | Reduces security risk and accidental secret leakage | S |
+| BL-001 | P0 | Done (2026-03-07) | Remove hardcoded cron secret usage in admin UI and rely on secure server env + bearer auth only | Reduces security risk and accidental secret leakage | S |
 | BL-002 | P0 | Idea | Replace email-based admin checks with role-based authorization from `memberships` (owner/admin role) | More maintainable and supports multiple admins | M |
 | BL-004 | P0 | Idea | Add player self-service profile page (display name, maybe favorite team) | Removes admin bottleneck and improves user identity in chat/leaderboard | S |
 | BL-005 | P0 | Idea | Add payment tracking in admin (`paid`, `pending`, `waived`) and optional lockout for unpaid users | Aligns entry-fee rules with app behavior | M |

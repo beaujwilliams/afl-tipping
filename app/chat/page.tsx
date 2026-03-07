@@ -21,6 +21,7 @@ type ReactionRow = {
 type ProfileRow = {
   id: string;
   display_name: string | null;
+  favorite_team?: string | null;
 };
 
 type MembershipRoleRow = {
@@ -55,6 +56,7 @@ export default function ChatPage() {
 
   const [messages, setMessages] = useState<MsgRow[]>([]);
   const [nameByUserId, setNameByUserId] = useState<Record<string, string>>({});
+  const [favoriteTeamByUserId, setFavoriteTeamByUserId] = useState<Record<string, string>>({});
   const [reactions, setReactions] = useState<ReactionRow[]>([]);
 
   const [text, setText] = useState("");
@@ -171,14 +173,36 @@ export default function ChatPage() {
     const userIds = Array.from(nameUserIds);
 
     if (userIds.length) {
-      const { data: profs } = await supabaseBrowser.from("profiles").select("id, display_name").in("id", userIds);
+      let profRows: ProfileRow[] = [];
 
-      const map: Record<string, string> = {};
-      (profs as ProfileRow[] | null)?.forEach((p) => {
+      const withFavorite = await supabaseBrowser
+        .from("profiles")
+        .select("id, display_name, favorite_team")
+        .in("id", userIds);
+
+      if (withFavorite.error) {
+        const fallback = await supabaseBrowser
+          .from("profiles")
+          .select("id, display_name")
+          .in("id", userIds);
+        profRows = (fallback.data as ProfileRow[] | null) ?? [];
+      } else {
+        profRows = (withFavorite.data as ProfileRow[] | null) ?? [];
+      }
+
+      const nameMap: Record<string, string> = {};
+      const teamMap: Record<string, string> = {};
+
+      profRows.forEach((p) => {
+        const uid = String(p.id);
         const name = (p.display_name ?? "").trim();
-        if (name) map[String(p.id)] = name;
+        const team = (p.favorite_team ?? "").trim();
+        if (name) nameMap[uid] = name;
+        if (team) teamMap[uid] = team;
       });
-      setNameByUserId((prev) => ({ ...prev, ...map }));
+
+      setNameByUserId((prev) => ({ ...prev, ...nameMap }));
+      setFavoriteTeamByUserId((prev) => ({ ...prev, ...teamMap }));
     }
 
     // Auto-scroll behavior:
@@ -360,6 +384,7 @@ export default function ChatPage() {
           <div style={{ display: "grid", gap: 12 }}>
             {messages.map((m) => {
               const who = nameByUserId[m.user_id] || "Anonymous tipster";
+              const team = favoriteTeamByUserId[m.user_id] ?? "";
               const r = reactionsByMessage[m.id]?.counts ?? {};
               const mine = reactionsByMessage[m.id]?.mine ?? {};
               const canDelete = isAdmin || (userId && m.user_id === userId);
@@ -369,6 +394,22 @@ export default function ChatPage() {
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 10, opacity: 0.9 }}>
                     <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
                       <div style={{ fontWeight: 900 }}>{who}</div>
+                      {team && (
+                        <div
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 800,
+                            letterSpacing: 0.2,
+                            padding: "3px 7px",
+                            borderRadius: 999,
+                            border: "1px solid rgba(255,255,255,0.22)",
+                            background: "rgba(255,255,255,0.06)",
+                            lineHeight: 1.1,
+                          }}
+                        >
+                          {team}
+                        </div>
+                      )}
                       <div style={{ fontSize: 12, opacity: 0.75 }}>{fmtMelbourne(m.created_at)}</div>
                     </div>
 

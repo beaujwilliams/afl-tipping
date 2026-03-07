@@ -16,7 +16,7 @@ function formatMelbourneNow() {
 const require = createRequire(import.meta.url);
 const nextBin = require.resolve("next/dist/bin/next");
 
-const label = process.env.NEXT_PUBLIC_BUILD_LABEL || formatMelbourneNow();
+const label = formatMelbourneNow();
 const env = {
   ...process.env,
   NEXT_PUBLIC_BUILD_LABEL: label,

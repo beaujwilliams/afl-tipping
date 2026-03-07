@@ -438,16 +438,27 @@ export default function LeaderboardPage() {
                               padding: "12px",
                               borderTop: "1px solid var(--border)",
                               fontWeight: 700,
-                              whiteSpace: "nowrap",
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
                               ...stickyColumnStyle(2, false),
                             }}
-                            title={r.display_name}
+                            title={
+                              r.payment_status === "pending"
+                                ? `${r.display_name} (unpaid)`
+                                : r.display_name
+                            }
                           >
-                            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                              <span>{r.display_name}</span>
-                              <UnpaidTag paymentStatus={r.payment_status ?? null} />
+                            <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                              <UnpaidTag paymentStatus={r.payment_status ?? null} compact={isMobile} />
+                              <span
+                                style={{
+                                  minWidth: 0,
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                  display: "block",
+                                }}
+                              >
+                                {r.display_name}
+                              </span>
                             </span>
                           </td>
                         )}

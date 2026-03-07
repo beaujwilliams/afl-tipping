@@ -1,5 +1,6 @@
 type UnpaidTagProps = {
   paymentStatus?: string | null;
+  compact?: boolean;
 };
 
 function normalizePaymentStatus(status: string | null | undefined) {
@@ -10,13 +11,14 @@ function normalizePaymentStatus(status: string | null | undefined) {
   return null;
 }
 
-export function UnpaidTag({ paymentStatus }: UnpaidTagProps) {
+export function UnpaidTag({ paymentStatus, compact = false }: UnpaidTagProps) {
   if (normalizePaymentStatus(paymentStatus) !== "pending") return null;
 
   return (
     <span
+      title="unpaid"
       style={{
-        fontSize: 10,
+        fontSize: compact ? 9 : 10,
         fontWeight: 900,
         letterSpacing: 0.25,
         textTransform: "uppercase",
@@ -24,11 +26,12 @@ export function UnpaidTag({ paymentStatus }: UnpaidTagProps) {
         background: "rgba(180, 35, 24, 0.12)",
         border: "1px solid rgba(180, 35, 24, 0.35)",
         borderRadius: 999,
-        padding: "2px 7px",
+        padding: compact ? "2px 5px" : "2px 7px",
         lineHeight: 1.1,
+        flexShrink: 0,
       }}
     >
-      unpaid
+      {compact ? "unp" : "unpaid"}
     </span>
   );
 }

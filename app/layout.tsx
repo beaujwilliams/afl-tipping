@@ -9,17 +9,6 @@ import LogoutButton from "@/components/LogoutButton";
 
 const BUILD_LABEL = process.env.NEXT_PUBLIC_BUILD_LABEL || "local dev";
 
-type MembershipRoleRow = {
-  role: string | null;
-};
-
-function isAdminRole(role: string | null | undefined) {
-  const r = String(role ?? "")
-    .trim()
-    .toLowerCase();
-  return r === "owner" || r === "admin";
-}
-
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const [email, setEmail] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -70,29 +59,21 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         return;
       }
 
-      const { data: comp } = await supabaseBrowser
-        .from("competitions")
-        .select("id")
+      const { data: adminMembership, error: adminErr } = await supabaseBrowser
+        .from("memberships")
+        .select("user_id")
+        .eq("user_id", user.id)
+        .in("role", ["owner", "admin"])
         .limit(1)
-        .single();
+        .maybeSingle();
 
       if (!mounted) return;
-      if (!comp?.id) {
+      if (adminErr) {
         setIsAdmin(false);
         return;
       }
 
-      const { data: membership } = await supabaseBrowser
-        .from("memberships")
-        .select("role")
-        .eq("competition_id", comp.id)
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      if (!mounted) return;
-
-      const role = (membership as MembershipRoleRow | null)?.role ?? null;
-      setIsAdmin(isAdminRole(role));
+      setIsAdmin(!!adminMembership);
     }
 
     load();
@@ -122,13 +103,23 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     return () => clearInterval(t);
   }, [pathname, email]);
 
-  function NavItem({ href, label }: { href: string; label: string }) {
+  function NavItem({
+    href,
+    label,
+    tone = "default",
+  }: {
+    href: string;
+    label: string;
+    tone?: "default" | "danger";
+  }) {
     const active =
       href === "/"
         ? pathname === "/"
         : (pathname ?? "").startsWith(href);
 
     const isChat = href === "/chat";
+
+    const isDanger = tone === "danger";
 
     return (
       <Link
@@ -139,8 +130,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           fontSize: 15,
           fontWeight: 700,
           textDecoration: "none",
-          background: active ? "rgba(255,255,255,0.08)" : "transparent",
-          color: "inherit",
+          background: active
+            ? isDanger
+              ? "rgba(239, 68, 68, 0.12)"
+              : "rgba(255,255,255,0.08)"
+            : "transparent",
+          color: isDanger ? "rgb(185, 28, 28)" : "inherit",
           display: "inline-flex",
           alignItems: "center",
           gap: 6,
@@ -217,7 +212,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <NavItem href="/chat" label="Chat" />
               <NavItem href="/info" label="Rules" />
               {email && <NavItem href="/profile" label="Profile" />}
-              {isAdmin && <NavItem href="/admin" label="Admin" />}
+              {isAdmin && <NavItem href="/admin" label="Admin" tone="danger" />}
 
               <div style={{ flex: 1 }} />
 

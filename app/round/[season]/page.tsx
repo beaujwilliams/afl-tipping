@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { UnpaidTag } from "@/components/UnpaidTag";
+import { ChampionCrown } from "@/components/ChampionCrown";
 
 type RoundRow = {
   id: string;
@@ -32,6 +33,7 @@ type TipStatusResponse = {
   ok: boolean;
   season: number;
   competition_id: string;
+  reigning_champion_user_id?: string | null;
   admin: boolean;
   rounds: TipStatusRound[];
 };
@@ -73,6 +75,7 @@ export default function SeasonRoundsPage() {
   // tip-status payload
   const [statusByRoundId, setStatusByRoundId] = useState<Record<string, TipStatusRound>>({});
   const [isAdmin, setIsAdmin] = useState(false);
+  const [reigningChampionUserId, setReigningChampionUserId] = useState<string | null>(null);
 
   // per-round expand/collapse for "who hasn't tipped"
   const [openRoundId, setOpenRoundId] = useState<string | null>(null);
@@ -157,6 +160,7 @@ export default function SeasonRoundsPage() {
     if (!ready || !sessionToken) return;
 
     (async () => {
+      setReigningChampionUserId(null);
       try {
         const res = await fetch(`/api/round-tip-status?season=${encodeURIComponent(String(season))}`, {
           headers: { Authorization: `Bearer ${sessionToken}` },
@@ -171,6 +175,9 @@ export default function SeasonRoundsPage() {
         }
 
         setIsAdmin(!!json.admin);
+        setReigningChampionUserId(
+          typeof json.reigning_champion_user_id === "string" ? json.reigning_champion_user_id : null
+        );
 
         const map: Record<string, TipStatusRound> = {};
         (json.rounds ?? []).forEach((r) => {
@@ -342,6 +349,7 @@ export default function SeasonRoundsPage() {
                             }}
                           >
                             <div style={{ fontWeight: 800, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                              <ChampionCrown isChampion={p.user_id === reigningChampionUserId} />
                               <span>{p.display_name?.trim() ? p.display_name : "(no display name)"}</span>
                               <UnpaidTag paymentStatus={p.payment_status ?? null} />
                             </div>

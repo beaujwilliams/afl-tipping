@@ -36,6 +36,18 @@ type PaymentSettingsResponse = {
   details?: string;
 };
 
+type ChampionSettingsResponse = {
+  ok?: boolean;
+  reigning_champion_user_id?: string | null;
+  override_user_id?: string | null;
+  source?: "override" | "season_champion" | "none";
+  champion_season?: number | null;
+  error?: string;
+  details?: string;
+};
+
+const CURRENT_SEASON = 2026;
+
 function normalizeRole(role: string | null | undefined): MemberRole {
   const r = String(role ?? "")
     .trim()
@@ -63,6 +75,17 @@ function fmtMelbourne(iso: string) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(d);
+}
+
+function shortId(id: string) {
+  return `${id.slice(0, 8)}…`;
+}
+
+function normalizeChampionSource(source: string | null | undefined): "override" | "season_champion" | "none" {
+  if (source === "override" || source === "season_champion" || source === "none") {
+    return source;
+  }
+  return "none";
 }
 
 function roleChipStyle(role: MemberRole): React.CSSProperties {
@@ -127,6 +150,14 @@ export default function AdminMembersPage() {
   const [enforceUnpaidTipLock, setEnforceUnpaidTipLock] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
 
+  const [championResolvedUserId, setChampionResolvedUserId] = useState<string | null>(null);
+  const [championOverrideUserId, setChampionOverrideUserId] = useState<string | null>(null);
+  const [savedChampionOverrideUserId, setSavedChampionOverrideUserId] = useState<string | null>(null);
+  const [championSource, setChampionSource] = useState<"override" | "season_champion" | "none">("none");
+  const [championSeason, setChampionSeason] = useState<number | null>(null);
+  const [championMsg, setChampionMsg] = useState("");
+  const [savingChampion, setSavingChampion] = useState(false);
+
   function buildDraft(rows: Member[]) {
     const out: Record<string, RowDraft> = {};
     rows.forEach((m) => {
@@ -168,9 +199,40 @@ export default function AdminMembersPage() {
     return !!json?.enforce_unpaid_tip_lock;
   }
 
+  function applyChampionResponse(json: ChampionSettingsResponse | null) {
+    const resolvedUserId =
+      typeof json?.reigning_champion_user_id === "string" ? json.reigning_champion_user_id : null;
+    const overrideUserId = typeof json?.override_user_id === "string" ? json.override_user_id : null;
+    const source = normalizeChampionSource(json?.source);
+    const seasonValue =
+      typeof json?.champion_season === "number" && Number.isFinite(json.champion_season)
+        ? json.champion_season
+        : null;
+
+    setChampionResolvedUserId(resolvedUserId);
+    setChampionOverrideUserId(overrideUserId);
+    setSavedChampionOverrideUserId(overrideUserId);
+    setChampionSource(source);
+    setChampionSeason(seasonValue);
+  }
+
+  async function fetchChampionSettings(token: string) {
+    const res = await fetch(`/api/admin/champion-settings?season=${CURRENT_SEASON}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    });
+    const json = (await res.json().catch(() => null)) as ChampionSettingsResponse | null;
+    if (!res.ok) {
+      const detail = json?.details ? `: ${json.details}` : "";
+      throw new Error((json?.error ?? "Failed to load champion settings") + detail);
+    }
+    return json;
+  }
+
   async function load() {
     setLoading(true);
     setMsg("");
+    setChampionMsg("");
 
     const { data: sessionData } = await supabaseBrowser.auth.getSession();
     const token = sessionData.session?.access_token ?? null;
@@ -189,6 +251,13 @@ export default function AdminMembersPage() {
       setMembers(rows);
       setDraftById(buildDraft(rows));
       setEnforceUnpaidTipLock(enforce);
+
+      try {
+        const champion = await fetchChampionSettings(token);
+        applyChampionResponse(champion);
+      } catch (e: unknown) {
+        setChampionMsg(e instanceof Error ? e.message : "Failed to load champion settings.");
+      }
     } catch (e: unknown) {
       setMsg(e instanceof Error ? e.message : "Failed to load members.");
     } finally {
@@ -329,6 +398,13 @@ export default function AdminMembersPage() {
       delete next[userId];
       return next;
     });
+
+    try {
+      const champion = await fetchChampionSettings(sessionToken);
+      applyChampionResponse(champion);
+    } catch (e: unknown) {
+      setChampionMsg(e instanceof Error ? e.message : "Failed to refresh champion settings.");
+    }
   }
 
   async function saveSettings(nextValue: boolean) {
@@ -356,6 +432,52 @@ export default function AdminMembersPage() {
 
     setEnforceUnpaidTipLock(nextValue);
   }
+
+  async function saveChampionOverride() {
+    if (!sessionToken) return;
+
+    setSavingChampion(true);
+    setChampionMsg("");
+
+    const res = await fetch(`/api/admin/champion-settings?season=${CURRENT_SEASON}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${sessionToken}`,
+      },
+      body: JSON.stringify({
+        reigning_champion_override_user_id: championOverrideUserId,
+      }),
+    });
+
+    const json = (await res.json().catch(() => null)) as ChampionSettingsResponse | null;
+    setSavingChampion(false);
+
+    if (!res.ok) {
+      const detail = json?.details ? `: ${json.details}` : "";
+      setChampionMsg((json?.error ?? "Failed to save champion settings") + detail);
+      return;
+    }
+
+    applyChampionResponse(json);
+  }
+
+  const championDirty = championOverrideUserId !== savedChampionOverrideUserId;
+
+  const championNameByUserId = useMemo(() => {
+    const out: Record<string, string> = {};
+    members.forEach((m) => {
+      const draftName = draftById[m.user_id]?.display_name?.trim() ?? "";
+      const memberName = m.display_name?.trim() ?? "";
+      const email = m.email?.trim() ?? "";
+      out[m.user_id] = draftName || memberName || email || shortId(m.user_id);
+    });
+    return out;
+  }, [members, draftById]);
+
+  const championResolvedLabel = championResolvedUserId
+    ? championNameByUserId[championResolvedUserId] ?? shortId(championResolvedUserId)
+    : "None";
 
   const cardStyle: React.CSSProperties = {
     border: "1px solid var(--border)",
@@ -410,6 +532,79 @@ export default function AdminMembersPage() {
             {savingSettings ? "Saving…" : enforceUnpaidTipLock ? "ON (Click to disable)" : "OFF (Click to enable)"}
           </button>
         </div>
+      </div>
+
+      <div style={{ marginTop: 12, ...cardStyle }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ minWidth: 260 }}>
+            <div style={{ fontWeight: 800 }}>Reigning champion</div>
+            <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75 }}>
+              Controls the crown shown next to member names across leaderboard, results, rounds and chat.
+            </div>
+            <div style={{ marginTop: 8, fontSize: 12 }}>
+              Current: <b>{championResolvedLabel}</b>{" "}
+              {championSource === "override" && <span style={{ opacity: 0.75 }}>(manual override)</span>}
+              {championSource === "season_champion" && championSeason !== null && (
+                <span style={{ opacity: 0.75 }}>(season {championSeason} winner)</span>
+              )}
+              {championSource === "none" && <span style={{ opacity: 0.75 }}>(not set)</span>}
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start" }}>
+            <select
+              value={championOverrideUserId ?? ""}
+              onChange={(e) => setChampionOverrideUserId(e.target.value || null)}
+              style={{
+                minWidth: 280,
+                maxWidth: 360,
+                padding: "10px 12px",
+                borderRadius: 10,
+                border: "1px solid #ccc",
+                background: "white",
+                fontWeight: 700,
+              }}
+            >
+              <option value="">Auto (use previous season champion)</option>
+              {members.map((m) => (
+                <option key={m.user_id} value={m.user_id}>
+                  {championNameByUserId[m.user_id] ?? shortId(m.user_id)}
+                </option>
+              ))}
+            </select>
+
+            <button
+              type="button"
+              disabled={savingChampion || !championDirty}
+              onClick={saveChampionOverride}
+              style={{
+                padding: "10px 12px",
+                borderRadius: 10,
+                border: "1px solid #ccc",
+                background: "white",
+                fontWeight: 900,
+                cursor: savingChampion || !championDirty ? "not-allowed" : "pointer",
+                opacity: savingChampion || !championDirty ? 0.7 : 1,
+              }}
+            >
+              {savingChampion ? "Saving…" : "Save champion"}
+            </button>
+          </div>
+        </div>
+
+        {championMsg && (
+          <div
+            style={{
+              marginTop: 10,
+              border: "1px solid #f3c",
+              borderRadius: 10,
+              padding: "8px 10px",
+              fontSize: 12,
+            }}
+          >
+            {championMsg}
+          </div>
+        )}
       </div>
 
       <div
@@ -550,6 +745,21 @@ export default function AdminMembersPage() {
                             >
                               {draft.payment_status}
                             </span>
+                            {m.user_id === championResolvedUserId && (
+                              <span
+                                style={{
+                                  fontSize: 11,
+                                  fontWeight: 800,
+                                  borderRadius: 999,
+                                  padding: "2px 8px",
+                                  background: "rgba(245, 158, 11, 0.15)",
+                                  color: "rgb(146, 64, 14)",
+                                  border: "1px solid rgba(245, 158, 11, 0.35)",
+                                }}
+                              >
+                                champion
+                              </span>
+                            )}
                           </div>
                         </td>
                         <td style={{ padding: 12, borderTop: "1px solid var(--border)", fontSize: 13 }}>

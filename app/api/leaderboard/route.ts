@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase-server";
+import { resolveReigningChampion } from "@/lib/reigning-champion";
 
 type RoundRow = {
   id: string;
@@ -150,6 +151,11 @@ export async function GET(req: Request) {
     }
 
     const competitionId = String(comp.id);
+    const reigningChampion = await resolveReigningChampion({
+      competitionId,
+      season,
+      supabase,
+    });
 
     const { data: rounds, error: rErr } = await supabase
       .from("rounds")
@@ -538,6 +544,7 @@ export async function GET(req: Request) {
       ok: true,
       season,
       competition_id: competitionId,
+      reigning_champion_user_id: reigningChampion.reigning_champion_user_id,
       latest_scored_round: latestScoredRound,
       previous_round_for_movement: previousRoundForMovement,
       matches_scored: scoredMatches.length,

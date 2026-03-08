@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { UnpaidTag } from "@/components/UnpaidTag";
+import { ChampionCrown } from "@/components/ChampionCrown";
 
 type LeaderboardRow = {
   user_id: string;
@@ -27,6 +28,7 @@ type LeaderboardRow = {
 type LeaderboardResponse = {
   ok: boolean;
   season: number;
+  reigning_champion_user_id?: string | null;
   latest_scored_round: number | null;
   previous_round_for_movement: number | null;
   matches_scored: number;
@@ -132,6 +134,7 @@ export default function LeaderboardPage() {
   const [latestScoredRound, setLatestScoredRound] = useState<number | null>(null);
   const [previousRoundForMovement, setPreviousRoundForMovement] = useState<number | null>(null);
   const [matchesScored, setMatchesScored] = useState(0);
+  const [reigningChampionUserId, setReigningChampionUserId] = useState<string | null>(null);
   const [msg, setMsg] = useState("Loading...");
   const [sortBy, setSortBy] = useState<SortKey>("total_points");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
@@ -159,6 +162,11 @@ export default function LeaderboardPage() {
       }
 
       setRows(Array.isArray(json.rows) ? json.rows : []);
+      setReigningChampionUserId(
+        typeof json.reigning_champion_user_id === "string"
+          ? json.reigning_champion_user_id
+          : null
+      );
       setLatestScoredRound(json.latest_scored_round ?? null);
       setPreviousRoundForMovement(json.previous_round_for_movement ?? null);
       setMatchesScored(Number(json.matches_scored ?? 0));
@@ -452,6 +460,7 @@ export default function LeaderboardPage() {
                             }
                           >
                             <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                              <ChampionCrown isChampion={r.user_id === reigningChampionUserId} />
                               <UnpaidTag paymentStatus={r.payment_status ?? null} compact={isMobile} />
                               <span
                                 style={{

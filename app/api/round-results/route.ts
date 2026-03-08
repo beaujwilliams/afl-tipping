@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase-server";
+import { resolveReigningChampion } from "@/lib/reigning-champion";
 
 type MatchRow = {
   id: string;
@@ -78,6 +79,12 @@ export async function GET(req: Request) {
     if (cErr || !comp?.id) {
       return NextResponse.json({ ok: false, error: "No competition found" }, { status: 404 });
     }
+    const competitionId = String(comp.id);
+    const reigningChampion = await resolveReigningChampion({
+      competitionId,
+      season,
+      supabase,
+    });
 
     const { data: roundRow, error: rErr } = await supabase
       .from("rounds")
@@ -126,6 +133,7 @@ export async function GET(req: Request) {
         ok: true,
         season,
         round,
+        reigning_champion_user_id: reigningChampion.reigning_champion_user_id,
         round_id: roundId,
         lock_time_utc: lockTimeUtc,
         snapshot_for_time_utc: snapshotForTimeUtc,
@@ -325,6 +333,7 @@ export async function GET(req: Request) {
       ok: true,
       season,
       round,
+      reigning_champion_user_id: reigningChampion.reigning_champion_user_id,
       round_id: roundId,
       lock_time_utc: lockTimeUtc,
       snapshot_for_time_utc: snapshotForTimeUtc,

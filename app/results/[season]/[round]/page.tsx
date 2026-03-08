@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { UnpaidTag } from "@/components/UnpaidTag";
+import { ChampionCrown } from "@/components/ChampionCrown";
 
 type MatchResultRow = {
   id: string;
@@ -39,6 +40,7 @@ type RoundResultsResponse = {
   ok: boolean;
   season: number;
   round: number;
+  reigning_champion_user_id?: string | null;
   lock_time_utc: string | null;
   snapshot_for_time_utc: string | null;
   matches: MatchResultRow[];
@@ -113,6 +115,7 @@ export default function RoundResultsDetailPage() {
   const [msg, setMsg] = useState<string>("Checking session…");
   const [matches, setMatches] = useState<MatchResultRow[]>([]);
   const [players, setPlayers] = useState<PlayerRoundScore[]>([]);
+  const [reigningChampionUserId, setReigningChampionUserId] = useState<string | null>(null);
   const [lockTimeUtc, setLockTimeUtc] = useState<string | null>(null);
   const invalidParams = !Number.isFinite(season) || !Number.isFinite(round);
 
@@ -174,6 +177,11 @@ export default function RoundResultsDetailPage() {
 
         setMatches(Array.isArray(json.matches) ? json.matches : []);
         setPlayers(Array.isArray(json.players) ? json.players : []);
+        setReigningChampionUserId(
+          typeof json.reigning_champion_user_id === "string"
+            ? json.reigning_champion_user_id
+            : null
+        );
         setLockTimeUtc(json.lock_time_utc ?? null);
         setMsg("");
       } catch {
@@ -287,6 +295,7 @@ export default function RoundResultsDetailPage() {
                     <div style={{ fontWeight: 900, fontSize: 12, opacity: 0.7 }}>#{idx + 1}</div>
                     <div>
                       <div style={{ fontWeight: 850, fontSize: 13, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        <ChampionCrown isChampion={p.user_id === reigningChampionUserId} />
                         <span>{p.display_name}</span>
                         <UnpaidTag paymentStatus={p.payment_status ?? null} />
                       </div>

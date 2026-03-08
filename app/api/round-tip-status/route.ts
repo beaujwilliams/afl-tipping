@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase-server";
 import { getBearer, isAdminBearerForCompetition } from "@/lib/admin-auth";
+import { resolveReigningChampion } from "@/lib/reigning-champion";
 
 type RoundRow = {
   id: string;
@@ -62,6 +63,12 @@ export async function GET(req: Request) {
     if (cErr || !comp) {
       return NextResponse.json({ error: "No competition found", details: cErr?.message ?? "" }, { status: 404 });
     }
+    const competitionId = String(comp.id);
+    const reigningChampion = await resolveReigningChampion({
+      competitionId,
+      season,
+      supabase,
+    });
     const admin = await isAdminBearerForCompetition(req, String(comp.id));
 
     // rounds for season
@@ -219,6 +226,7 @@ export async function GET(req: Request) {
       ok: true,
       season,
       competition_id: comp.id,
+      reigning_champion_user_id: reigningChampion.reigning_champion_user_id,
       admin,
       rounds: out,
     });

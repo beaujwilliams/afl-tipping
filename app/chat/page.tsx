@@ -5,6 +5,7 @@ import Link from "next/link";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { ReactionPill } from "@/components/ReactionPill";
 import { UnpaidTag } from "@/components/UnpaidTag";
+import { ChampionCrown } from "@/components/ChampionCrown";
 
 type MsgRow = {
   id: string;
@@ -34,7 +35,13 @@ type MembershipPaymentRow = {
   payment_status?: string | null;
 };
 
+type ReigningChampionResponse = {
+  ok?: boolean;
+  reigning_champion_user_id?: string | null;
+};
+
 const REACTIONS = ["👍", "😂", "😭", "❤️", "🔥", "😮"] as const;
+const CURRENT_SEASON = 2026;
 
 function isAdminRole(role: string | null | undefined) {
   const r = String(role ?? "")
@@ -79,6 +86,7 @@ export default function ChatPage() {
   const [nameByUserId, setNameByUserId] = useState<Record<string, string>>({});
   const [favoriteTeamByUserId, setFavoriteTeamByUserId] = useState<Record<string, string>>({});
   const [paymentStatusByUserId, setPaymentStatusByUserId] = useState<Record<string, string | null>>({});
+  const [reigningChampionUserId, setReigningChampionUserId] = useState<string | null>(null);
   const [reactions, setReactions] = useState<ReactionRow[]>([]);
 
   const [text, setText] = useState("");
@@ -284,6 +292,42 @@ export default function ChatPage() {
   }, []);
 
   useEffect(() => {
+    if (!competitionId) {
+      setReigningChampionUserId(null);
+      return;
+    }
+
+    let alive = true;
+
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/reigning-champion?competition_id=${encodeURIComponent(competitionId)}&season=${CURRENT_SEASON}`,
+          { cache: "no-store" }
+        );
+        const json = (await res.json().catch(() => null)) as ReigningChampionResponse | null;
+        if (!alive) return;
+
+        if (!res.ok || !json?.ok) {
+          setReigningChampionUserId(null);
+          return;
+        }
+
+        setReigningChampionUserId(
+          typeof json.reigning_champion_user_id === "string" ? json.reigning_champion_user_id : null
+        );
+      } catch {
+        if (!alive) return;
+        setReigningChampionUserId(null);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [competitionId]);
+
+  useEffect(() => {
     if (!ready) return;
     loadRecent().then(() => {
       // after first load, jump to bottom
@@ -329,8 +373,9 @@ export default function ChatPage() {
       if (!seen[r.message_id][r.emoji]) seen[r.message_id][r.emoji] = new Set();
 
       const name = nameByUserId[r.user_id] ?? "Anonymous tipster";
+      const crownedName = r.user_id === reigningChampionUserId ? `${name} 👑` : name;
       const paymentStatus = paymentStatusByUserId[r.user_id] ?? null;
-      const display = paymentStatus === "pending" ? `${name} (unpaid)` : name;
+      const display = paymentStatus === "pending" ? `${crownedName} (unpaid)` : crownedName;
       if (seen[r.message_id][r.emoji].has(display)) continue;
 
       seen[r.message_id][r.emoji].add(display);
@@ -338,7 +383,7 @@ export default function ChatPage() {
     }
 
     return out;
-  }, [reactions, nameByUserId, paymentStatusByUserId]);
+  }, [reactions, nameByUserId, paymentStatusByUserId, reigningChampionUserId]);
 
   async function send() {
     const body = text.trim();
@@ -450,6 +495,7 @@ export default function ChatPage() {
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 10, opacity: 0.9 }}>
                     <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
                       <div style={{ fontWeight: 900, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        <ChampionCrown isChampion={m.user_id === reigningChampionUserId} />
                         <span>{who}</span>
                         <UnpaidTag paymentStatus={paymentStatus} />
                       </div>

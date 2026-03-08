@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase-server";
+import { resolveReigningChampion } from "@/lib/reigning-champion";
 
 type PlayerRow = {
   user_id: string;
@@ -49,9 +50,7 @@ async function getPaymentStatusByUserId(
       .eq("competition_id", competitionId)
       .in("user_id", userIds);
 
-    if (fallback.error) {
-      throw new Error(fallback.error.message);
-    }
+    if (fallback.error) throw new Error(fallback.error.message);
 
     (fallback.data as MembershipRow[] | null)?.forEach((m) => {
       out[String(m.user_id)] = null;
@@ -59,13 +58,12 @@ async function getPaymentStatusByUserId(
     return out;
   }
 
-  if (withPayment.error) {
-    throw new Error(withPayment.error.message);
-  }
+  if (withPayment.error) throw new Error(withPayment.error.message);
 
   (withPayment.data as MembershipRow[] | null)?.forEach((m) => {
     out[String(m.user_id)] = normalizePaymentStatus(m.payment_status ?? null);
   });
+
   return out;
 }
 
@@ -75,7 +73,6 @@ export async function GET(req: Request) {
     const season = Number(url.searchParams.get("season"));
     const round = Number(url.searchParams.get("round"));
 
-    // ✅ allow round=0
     if (!Number.isFinite(season) || !Number.isFinite(round) || round < 0) {
       return NextResponse.json(
         { ok: false, error: "Provide valid season and round" },
@@ -85,7 +82,6 @@ export async function GET(req: Request) {
 
     const supabase = createServiceClient();
 
-    // single-comp MVP
     const { data: comp, error: cErr } = await supabase
       .from("competitions")
       .select("id")
@@ -95,6 +91,13 @@ export async function GET(req: Request) {
     if (cErr || !comp) {
       return NextResponse.json({ ok: false, error: "No competition" }, { status: 404 });
     }
+
+    const competitionId = String(comp.id);
+    const reigningChampion = await resolveReigningChampion({
+      competitionId,
+      season,
+      supabase,
+    });
 
     const { data: roundRow, error: rErr } = await supabase
       .from("rounds")
@@ -124,44 +127,38 @@ export async function GET(req: Request) {
       );
     }
 
-    const isLocked = true;
+    const { data: cached, error: cacheErr } = await supabase
+      .from("round_locked_tips_cache")
+      .select("players, computed_at")
+      .eq("competition_id", comp.id)
+      .eq("round_id", roundId)
+      .maybeSingle();
 
-    // ✅ 1) If locked, try cache first (cheap)
-    if (isLocked) {
-      const { data: cached, error: cacheErr } = await supabase
-        .from("round_locked_tips_cache")
-        .select("players, computed_at")
-        .eq("competition_id", comp.id)
-        .eq("round_id", roundId)
-        .maybeSingle();
+    if (!cacheErr && cached?.players) {
+      const cachedPlayers = (cached.players as PlayerRow[]) ?? [];
+      const cachedUserIds = Array.from(new Set(cachedPlayers.map((p) => String(p.user_id))));
+      const paymentStatusByUserId = await getPaymentStatusByUserId(
+        supabase,
+        competitionId,
+        cachedUserIds
+      );
 
-      if (!cacheErr && cached?.players) {
-        const cachedPlayers = (cached.players as PlayerRow[]) ?? [];
-        const cachedUserIds = Array.from(
-          new Set(cachedPlayers.map((p) => String(p.user_id)))
-        );
-        const paymentStatusByUserId = await getPaymentStatusByUserId(
-          supabase,
-          String(comp.id),
-          cachedUserIds
-        );
-        const playersWithPayment = cachedPlayers.map((p) => ({
-          ...p,
-          payment_status: paymentStatusByUserId[String(p.user_id)] ?? null,
-        }));
+      const playersWithPayment = cachedPlayers.map((p) => ({
+        ...p,
+        payment_status: paymentStatusByUserId[String(p.user_id)] ?? null,
+      }));
 
-        return NextResponse.json({
-          ok: true,
-          season,
-          round,
-          players: playersWithPayment,
-          cached: true,
-          computed_at: cached.computed_at,
-        });
-      }
+      return NextResponse.json({
+        ok: true,
+        season,
+        round,
+        reigning_champion_user_id: reigningChampion.reigning_champion_user_id,
+        players: playersWithPayment,
+        cached: true,
+        computed_at: cached.computed_at,
+      });
     }
 
-    // Matches in this round
     const { data: matches, error: mErr } = await supabase
       .from("matches")
       .select("id, home_team, away_team")
@@ -175,28 +172,33 @@ export async function GET(req: Request) {
     const matchIds = matchList.map((m) => String(m.id));
 
     if (matchIds.length === 0) {
-      const players: any[] = [];
-      if (isLocked) {
-        await supabase.from("round_locked_tips_cache").upsert({
-          competition_id: comp.id,
-          round_id: roundId,
-          season,
-          round_number: round,
-          snapshot_for_time_utc: snapshotForTimeUtc,
-          computed_at: new Date().toISOString(),
-          players,
-        });
-      }
-      return NextResponse.json({ ok: true, season, round, players, cached: false });
+      const players: PlayerRow[] = [];
+
+      await supabase.from("round_locked_tips_cache").upsert({
+        competition_id: comp.id,
+        round_id: roundId,
+        season,
+        round_number: round,
+        snapshot_for_time_utc: snapshotForTimeUtc,
+        computed_at: new Date().toISOString(),
+        players,
+      });
+
+      return NextResponse.json({
+        ok: true,
+        season,
+        round,
+        reigning_champion_user_id: reigningChampion.reigning_champion_user_id,
+        players,
+        cached: false,
+      });
     }
 
-    // Build match team lookup
     const matchById: Record<string, { home: string; away: string }> = {};
     for (const m of matchList) {
       matchById[String(m.id)] = { home: String(m.home_team), away: String(m.away_team) };
     }
 
-    // All tips for these matches (everyone)
     const { data: tips, error: tErr } = await supabase
       .from("tips")
       .select("match_id, user_id, picked_team")
@@ -208,31 +210,33 @@ export async function GET(req: Request) {
     }
 
     const tipRows = (tips ?? []) as any[];
+
     if (tipRows.length === 0) {
-      const players: any[] = [];
-      if (isLocked) {
-        await supabase.from("round_locked_tips_cache").upsert({
-          competition_id: comp.id,
-          round_id: roundId,
-          season,
-          round_number: round,
-          snapshot_for_time_utc: snapshotForTimeUtc,
-          computed_at: new Date().toISOString(),
-          players,
-        });
-      }
-      return NextResponse.json({ ok: true, season, round, players, cached: false });
+      const players: PlayerRow[] = [];
+
+      await supabase.from("round_locked_tips_cache").upsert({
+        competition_id: comp.id,
+        round_id: roundId,
+        season,
+        round_number: round,
+        snapshot_for_time_utc: snapshotForTimeUtc,
+        computed_at: new Date().toISOString(),
+        players,
+      });
+
+      return NextResponse.json({
+        ok: true,
+        season,
+        round,
+        reigning_champion_user_id: reigningChampion.reigning_champion_user_id,
+        players,
+        cached: false,
+      });
     }
 
-    // Collect user ids
     const userIds = Array.from(new Set(tipRows.map((t: any) => String(t.user_id))));
-    const paymentStatusByUserId = await getPaymentStatusByUserId(
-      supabase,
-      String(comp.id),
-      userIds
-    );
+    const paymentStatusByUserId = await getPaymentStatusByUserId(supabase, competitionId, userIds);
 
-    // Load display names
     const { data: profs, error: pErr } = await supabase
       .from("profiles")
       .select("id, display_name")
@@ -247,22 +251,21 @@ export async function GET(req: Request) {
       nameById[String(p.id)] = p.display_name ?? null;
     });
 
-    // Odds: latest per match_id
-    let oq = supabase
+    let oddsQuery = supabase
       .from("match_odds")
       .select("match_id, home_odds, away_odds, captured_at_utc, snapshot_for_time_utc")
       .eq("competition_id", comp.id)
       .in("match_id", matchIds);
 
     if (snapshotForTimeUtc) {
-      oq = oq.eq("snapshot_for_time_utc", snapshotForTimeUtc);
+      oddsQuery = oddsQuery.eq("snapshot_for_time_utc", snapshotForTimeUtc);
     } else {
-      oq = oq.order("snapshot_for_time_utc", { ascending: false });
+      oddsQuery = oddsQuery.order("snapshot_for_time_utc", { ascending: false });
     }
 
-    oq = oq.order("captured_at_utc", { ascending: false });
+    oddsQuery = oddsQuery.order("captured_at_utc", { ascending: false });
 
-    const { data: oddsRows, error: oErr } = await oq;
+    const { data: oddsRows, error: oErr } = await oddsQuery;
 
     if (oErr) {
       return NextResponse.json({ ok: false, error: oErr.message }, { status: 500 });
@@ -271,15 +274,13 @@ export async function GET(req: Request) {
     const oddsByMatchId: Record<string, { home_odds: number; away_odds: number }> = {};
     for (const row of (oddsRows ?? []) as any[]) {
       const mid = String(row.match_id);
-      if (!oddsByMatchId[mid]) {
-        oddsByMatchId[mid] = {
-          home_odds: Number(row.home_odds ?? 0),
-          away_odds: Number(row.away_odds ?? 0),
-        };
-      }
+      if (oddsByMatchId[mid]) continue;
+      oddsByMatchId[mid] = {
+        home_odds: Number(row.home_odds ?? 0),
+        away_odds: Number(row.away_odds ?? 0),
+      };
     }
 
-    // Aggregate into players
     const byUser: Record<string, PlayerRow> = {};
 
     for (const t of tipRows) {
@@ -315,20 +316,24 @@ export async function GET(req: Request) {
 
     const players = Object.values(byUser).sort((a, b) => Number(b.potential) - Number(a.potential));
 
-    // ✅ 2) If locked, write cache once (future loads are cheap)
-    if (isLocked) {
-      await supabase.from("round_locked_tips_cache").upsert({
-        competition_id: comp.id,
-        round_id: roundId,
-        season,
-        round_number: round,
-        snapshot_for_time_utc: snapshotForTimeUtc,
-        computed_at: new Date().toISOString(),
-        players,
-      });
-    }
+    await supabase.from("round_locked_tips_cache").upsert({
+      competition_id: comp.id,
+      round_id: roundId,
+      season,
+      round_number: round,
+      snapshot_for_time_utc: snapshotForTimeUtc,
+      computed_at: new Date().toISOString(),
+      players,
+    });
 
-    return NextResponse.json({ ok: true, season, round, players, cached: false });
+    return NextResponse.json({
+      ok: true,
+      season,
+      round,
+      reigning_champion_user_id: reigningChampion.reigning_champion_user_id,
+      players,
+      cached: false,
+    });
   } catch (e: any) {
     return NextResponse.json(
       { ok: false, error: e?.message ?? "Unknown error" },

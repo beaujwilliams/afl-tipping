@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { UnpaidTag } from "@/components/UnpaidTag";
+import { ChampionCrown } from "@/components/ChampionCrown";
 
 type RoundRow = {
   id: string;
@@ -57,6 +58,7 @@ type LockedTipsResponse = {
   ok: boolean;
   season: number;
   round: number;
+  reigning_champion_user_id?: string | null;
   players: LockedTipPlayer[];
 };
 
@@ -188,6 +190,7 @@ export default function RoundPage() {
   // NEW: everyone's tips table after lock
   const [lockedTips, setLockedTips] = useState<LockedTipPlayer[] | null>(null);
   const [lockedTipsMsg, setLockedTipsMsg] = useState<string>("");
+  const [reigningChampionUserId, setReigningChampionUserId] = useState<string | null>(null);
 
   // ✅ NEW: tip breakdown once locked
   const [tipBreakdownByMatch, setTipBreakdownByMatch] = useState<
@@ -406,6 +409,7 @@ export default function RoundPage() {
       setTipBreakdownByMatch({});
       setLockedTips(null);
       setLockedTipsMsg("");
+      setReigningChampionUserId(null);
 
       const { data: auth } = await supabaseBrowser.auth.getUser();
       if (!auth.user) {
@@ -582,6 +586,10 @@ export default function RoundPage() {
           setLockedTipsMsg("Could not load everyone’s tips.");
           return;
         }
+
+        setReigningChampionUserId(
+          typeof json.reigning_champion_user_id === "string" ? json.reigning_champion_user_id : null
+        );
 
         const list = Array.isArray(json.players) ? json.players : [];
         // sort: highest potential first
@@ -930,6 +938,7 @@ export default function RoundPage() {
                     }}
                   >
                     <div style={{ fontWeight: 900, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      <ChampionCrown isChampion={p.user_id === reigningChampionUserId} />
                       <span>{p.display_name?.trim() ? p.display_name : "(no display name)"}</span>
                       <UnpaidTag paymentStatus={p.payment_status ?? null} />
                     </div>

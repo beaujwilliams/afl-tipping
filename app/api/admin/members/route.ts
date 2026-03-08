@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase-server";
-import { requireAdminOrCron } from "@/lib/admin-auth";
+import { requireAdminOrCron, resolveCompetitionIdForAdminRequest } from "@/lib/admin-auth";
 
 function isMissingColumnError(message: string, columnName: string) {
   const m = message.toLowerCase();
@@ -9,19 +9,7 @@ function isMissingColumnError(message: string, columnName: string) {
 }
 
 async function getCompetitionId(supabase: ReturnType<typeof createServiceClient>, req: Request) {
-  const url = new URL(req.url);
-  const fromQS = url.searchParams.get("competition_id")?.trim();
-  if (fromQS) return fromQS;
-
-  // fallback: first competition (MVP)
-  const { data: comp, error: cErr } = await supabase
-    .from("competitions")
-    .select("id")
-    .limit(1)
-    .single();
-
-  if (cErr || !comp) return null;
-  return comp.id as string;
+  return resolveCompetitionIdForAdminRequest(req, supabase);
 }
 
 // Simple concurrency limiter for fallback email lookups

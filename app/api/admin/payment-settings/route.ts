@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase-server";
-import { requireAdminOrCron } from "@/lib/admin-auth";
+import { requireAdminOrCron, resolveCompetitionIdForAdminRequest } from "@/lib/admin-auth";
 
 type CompetitionWithLock = {
   id: string;
@@ -17,18 +17,7 @@ async function getCompetitionId(
   supabase: ReturnType<typeof createServiceClient>,
   req: Request
 ) {
-  const url = new URL(req.url);
-  const fromQS = url.searchParams.get("competition_id")?.trim();
-  if (fromQS) return fromQS;
-
-  const { data: comp, error } = await supabase
-    .from("competitions")
-    .select("id")
-    .limit(1)
-    .single();
-
-  if (error || !comp?.id) return null;
-  return String(comp.id);
+  return resolveCompetitionIdForAdminRequest(req, supabase);
 }
 
 export async function GET(req: Request) {

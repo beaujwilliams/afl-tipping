@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createClient, createServiceClient } from "@/lib/supabase-server";
+import { resolveCompetitionIdForSeasonRound } from "@/lib/competition-resolver";
 import { getBearer } from "@/lib/admin-auth";
 
 type SaveTipBody = {
   season?: number;
   round?: number;
+  competition_id?: string;
   match_id?: string;
   picked_team?: string;
 };
@@ -114,31 +116,40 @@ export async function POST(req: Request) {
 
     const supabase = createServiceClient();
 
-    let competitionId: string | null = null;
+    const competitionId = await resolveCompetitionIdForSeasonRound({
+      season,
+      round,
+      explicitCompetitionId:
+        typeof body?.competition_id === "string" ? body.competition_id.trim() : null,
+      userId: user.id,
+      supabase,
+    });
+
+    if (!competitionId) {
+      return NextResponse.json({ error: "No competition found" }, { status: 404 });
+    }
+
     let enforceUnpaidTipLock = false;
 
     const compWithLock = await supabase
       .from("competitions")
       .select("id, enforce_unpaid_tip_lock")
-      .limit(1)
+      .eq("id", competitionId)
       .single();
 
     if (!compWithLock.error && compWithLock.data?.id) {
-      const row = compWithLock.data as CompetitionWithLock;
-      competitionId = String(row.id);
-      enforceUnpaidTipLock = !!row.enforce_unpaid_tip_lock;
+      enforceUnpaidTipLock = !!(compWithLock.data as CompetitionWithLock).enforce_unpaid_tip_lock;
     } else {
       const compFallback = await supabase
         .from("competitions")
         .select("id")
-        .limit(1)
+        .eq("id", competitionId)
         .single();
 
       if (compFallback.error || !compFallback.data?.id) {
         return NextResponse.json({ error: "No competition found" }, { status: 404 });
       }
 
-      competitionId = String(compFallback.data.id);
       enforceUnpaidTipLock = false;
     }
 

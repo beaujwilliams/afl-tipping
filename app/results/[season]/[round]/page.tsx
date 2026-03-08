@@ -164,9 +164,19 @@ export default function RoundResultsDetailPage() {
     (async () => {
       try {
         setMsg("Loading round results…");
+        const { data: sessionData } = await supabaseBrowser.auth.getSession();
+        const token = sessionData.session?.access_token ?? null;
+        if (!token) {
+          setMsg("Not authenticated.");
+          return;
+        }
+
         const res = await fetch(
           `/api/round-results?season=${encodeURIComponent(String(season))}&round=${encodeURIComponent(String(round))}`,
-          { cache: "no-store" }
+          {
+            cache: "no-store",
+            headers: { Authorization: `Bearer ${token}` },
+          }
         );
 
         const json = (await res.json().catch(() => null)) as RoundResultsResponse | null;

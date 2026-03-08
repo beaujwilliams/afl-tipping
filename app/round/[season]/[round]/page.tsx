@@ -8,6 +8,7 @@ import { ChampionCrown } from "@/components/ChampionCrown";
 
 type RoundRow = {
   id: string;
+  competition_id: string;
   season: number;
   round_number: number;
   lock_time_utc: string;
@@ -64,6 +65,12 @@ type LockedTipsResponse = {
 
 type PaymentStatus = "paid" | "pending" | "waived";
 type MemberRole = "owner" | "admin" | "member";
+
+type UserMembershipRow = {
+  competition_id: string;
+  role?: string | null;
+  payment_status?: string | null;
+};
 
 // Starter AFL venue mapping (brand / friendly names)
 const VENUE_MAP: Record<string, string> = {
@@ -299,6 +306,7 @@ export default function RoundPage() {
         body: JSON.stringify({
           season,
           round,
+          competition_id: compId,
           match_id: matchId,
           picked_team: pickedTeam,
         }),
@@ -418,46 +426,91 @@ export default function RoundPage() {
       }
       setUserId(auth.user.id);
 
-      // single-comp MVP
-      const { data: comp, error: cErr } = await supabaseBrowser
-        .from("competitions")
-        .select("id")
-        .limit(1)
-        .single();
-      if (cErr || !comp) {
-        setMsg("No competition found.");
+      const membershipsRes = await supabaseBrowser
+        .from("memberships")
+        .select("competition_id, role, payment_status")
+        .eq("user_id", auth.user.id);
+
+      if (membershipsRes.error) {
+        setMsg(`Could not load memberships: ${membershipsRes.error.message}`);
         return;
       }
-      setCompId(comp.id);
+
+      const memberships = (membershipsRes.data ?? []) as UserMembershipRow[];
+      const competitionIds = Array.from(
+        new Set(memberships.map((m) => String(m.competition_id)))
+      );
+      const membershipByCompetition: Record<string, UserMembershipRow> = {};
+      memberships.forEach((m) => {
+        membershipByCompetition[String(m.competition_id)] = m;
+      });
+
+      let roundCandidatesQuery = supabaseBrowser
+        .from("rounds")
+        .select("id, competition_id, season, round_number, lock_time_utc, odds_snapshot_for_time_utc")
+        .eq("season", season)
+        .eq("round_number", round);
+
+      if (competitionIds.length) {
+        roundCandidatesQuery = roundCandidatesQuery.in("competition_id", competitionIds);
+      }
+
+      let roundCandidatesRes = await roundCandidatesQuery;
+
+      if ((!roundCandidatesRes.data || roundCandidatesRes.data.length === 0) && competitionIds.length) {
+        roundCandidatesRes = await supabaseBrowser
+          .from("rounds")
+          .select("id, competition_id, season, round_number, lock_time_utc, odds_snapshot_for_time_utc")
+          .eq("season", season)
+          .eq("round_number", round);
+      }
+
+      if (roundCandidatesRes.error) {
+        setMsg(`Could not load round: ${roundCandidatesRes.error.message}`);
+        return;
+      }
+
+      const roundCandidates = (roundCandidatesRes.data ?? []) as RoundRow[];
+      if (!roundCandidates.length) {
+        setMsg("Round not found.");
+        return;
+      }
+
+      const rolePriority = (compId: string) => {
+        const role = normalizeRole(membershipByCompetition[compId]?.role ?? null);
+        if (role === "owner") return 0;
+        if (role === "admin") return 1;
+        if (role === "member") return 2;
+        return 3;
+      };
+
+      const pickedRound = [...roundCandidates].sort((a, b) => {
+        const roleDiff = rolePriority(a.competition_id) - rolePriority(b.competition_id);
+        if (roleDiff !== 0) return roleDiff;
+        return String(a.competition_id).localeCompare(String(b.competition_id));
+      })[0];
+
+      const competitionId = String(pickedRound.competition_id);
+      setCompId(competitionId);
 
       let memberPaymentStatus: PaymentStatus = "pending";
       let memberRole: MemberRole = "member";
       let enforceLock = false;
 
-      const membership = await supabaseBrowser
-        .from("memberships")
-        .select("role, payment_status")
-        .eq("competition_id", comp.id)
-        .eq("user_id", auth.user.id)
-        .maybeSingle();
-
-      if (!membership.error && membership.data) {
+      const membership = membershipByCompetition[competitionId] ?? null;
+      if (membership) {
         memberRole = normalizeRole(
-          (membership.data as { role?: string | null } | null)?.role ?? null
+          membership.role ?? null
         );
         memberPaymentStatus = normalizePaymentStatus(
-          (membership.data as { payment_status?: string | null } | null)?.payment_status ?? null
+          membership.payment_status ?? null
         );
-      } else if (membership.error && isMissingColumnError(membership.error.message, "payment_status")) {
-        // Migration not applied yet: fail open to avoid blocking tipping unexpectedly.
-      } else if (membership.error) {
-        // Unknown lookup error: fail open for stability.
       }
 
       const compSettings = await supabaseBrowser
         .from("competitions")
         .select("enforce_unpaid_tip_lock")
-        .eq("id", comp.id)
+        .eq("id", competitionId)
         .single();
 
       if (!compSettings.error && compSettings.data) {
@@ -480,26 +533,14 @@ export default function RoundPage() {
           memberPaymentStatus === "pending"
       );
 
-      const { data: r, error: rErr } = await supabaseBrowser
-        .from("rounds")
-        .select("id, season, round_number, lock_time_utc, odds_snapshot_for_time_utc")
-        .eq("competition_id", comp.id)
-        .eq("season", season)
-        .eq("round_number", round)
-        .single();
-
-      if (rErr || !r) {
-        setMsg("Round not found.");
-        return;
-      }
-      setRoundRow(r as RoundRow);
+      setRoundRow(pickedRound as RoundRow);
 
       const { data: m, error: mErr } = await supabaseBrowser
         .from("matches")
         .select(
           "id, commence_time_utc, home_team, away_team, venue, status, winner_team"
         )
-        .eq("round_id", (r as any).id)
+        .eq("round_id", pickedRound.id)
         .order("commence_time_utc", { ascending: true });
 
       if (mErr) {
@@ -518,7 +559,7 @@ export default function RoundPage() {
         const { data: tips, error: tErr } = await supabaseBrowser
           .from("tips")
           .select("match_id, picked_team")
-          .eq("competition_id", comp.id)
+          .eq("competition_id", competitionId)
           .eq("user_id", auth.user.id)
           .in("match_id", matchIds);
 
@@ -531,10 +572,10 @@ export default function RoundPage() {
 
       // Load odds
       await loadOddsForMatchesLocked(
-        comp.id,
+        competitionId,
         matchIds,
         matchIds.length,
-        (r as any).odds_snapshot_for_time_utc ?? null
+        pickedRound.odds_snapshot_for_time_utc ?? null
       );
     })();
   }, [season, round]);
@@ -548,7 +589,7 @@ export default function RoundPage() {
         const res = await fetch(
           `/api/round-tip-breakdown?season=${encodeURIComponent(
             String(season)
-          )}&round=${encodeURIComponent(String(round))}`,
+          )}&round=${encodeURIComponent(String(round))}${compId ? `&competition_id=${encodeURIComponent(compId)}` : ""}`,
           { cache: "no-store" }
         );
         const json = (await res
@@ -561,7 +602,7 @@ export default function RoundPage() {
         // ignore
       }
     })();
-  }, [isLocked, season, round]);
+  }, [isLocked, season, round, compId]);
 
   // ✅ when round is locked, fetch "everyone's tips" table
   useEffect(() => {
@@ -574,7 +615,7 @@ export default function RoundPage() {
         const res = await fetch(
           `/api/round-locked-tips?season=${encodeURIComponent(
             String(season)
-          )}&round=${encodeURIComponent(String(round))}`,
+          )}&round=${encodeURIComponent(String(round))}${compId ? `&competition_id=${encodeURIComponent(compId)}` : ""}`,
           { cache: "no-store" }
         );
         const json = (await res
@@ -600,7 +641,7 @@ export default function RoundPage() {
         setLockedTipsMsg("Could not load everyone’s tips.");
       }
     })();
-  }, [isLocked, season, round, lockedTips]);
+  }, [isLocked, season, round, lockedTips, compId]);
 
   // -------- Poll odds every 90s while missing, up to 60 minutes --------
   const pollStartRef = useRef<number | null>(null);

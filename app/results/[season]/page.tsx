@@ -16,6 +16,19 @@ type MatchMini = {
   winner_team: string | null;
 };
 
+type TipStatusRound = {
+  round_id: string;
+  round_number: number;
+  lock_time_utc: string | null;
+};
+
+type TipStatusResponse = {
+  ok: boolean;
+  competition_id: string;
+  rounds: TipStatusRound[];
+  error?: string;
+};
+
 function melbourneMs(iso: string | null) {
   if (!iso) return null;
   const ms = new Date(iso).getTime();
@@ -93,27 +106,29 @@ export default function SeasonResultsPage() {
 
     (async () => {
       setMsg("Loading results rounds…");
-
-      const { data: comp } = await supabaseBrowser.from("competitions").select("id").limit(1).single();
-
-      if (!comp) {
-        setMsg("No competition found.");
+      const { data: sessionData } = await supabaseBrowser.auth.getSession();
+      const token = sessionData.session?.access_token ?? null;
+      if (!token) {
+        setMsg("Not authenticated.");
         return;
       }
 
-      const { data, error } = await supabaseBrowser
-        .from("rounds")
-        .select("id, round_number, lock_time_utc")
-        .eq("competition_id", comp.id)
-        .eq("season", season)
-        .order("round_number", { ascending: true });
+      const statusRes = await fetch(`/api/round-tip-status?season=${encodeURIComponent(String(season))}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+      const statusJson = (await statusRes.json().catch(() => null)) as TipStatusResponse | null;
 
-      if (error) {
-        setMsg(error.message);
+      if (!statusRes.ok || !statusJson?.ok) {
+        setMsg(statusJson?.error ?? "Could not load rounds.");
         return;
       }
 
-      const roundRows = (data ?? []) as RoundRow[];
+      const roundRows: RoundRow[] = (statusJson.rounds ?? []).map((r) => ({
+        id: r.round_id,
+        round_number: r.round_number,
+        lock_time_utc: r.lock_time_utc,
+      }));
       setRows(roundRows);
 
       const roundIds = roundRows.map((r) => r.id);

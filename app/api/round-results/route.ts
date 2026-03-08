@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase-server";
+import { getUserIdFromBearer } from "@/lib/admin-auth";
+import { resolveCompetitionIdForSeasonRound } from "@/lib/competition-resolver";
 import { resolveReigningChampion } from "@/lib/reigning-champion";
 
 type MatchRow = {
@@ -60,6 +62,7 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const season = Number(url.searchParams.get("season"));
     const round = Number(url.searchParams.get("round"));
+    const competitionFromQS = url.searchParams.get("competition_id")?.trim() ?? null;
 
     if (!Number.isFinite(season) || !Number.isFinite(round) || round < 0) {
       return NextResponse.json(
@@ -69,17 +72,20 @@ export async function GET(req: Request) {
     }
 
     const supabase = createServiceClient();
+    const userId = await getUserIdFromBearer(req);
 
-    const { data: comp, error: cErr } = await supabase
-      .from("competitions")
-      .select("id")
-      .limit(1)
-      .single();
+    const competitionId = await resolveCompetitionIdForSeasonRound({
+      season,
+      round,
+      explicitCompetitionId: competitionFromQS,
+      userId,
+      supabase,
+    });
 
-    if (cErr || !comp?.id) {
+    if (!competitionId) {
       return NextResponse.json({ ok: false, error: "No competition found" }, { status: 404 });
     }
-    const competitionId = String(comp.id);
+
     const reigningChampion = await resolveReigningChampion({
       competitionId,
       season,
@@ -89,7 +95,7 @@ export async function GET(req: Request) {
     const { data: roundRow, error: rErr } = await supabase
       .from("rounds")
       .select("id, lock_time_utc, odds_snapshot_for_time_utc")
-      .eq("competition_id", comp.id)
+      .eq("competition_id", competitionId)
       .eq("season", season)
       .eq("round_number", round)
       .single();
@@ -145,7 +151,7 @@ export async function GET(req: Request) {
     const { data: tips, error: tErr } = await supabase
       .from("tips")
       .select("user_id, match_id, picked_team")
-      .eq("competition_id", comp.id)
+      .eq("competition_id", competitionId)
       .in("match_id", matchIds);
 
     if (tErr) {
@@ -175,14 +181,14 @@ export async function GET(req: Request) {
       const withPayment = await supabase
         .from("memberships")
         .select("user_id, payment_status")
-        .eq("competition_id", comp.id)
+        .eq("competition_id", competitionId)
         .in("user_id", userIds);
 
       if (withPayment.error && isMissingColumnError(withPayment.error.message, "payment_status")) {
         const fallback = await supabase
           .from("memberships")
           .select("user_id")
-          .eq("competition_id", comp.id)
+          .eq("competition_id", competitionId)
           .in("user_id", userIds);
 
         if (fallback.error) {
@@ -206,7 +212,7 @@ export async function GET(req: Request) {
     let oddsQuery = supabase
       .from("match_odds")
       .select("match_id, home_odds, away_odds, captured_at_utc, snapshot_for_time_utc")
-      .eq("competition_id", comp.id)
+      .eq("competition_id", competitionId)
       .in("match_id", matchIds);
 
     if (snapshotForTimeUtc) {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase-server";
-import { getBearer, isAdminBearerForCompetition } from "@/lib/admin-auth";
+import { getBearer, getUserIdFromBearer, isAdminBearerForCompetition } from "@/lib/admin-auth";
+import { resolveCompetitionIdForSeason } from "@/lib/competition-resolver";
 import { resolveReigningChampion } from "@/lib/reigning-champion";
 
 type RoundRow = {
@@ -51,31 +52,37 @@ export async function GET(req: Request) {
 
     const url = new URL(req.url);
     const season = Number(url.searchParams.get("season") ?? "2026");
+    const competitionFromQS = url.searchParams.get("competition_id")?.trim() ?? null;
 
     const supabase = createServiceClient();
-    // single-comp MVP
-    const { data: comp, error: cErr } = await supabase
-      .from("competitions")
-      .select("id")
-      .limit(1)
-      .single();
-
-    if (cErr || !comp) {
-      return NextResponse.json({ error: "No competition found", details: cErr?.message ?? "" }, { status: 404 });
+    const userId = await getUserIdFromBearer(req);
+    if (!userId) {
+      return NextResponse.json({ error: "Invalid session" }, { status: 401 });
     }
-    const competitionId = String(comp.id);
+
+    const competitionId = await resolveCompetitionIdForSeason({
+      season,
+      explicitCompetitionId: competitionFromQS,
+      userId,
+      supabase,
+    });
+
+    if (!competitionId) {
+      return NextResponse.json({ error: "No competition found" }, { status: 404 });
+    }
+
     const reigningChampion = await resolveReigningChampion({
       competitionId,
       season,
       supabase,
     });
-    const admin = await isAdminBearerForCompetition(req, String(comp.id));
+    const admin = await isAdminBearerForCompetition(req, competitionId);
 
     // rounds for season
     const { data: rounds, error: rErr } = await supabase
       .from("rounds")
       .select("id, round_number, lock_time_utc")
-      .eq("competition_id", comp.id)
+      .eq("competition_id", competitionId)
       .eq("season", season)
       .order("round_number", { ascending: true });
 
@@ -91,13 +98,13 @@ export async function GET(req: Request) {
     const withPayment = await supabase
       .from("memberships")
       .select("user_id, payment_status")
-      .eq("competition_id", comp.id);
+      .eq("competition_id", competitionId);
 
     if (withPayment.error && isMissingColumnError(withPayment.error.message, "payment_status")) {
       const fallback = await supabase
         .from("memberships")
         .select("user_id")
-        .eq("competition_id", comp.id);
+        .eq("competition_id", competitionId);
 
       if (fallback.error) {
         return NextResponse.json(
@@ -167,7 +174,7 @@ export async function GET(req: Request) {
       const { data: tips, error: tErr } = await supabase
         .from("tips")
         .select("user_id, match_id")
-        .eq("competition_id", comp.id)
+        .eq("competition_id", competitionId)
         .in("match_id", matchIds);
 
       if (tErr) {
@@ -225,7 +232,7 @@ export async function GET(req: Request) {
     return NextResponse.json({
       ok: true,
       season,
-      competition_id: comp.id,
+      competition_id: competitionId,
       reigning_champion_user_id: reigningChampion.reigning_champion_user_id,
       admin,
       rounds: out,

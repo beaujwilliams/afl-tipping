@@ -36,6 +36,7 @@ type TipStatusResponse = {
   reigning_champion_user_id?: string | null;
   admin: boolean;
   rounds: TipStatusRound[];
+  error?: string;
 };
 
 function melbourneMs(iso: string | null) {
@@ -125,41 +126,12 @@ export default function SeasonRoundsPage() {
   }, []);
 
   // Load rounds
-  useEffect(() => {
-    if (!ready) return;
-
-    (async () => {
-      setMsg("Loading rounds…");
-
-      const { data: comp } = await supabaseBrowser.from("competitions").select("id").limit(1).single();
-
-      if (!comp) {
-        setMsg("No competition found.");
-        return;
-      }
-
-      const { data, error } = await supabaseBrowser
-        .from("rounds")
-        .select("id, round_number, lock_time_utc")
-        .eq("competition_id", comp.id)
-        .eq("season", season)
-        .order("round_number", { ascending: true });
-
-      if (error) {
-        setMsg(error.message);
-        return;
-      }
-
-      setRows((data ?? []) as RoundRow[]);
-      setMsg("");
-    })();
-  }, [ready, season]);
-
-  // Load tip status (counts + admin missing list)
+  // Load rounds + tip status (counts + admin missing list)
   useEffect(() => {
     if (!ready || !sessionToken) return;
 
     (async () => {
+      setMsg("Loading rounds…");
       setReigningChampionUserId(null);
       try {
         const res = await fetch(`/api/round-tip-status?season=${encodeURIComponent(String(season))}`, {
@@ -171,6 +143,7 @@ export default function SeasonRoundsPage() {
 
         if (!res.ok || !json?.ok) {
           // Don’t block the page if this fails
+          setMsg(json?.error ?? "Could not load rounds.");
           return;
         }
 
@@ -178,14 +151,22 @@ export default function SeasonRoundsPage() {
         setReigningChampionUserId(
           typeof json.reigning_champion_user_id === "string" ? json.reigning_champion_user_id : null
         );
+        setRows(
+          (json.rounds ?? []).map((r) => ({
+            id: r.round_id,
+            round_number: r.round_number,
+            lock_time_utc: r.lock_time_utc,
+          }))
+        );
 
         const map: Record<string, TipStatusRound> = {};
         (json.rounds ?? []).forEach((r) => {
           map[r.round_id] = r;
         });
         setStatusByRoundId(map);
+        setMsg("");
       } catch {
-        // ignore
+        setMsg("Could not load rounds.");
       }
     })();
   }, [ready, sessionToken, season]);

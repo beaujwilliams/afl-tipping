@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { isValidAflTeam } from "@/lib/afl-teams";
+import { isDuplicateUsernameError, validateUsername } from "@/lib/username";
 import { createClient, createServiceClient } from "@/lib/supabase-server";
 import { getBearer } from "@/lib/admin-auth";
 
@@ -8,19 +9,23 @@ type ProfileRowWithFavorite = {
   id: string;
   display_name: string | null;
   favorite_team: string | null;
+  username: string | null;
 };
 
 type ProfileRowWithoutFavorite = {
   id: string;
   display_name: string | null;
+  username: string | null;
 };
 
 type ProfilePayload = {
   display_name: string | null;
   favorite_team: string | null;
+  username: string | null;
 };
 
 const FAVORITE_TEAM_COLUMN = "favorite_team";
+const USERNAME_COLUMN = "username";
 
 function isMissingColumnError(message: string, columnName: string) {
   const m = message.toLowerCase();
@@ -61,45 +66,75 @@ async function getAuthedUser(req: Request) {
 async function readProfileByUserId(
   service: ReturnType<typeof createServiceClient>,
   userId: string
-): Promise<{ profile: ProfilePayload; favoriteColumnAvailable: boolean }> {
-  const withFavorite = await service
+): Promise<{
+  profile: ProfilePayload;
+  favoriteColumnAvailable: boolean;
+  usernameColumnAvailable: boolean;
+}> {
+  const full = await service
     .from("profiles")
-    .select("id, display_name, favorite_team")
+    .select("id, display_name, favorite_team, username")
     .eq("id", userId)
     .maybeSingle();
 
-  if (!withFavorite.error) {
-    const row = (withFavorite.data as ProfileRowWithFavorite | null) ?? null;
+  if (!full.error) {
+    const row = (full.data as ProfileRowWithFavorite | null) ?? null;
     return {
       profile: {
         display_name: row?.display_name ?? null,
         favorite_team: row?.favorite_team ?? null,
+        username: row?.username ?? null,
       },
       favoriteColumnAvailable: true,
+      usernameColumnAvailable: true,
     };
   }
 
-  if (!isMissingColumnError(withFavorite.error.message, FAVORITE_TEAM_COLUMN)) {
-    throw new Error(withFavorite.error.message);
+  const missingFavorite = isMissingColumnError(full.error.message, FAVORITE_TEAM_COLUMN);
+  const missingUsername = isMissingColumnError(full.error.message, USERNAME_COLUMN);
+  if (!missingFavorite && !missingUsername) {
+    throw new Error(full.error.message);
   }
 
-  const fallback = await service
-    .from("profiles")
-    .select("id, display_name")
-    .eq("id", userId)
-    .maybeSingle();
+  if (missingFavorite && missingUsername) {
+    const fallback = await service
+      .from("profiles")
+      .select("id, display_name")
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (fallback.error) {
+      throw new Error(fallback.error.message);
+    }
+
+    const row = (fallback.data as ProfileRowWithoutFavorite | null) ?? null;
+    return {
+      profile: {
+        display_name: row?.display_name ?? null,
+        favorite_team: null,
+        username: null,
+      },
+      favoriteColumnAvailable: false,
+      usernameColumnAvailable: false,
+    };
+  }
+
+  const select = missingFavorite ? "id, display_name, username" : "id, display_name, favorite_team";
+  const fallback = await service.from("profiles").select(select).eq("id", userId).maybeSingle();
 
   if (fallback.error) {
     throw new Error(fallback.error.message);
   }
 
-  const row = (fallback.data as ProfileRowWithoutFavorite | null) ?? null;
+  const row = (fallback.data as any | null) ?? null;
   return {
     profile: {
       display_name: row?.display_name ?? null,
-      favorite_team: null,
+      favorite_team: missingFavorite ? null : row?.favorite_team ?? null,
+      username: missingUsername ? null : row?.username ?? null,
     },
-    favoriteColumnAvailable: false,
+    favoriteColumnAvailable: !missingFavorite,
+    usernameColumnAvailable: !missingUsername,
   };
 }
 
@@ -119,6 +154,7 @@ export async function GET(req: Request) {
         email: user.email ?? null,
         display_name: profile.display_name,
         favorite_team: profile.favorite_team,
+        username: profile.username,
       },
     });
   } catch (e: unknown) {
@@ -137,12 +173,14 @@ export async function PATCH(req: Request) {
     const body = (await req.json().catch(() => null)) as null | {
       display_name?: string;
       favorite_team?: string | null;
+      username?: string | null;
     };
 
     const hasDisplayName = typeof body?.display_name === "string";
     const hasFavoriteTeam = !!body && Object.prototype.hasOwnProperty.call(body, "favorite_team");
+    const hasUsername = !!body && Object.prototype.hasOwnProperty.call(body, "username");
 
-    if (!hasDisplayName && !hasFavoriteTeam) {
+    if (!hasDisplayName && !hasFavoriteTeam && !hasUsername) {
       return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
     }
 
@@ -206,6 +244,52 @@ export async function PATCH(req: Request) {
       }
     }
 
+    if (hasUsername) {
+      const rawUsername = body?.username;
+      if (rawUsername !== null && rawUsername !== undefined && typeof rawUsername !== "string") {
+        return NextResponse.json({ error: "Invalid username" }, { status: 400 });
+      }
+
+      const usernameInput = typeof rawUsername === "string" ? rawUsername : "";
+      const usernameTrimmed = usernameInput.trim();
+
+      let nextUsername: string | null = null;
+      if (usernameTrimmed.length > 0) {
+        const validation = validateUsername(usernameTrimmed);
+        if (!validation.ok) {
+          return NextResponse.json({ error: validation.error }, { status: 400 });
+        }
+        nextUsername = validation.value;
+      }
+
+      const { error } = await service.from("profiles").upsert(
+        {
+          id: user.id,
+          username: nextUsername,
+        },
+        { onConflict: "id" }
+      );
+
+      if (error) {
+        if (isMissingColumnError(error.message, USERNAME_COLUMN)) {
+          return NextResponse.json(
+            {
+              error: "Database is missing username column",
+              details: "Run db/migrations/20260309_profiles_username.sql and redeploy.",
+            },
+            { status: 500 }
+          );
+        }
+        if (isDuplicateUsernameError(error.message)) {
+          return NextResponse.json({ error: "Username is already taken." }, { status: 409 });
+        }
+        return NextResponse.json(
+          { error: "Failed to save username", details: error.message },
+          { status: 500 }
+        );
+      }
+    }
+
     const { profile } = await readProfileByUserId(service, user.id);
 
     return NextResponse.json({
@@ -214,6 +298,7 @@ export async function PATCH(req: Request) {
         email: user.email ?? null,
         display_name: profile.display_name,
         favorite_team: profile.favorite_team,
+        username: profile.username,
       },
     });
   } catch (e: unknown) {

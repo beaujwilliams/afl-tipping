@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { validateUsername } from "@/lib/username";
 
 const SIGNUP_COOLDOWN_MS = 60_000;
 const SIGNUP_COOLDOWN_KEY = "afl_last_signup_attempt_ms";
@@ -24,6 +25,7 @@ function setCooldownNow() {
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [username, setUsername] = useState("");
 
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -88,6 +90,13 @@ export default function LoginPage() {
   async function signUp() {
     if (busy) return;
 
+    const usernameValidation = validateUsername(username);
+    if (!usernameValidation.ok) {
+      setMsg(usernameValidation.error);
+      return;
+    }
+    const normalizedUsername = usernameValidation.value;
+
     const left = msLeftToCooldown();
     if (left > 0) {
       const secs = Math.ceil(left / 1000);
@@ -97,13 +106,40 @@ export default function LoginPage() {
 
     setMsg(null);
     setBusySignUp(true);
-    setCooldownNow(); // ✅ throttle immediately to stop spam taps
+
+    const check = await fetch(
+      `/api/username-check?username=${encodeURIComponent(normalizedUsername)}`,
+      { cache: "no-store" }
+    );
+    const checkJson = (await check.json().catch(() => null)) as
+      | null
+      | { ok?: boolean; available?: boolean; error?: string };
+
+    if (!check.ok || !checkJson?.ok) {
+      setBusySignUp(false);
+      setCooldownLeftMs(msLeftToCooldown());
+      setMsg(checkJson?.error ?? "Could not validate username.");
+      return;
+    }
+
+    if (!checkJson.available) {
+      setBusySignUp(false);
+      setCooldownLeftMs(msLeftToCooldown());
+      setMsg("That username is already taken.");
+      return;
+    }
+
+    setCooldownNow(); // throttle only once we're about to request an email
 
     const { error } = await supabaseBrowser.auth.signUp({
       email,
       password,
       options: {
-        emailRedirectTo: `${window.location.origin}/login`,
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        data: {
+          username: normalizedUsername,
+          display_name: normalizedUsername,
+        },
       },
     });
 
@@ -140,6 +176,22 @@ export default function LoginPage() {
             placeholder="you@example.com"
             autoComplete="email"
           />
+        </label>
+
+        <label style={{ display: "block", marginBottom: 10 }}>
+          <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 6 }}>Username (for new account)</div>
+          <input
+            style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #ccc" }}
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            type="text"
+            placeholder="e.g. beau_w"
+            autoComplete="username"
+            maxLength={24}
+          />
+          <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
+            Lowercase letters, numbers, underscores only (3-24 chars).
+          </div>
         </label>
 
         <label style={{ display: "block", marginBottom: 10 }}>

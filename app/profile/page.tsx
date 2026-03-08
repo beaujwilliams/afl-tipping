@@ -11,6 +11,7 @@ type ProfileApiResponse = {
   details?: string;
   profile?: {
     email: string | null;
+    username: string | null;
     display_name: string | null;
     favorite_team: string | null;
   };
@@ -18,6 +19,7 @@ type ProfileApiResponse = {
 
 export default function ProfilePage() {
   const [email, setEmail] = useState<string | null>(null);
+  const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [favoriteTeam, setFavoriteTeam] = useState("");
   const [loading, setLoading] = useState(true);
@@ -66,6 +68,7 @@ export default function ProfilePage() {
       }
 
       setDisplayName(body?.profile?.display_name ?? "");
+      setUsername(body?.profile?.username ?? "");
       setFavoriteTeam(body?.profile?.favorite_team ?? "");
       setEmail(body?.profile?.email ?? user.email ?? null);
       setLoading(false);
@@ -98,6 +101,7 @@ export default function ProfilePage() {
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
+        username,
         display_name: displayName,
         favorite_team: favoriteTeam || null,
       }),
@@ -112,6 +116,7 @@ export default function ProfilePage() {
       return;
     }
 
+    setUsername(body?.profile?.username ?? "");
     setDisplayName(body?.profile?.display_name ?? "");
     setFavoriteTeam(body?.profile?.favorite_team ?? "");
     setMsg("Profile saved.");
@@ -147,6 +152,21 @@ export default function ProfilePage() {
             readOnly
             disabled
           />
+        </label>
+
+        <label style={{ display: "block", marginBottom: 12 }}>
+          <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 6 }}>Username</div>
+          <input
+            style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #ccc" }}
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            type="text"
+            maxLength={24}
+            placeholder="Lowercase, numbers, underscores"
+          />
+          <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
+            Unique handle used at sign-up (3-24 chars).
+          </div>
         </label>
 
         <label style={{ display: "block", marginBottom: 12 }}>

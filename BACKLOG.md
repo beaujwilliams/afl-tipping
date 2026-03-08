@@ -1,6 +1,6 @@
 # AFL Tipping Backlog
 
-Last updated: 2026-03-07
+Last updated: 2026-03-09
 
 ## Effort Scale
 
@@ -20,13 +20,13 @@ Last updated: 2026-03-07
 | BL-004 | P0 | Done (2026-03-07) | Add player self-service profile page (display name, favorite team, read-only email, change-password link) | Removes admin bottleneck and improves user identity in chat/leaderboard | S |
 | BL-005 | P0 | Done (2026-03-07) | Add payment tracking in admin (`paid`, `pending`, `waived`) and optional lockout for unpaid users | Aligns entry-fee rules with app behavior | M |
 | BL-006 | P1 | Done (2026-03-07) | Pre-lock reminders (T-3h) for members who have not tipped | Improves tip completion and engagement | M |
-| BL-007 | P1 | Idea | One-click admin reminders from round screen for users still missing tips | Faster operations on lock day | S |
+| BL-007 | P2 | Idea | One-click admin reminders from round screen for users still missing tips | Faster operations on lock day | S |
 | BL-008 | P1 | Idea | Personal stats page per user (best round, upset wins, streak history, missed rounds) | Increases retention and competitiveness | M |
 | BL-009 | P1 | Idea | Weekly recap module (biggest upset, most popular pick, perfect round) | Shareable content and stronger community feel | M |
 | BL-010 | P1 | Idea | Add tie-breaker policy + UI for final ladder ties | Prevents disputes at season end | S |
 | BL-011 | P1 | Idea | Season archive selector and year-over-year comparison page | Keeps site useful across seasons | M |
 | BL-012 | P1 | Idea | Public read-only leaderboard/results links (no auth) | Easier sharing with friends/family | M |
-| BL-019 | P1 | Idea | Add username capture during sign-up (with validation + uniqueness rules) | Ensures clean display names from day one next season | S |
+| BL-019 | P1 | Done (2026-03-09) | Add username capture during sign-up (with validation + uniqueness rules) | Ensures clean display names from day one next season | S |
 | BL-013 | P2 | Idea | Migrate from single-competition assumptions to true multi-comp support | Unlocks hosting multiple tipping groups | XL |
 | BL-014 | P2 | Idea | Automated regression tests for scoring logic and lock-time behavior | Prevents subtle scoring errors | M |
 | BL-015 | P2 | Idea | Add audit log for admin actions (sync, snapshot, recalc, member changes) | Better traceability when results look wrong | M |
@@ -37,11 +37,11 @@ Last updated: 2026-03-07
 
 ## Suggested Next 5 to Build
 
-1. `BL-007` one-click admin reminders
-2. `BL-019` username at sign-up
-3. `BL-008` personal stats page
-4. `BL-009` weekly recap module
-5. `BL-010` tie-breaker policy + UI
+1. `BL-010` tie-breaker policy + UI
+2. `BL-008` personal stats page
+3. `BL-009` weekly recap module
+4. `BL-012` public read-only leaderboard/results links
+5. `BL-007` one-click admin reminders
 
 ## Notes
 

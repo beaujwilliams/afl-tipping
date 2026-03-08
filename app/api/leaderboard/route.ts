@@ -4,6 +4,7 @@ import { resolveReigningChampion } from "@/lib/reigning-champion";
 
 type RoundRow = {
   id: string;
+  competition_id: string;
   round_number: number;
   odds_snapshot_for_time_utc: string | null;
 };
@@ -129,6 +130,24 @@ function sumUpTo(roundMap: Record<number, number>, maxRound: number | null) {
   return total;
 }
 
+function pickCompetitionIdForSeason(roundRows: RoundRow[]) {
+  if (!roundRows.length) return null;
+
+  const byCompetition = new Map<string, RoundRow[]>();
+  for (const row of roundRows) {
+    const competitionId = String(row.competition_id);
+    if (!byCompetition.has(competitionId)) byCompetition.set(competitionId, []);
+    byCompetition.get(competitionId)!.push(row);
+  }
+
+  const picked = Array.from(byCompetition.entries()).sort((a, b) => {
+    if (b[1].length !== a[1].length) return b[1].length - a[1].length;
+    return a[0].localeCompare(b[0]);
+  })[0];
+
+  return picked?.[0] ?? null;
+}
+
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
@@ -140,27 +159,9 @@ export async function GET(req: Request) {
 
     const supabase = createServiceClient();
 
-    const { data: comp, error: cErr } = await supabase
-      .from("competitions")
-      .select("id")
-      .limit(1)
-      .single();
-
-    if (cErr || !comp?.id) {
-      return NextResponse.json({ ok: false, error: "No competition found" }, { status: 404 });
-    }
-
-    const competitionId = String(comp.id);
-    const reigningChampion = await resolveReigningChampion({
-      competitionId,
-      season,
-      supabase,
-    });
-
-    const { data: rounds, error: rErr } = await supabase
+    const { data: seasonRounds, error: rErr } = await supabase
       .from("rounds")
-      .select("id, round_number, odds_snapshot_for_time_utc")
-      .eq("competition_id", competitionId)
+      .select("id, competition_id, round_number, odds_snapshot_for_time_utc")
       .eq("season", season)
       .order("round_number", { ascending: true });
 
@@ -171,7 +172,29 @@ export async function GET(req: Request) {
       );
     }
 
-    const roundRows = (rounds ?? []) as RoundRow[];
+    const allSeasonRounds = (seasonRounds ?? []) as RoundRow[];
+    let competitionId = pickCompetitionIdForSeason(allSeasonRounds);
+
+    if (!competitionId) {
+      const { data: comp, error: cErr } = await supabase
+        .from("competitions")
+        .select("id")
+        .limit(1)
+        .single();
+
+      if (cErr || !comp?.id) {
+        return NextResponse.json({ ok: false, error: "No competition found" }, { status: 404 });
+      }
+      competitionId = String(comp.id);
+    }
+
+    const roundRows = allSeasonRounds.filter((r) => String(r.competition_id) === competitionId);
+    const reigningChampion = await resolveReigningChampion({
+      competitionId,
+      season,
+      supabase,
+    });
+
     const roundIds = roundRows.map((r) => String(r.id));
 
     if (roundIds.length === 0) {
@@ -179,8 +202,10 @@ export async function GET(req: Request) {
         ok: true,
         season,
         competition_id: competitionId,
+        reigning_champion_user_id: reigningChampion.reigning_champion_user_id,
         latest_scored_round: null,
         previous_round_for_movement: null,
+        matches_scored: 0,
         rows: [],
       });
     }

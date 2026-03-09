@@ -73,23 +73,22 @@ const ALL_COLUMNS: SortKey[] = [
   "display_name",
   "total_points",
   "correct_tips",
-  "accuracy_pct",
-  "tips_submitted",
-  "missed_tips",
-  "round_score",
-  "movement",
   "behind_leader",
+  "movement",
+  "accuracy_pct",
+  "round_score",
   "current_streak",
   "avg_winning_odds",
+  "tips_submitted",
 ];
 
 const MOBILE_CORE_COLUMNS: SortKey[] = [
   "rank",
   "display_name",
   "total_points",
-  "movement",
   "correct_tips",
-  "accuracy_pct",
+  "behind_leader",
+  "movement",
 ];
 
 function fmtPts(n: number) {
@@ -204,7 +203,7 @@ export default function LeaderboardPage() {
 
   const rankColWidth = isMobile ? 56 : 72;
   const tipsterColWidth = isMobile ? 138 : 190;
-  const tableMinWidth = isMobile ? (showMoreMobileStats ? 980 : 760) : 1120;
+  const tableMinWidth = isMobile ? (showMoreMobileStats ? 930 : 760) : 1120;
 
   function stickyColumnStyle(col: 1 | 2, isHeader: boolean) {
     return {
@@ -388,7 +387,7 @@ export default function LeaderboardPage() {
                     }}
                   >
                     <div style={{ fontSize: 12, opacity: 0.8 }}>
-                      {showMoreMobileStats ? "Showing all stats" : "Showing core stats"}
+                      {showMoreMobileStats ? "Showing all stats" : "Showing always-on stats"}
                     </div>
                     <button
                       type="button"
@@ -416,18 +415,17 @@ export default function LeaderboardPage() {
                       {showColumn("display_name") && sortableHeader("Tipster", "display_name", 2)}
                       {showColumn("total_points") && sortableHeader("Total Pts", "total_points")}
                       {showColumn("correct_tips") && sortableHeader("Correct", "correct_tips")}
-                      {showColumn("accuracy_pct") && sortableHeader("Accuracy", "accuracy_pct")}
-                      {showColumn("tips_submitted") && sortableHeader("Tips", "tips_submitted")}
-                      {showColumn("missed_tips") && sortableHeader("Missed", "missed_tips")}
+                      {showColumn("behind_leader") && sortableHeader("Behind", "behind_leader")}
+                      {showColumn("movement") && sortableHeader("Move", "movement")}
+                      {showColumn("accuracy_pct") && sortableHeader("Season Accuracy", "accuracy_pct")}
                       {showColumn("round_score") &&
                         sortableHeader(
                           latestScoredRound === null ? "Round Score" : `Round Score (R${latestScoredRound})`,
                           "round_score"
                         )}
-                      {showColumn("movement") && sortableHeader("Move", "movement")}
-                      {showColumn("behind_leader") && sortableHeader("Behind", "behind_leader")}
                       {showColumn("current_streak") && sortableHeader("Streak", "current_streak")}
                       {showColumn("avg_winning_odds") && sortableHeader("Avg Win Odds", "avg_winning_odds")}
+                      {showColumn("tips_submitted") && sortableHeader("Tips (Sub/Poss)", "tips_submitted")}
                     </tr>
                   </thead>
                   <tbody>
@@ -486,24 +484,9 @@ export default function LeaderboardPage() {
                             {r.correct_tips}
                           </td>
                         )}
-                        {showColumn("accuracy_pct") && (
+                        {showColumn("behind_leader") && (
                           <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
-                            {fmtPct(r.accuracy_pct)}
-                          </td>
-                        )}
-                        {showColumn("tips_submitted") && (
-                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
-                            {r.tips_submitted}/{r.tips_possible}
-                          </td>
-                        )}
-                        {showColumn("missed_tips") && (
-                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
-                            {r.missed_tips}
-                          </td>
-                        )}
-                        {showColumn("round_score") && (
-                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)", fontWeight: 700 }}>
-                            {fmtPts(r.round_score)}
+                            {r.behind_leader <= 0 ? "-" : fmtPts(r.behind_leader)}
                           </td>
                         )}
                         {showColumn("movement") && (
@@ -519,9 +502,14 @@ export default function LeaderboardPage() {
                             {movementText(r.movement)}
                           </td>
                         )}
-                        {showColumn("behind_leader") && (
+                        {showColumn("accuracy_pct") && (
                           <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
-                            {r.behind_leader <= 0 ? "-" : fmtPts(r.behind_leader)}
+                            {fmtPct(r.accuracy_pct)}
+                          </td>
+                        )}
+                        {showColumn("round_score") && (
+                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)", fontWeight: 700 }}>
+                            {fmtPts(r.round_score)}
                           </td>
                         )}
                         {showColumn("current_streak") && (
@@ -532,6 +520,11 @@ export default function LeaderboardPage() {
                         {showColumn("avg_winning_odds") && (
                           <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
                             {fmtPts(r.avg_winning_odds)}
+                          </td>
+                        )}
+                        {showColumn("tips_submitted") && (
+                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
+                            {r.tips_submitted}/{r.tips_possible}
                           </td>
                         )}
                       </tr>

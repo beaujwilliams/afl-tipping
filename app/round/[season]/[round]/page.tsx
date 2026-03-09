@@ -252,7 +252,7 @@ export default function RoundPage() {
     return oddsHaveCount < matches.length;
   }, [matches.length, oddsHaveCount]);
 
-  // ✅ Snapshot window: start polling only within 36 hours of lock time
+  // Start polling only within 36 hours of lock time.
   const snapshotDueMs = useMemo(() => {
     if (!lockMs) return null;
     return lockMs - 36 * 60 * 60 * 1000; // 36h before lock
@@ -264,6 +264,9 @@ export default function RoundPage() {
   }, [nowMs, snapshotDueMs]);
 
   const snapshotForTimeUtc = roundRow?.odds_snapshot_for_time_utc ?? null;
+  const oddsExpectedFromIso = snapshotDueMs ? new Date(snapshotDueMs).toISOString() : null;
+  const oddsExpectedCountdown =
+    snapshotDueMs && nowMs < snapshotDueMs ? msToCountdown(snapshotDueMs - nowMs) : null;
 
   const shouldPollOdds = useMemo(() => {
     return (
@@ -337,10 +340,10 @@ export default function RoundPage() {
     }
   }
 
-  function snapshotLabel(snapshot: string | null) {
+  function oddsLockLabel(snapshot: string | null) {
     return snapshot
-      ? `Snapshot locked: ${formatMelbourne(snapshot)} (Melbourne)`
-      : "Snapshot not set yet (showing latest)";
+      ? `Scoring odds time: ${formatMelbourne(snapshot)} (Melbourne)`
+      : "Scoring odds time not set yet (showing latest available odds)";
   }
 
   // -------- odds loader (LOCKED to round snapshot when present) --------
@@ -385,10 +388,10 @@ export default function RoundPage() {
     const have = Object.keys(map).length;
     setOddsInfo(
       have
-        ? `Odds available for ${have}/${totalMatches} matches. • ${snapshotLabel(
+        ? `Odds loaded for ${have}/${totalMatches} matches. • ${oddsLockLabel(
             snapshot
           )}`
-        : `No odds captured yet for this round. • ${snapshotLabel(snapshot)}`
+        : `No odds loaded yet for this round. • ${oddsLockLabel(snapshot)}`
     );
 
     if (have >= totalMatches && totalMatches > 0) {
@@ -407,7 +410,8 @@ export default function RoundPage() {
       .single();
 
     if (error || !data) return null;
-    return (data as any).odds_snapshot_for_time_utc ?? null;
+    const row = data as { odds_snapshot_for_time_utc?: string | null };
+    return row.odds_snapshot_for_time_utc ?? null;
   }
 
   useEffect(() => {
@@ -856,14 +860,14 @@ export default function RoundPage() {
           ) : (
             <>
               <div style={{ fontWeight: 700 }}>
-                Round locks in <span>{lockCountdown}</span>
+                Tips close in <span>{lockCountdown}</span>
               </div>
               <div style={{ marginTop: 4, opacity: 0.85 }}>
-                Lock time: <b>{formatMelbourne(roundRow.lock_time_utc)}</b>{" "}
+                Last time you can tip: <b>{formatMelbourne(roundRow.lock_time_utc)}</b>{" "}
                 (Melbourne time)
               </div>
               <div style={{ marginTop: 6, fontSize: 12, opacity: 0.8 }}>
-                Your whole round locks at the first match start time.
+                After this time, tips are locked and can’t be changed.
               </div>
             </>
           )}
@@ -887,12 +891,11 @@ export default function RoundPage() {
           }}
         >
           <div style={{ fontWeight: 900, color: "crimson" }}>
-            ⚠️ Odds snapshot hasn’t run for this round.
+            ⚠️ Scoring odds are still missing for this locked round.
           </div>
           <div style={{ marginTop: 6, fontSize: 12, opacity: 0.9 }}>
-            This round is locked, but we’re still missing odds for{" "}
-            <b>{matches.length - oddsHaveCount}</b> match(es). Admin: run{" "}
-            <b>Snapshot Next Due Round</b> (or force snapshot) to backfill.
+            We’re still missing odds for <b>{matches.length - oddsHaveCount}</b> match(es).
+            Admin: run <b>Snapshot Next Due Round</b> (or force snapshot) to backfill.
           </div>
         </div>
       )}
@@ -908,11 +911,21 @@ export default function RoundPage() {
           }}
         >
           <div style={{ fontWeight: 800 }}>
-            Odds will be locked at the snapshot time. Your pick is saved.
+            Your pick is saved now. Odds should appear before tips close.
           </div>
           <div style={{ marginTop: 6, fontSize: 12, opacity: 0.85 }}>
-            Odds captured for <b>{oddsHaveCount}</b>/<b>{matches.length}</b>{" "}
-            matches so far.
+            Odds loaded for <b>{oddsHaveCount}</b>/<b>{matches.length}</b> matches.
+            {oddsExpectedFromIso && nowMs < (snapshotDueMs ?? 0) && (
+              <span style={{ marginLeft: 8, opacity: 0.9 }}>
+                Odds are expected from <b>{formatMelbourne(oddsExpectedFromIso)}</b> (in{" "}
+                <b>{oddsExpectedCountdown}</b>).
+              </span>
+            )}
+            {oddsExpectedFromIso && nowMs >= (snapshotDueMs ?? 0) && !isLocked && (
+              <span style={{ marginLeft: 8, opacity: 0.9 }}>
+                Odds should be coming through now.
+              </span>
+            )}
             {shouldPollOdds && (
               <span style={{ marginLeft: 8, opacity: 0.85 }}>
                 (Auto-checking every 90s)
@@ -920,7 +933,7 @@ export default function RoundPage() {
             )}
             {!shouldPollOdds && !isLocked && snapshotDueMs && nowMs < snapshotDueMs && (
               <span style={{ marginLeft: 8, opacity: 0.85 }}>
-                (We’ll start checking within 36h of lock)
+                (Auto-check starts 36h before tips close)
               </span>
             )}
           </div>

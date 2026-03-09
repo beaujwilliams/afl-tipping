@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase-server";
 import { resolveReigningChampion } from "@/lib/reigning-champion";
+import { resolveCompetitionIdForSeasonRound } from "@/lib/competition-resolver";
 
 type PlayerRow = {
   user_id: string;
@@ -72,6 +73,7 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const season = Number(url.searchParams.get("season"));
     const round = Number(url.searchParams.get("round"));
+    const competitionIdParam = url.searchParams.get("competition_id");
 
     if (!Number.isFinite(season) || !Number.isFinite(round) || round < 0) {
       return NextResponse.json(
@@ -82,17 +84,17 @@ export async function GET(req: Request) {
 
     const supabase = createServiceClient();
 
-    const { data: comp, error: cErr } = await supabase
-      .from("competitions")
-      .select("id")
-      .limit(1)
-      .single();
+    const competitionId = await resolveCompetitionIdForSeasonRound({
+      season,
+      round,
+      explicitCompetitionId: competitionIdParam,
+      supabase,
+    });
 
-    if (cErr || !comp) {
+    if (!competitionId) {
       return NextResponse.json({ ok: false, error: "No competition" }, { status: 404 });
     }
 
-    const competitionId = String(comp.id);
     const reigningChampion = await resolveReigningChampion({
       competitionId,
       season,
@@ -102,7 +104,7 @@ export async function GET(req: Request) {
     const { data: roundRow, error: rErr } = await supabase
       .from("rounds")
       .select("id, lock_time_utc, odds_snapshot_for_time_utc")
-      .eq("competition_id", comp.id)
+      .eq("competition_id", competitionId)
       .eq("season", season)
       .eq("round_number", round)
       .single();
@@ -130,7 +132,7 @@ export async function GET(req: Request) {
     const { data: cached, error: cacheErr } = await supabase
       .from("round_locked_tips_cache")
       .select("players, computed_at")
-      .eq("competition_id", comp.id)
+      .eq("competition_id", competitionId)
       .eq("round_id", roundId)
       .maybeSingle();
 
@@ -175,7 +177,7 @@ export async function GET(req: Request) {
       const players: PlayerRow[] = [];
 
       await supabase.from("round_locked_tips_cache").upsert({
-        competition_id: comp.id,
+        competition_id: competitionId,
         round_id: roundId,
         season,
         round_number: round,
@@ -202,7 +204,7 @@ export async function GET(req: Request) {
     const { data: tips, error: tErr } = await supabase
       .from("tips")
       .select("match_id, user_id, picked_team")
-      .eq("competition_id", comp.id)
+      .eq("competition_id", competitionId)
       .in("match_id", matchIds);
 
     if (tErr) {
@@ -215,7 +217,7 @@ export async function GET(req: Request) {
       const players: PlayerRow[] = [];
 
       await supabase.from("round_locked_tips_cache").upsert({
-        competition_id: comp.id,
+        competition_id: competitionId,
         round_id: roundId,
         season,
         round_number: round,
@@ -254,7 +256,7 @@ export async function GET(req: Request) {
     let oddsQuery = supabase
       .from("match_odds")
       .select("match_id, home_odds, away_odds, captured_at_utc, snapshot_for_time_utc")
-      .eq("competition_id", comp.id)
+      .eq("competition_id", competitionId)
       .in("match_id", matchIds);
 
     if (snapshotForTimeUtc) {
@@ -317,7 +319,7 @@ export async function GET(req: Request) {
     const players = Object.values(byUser).sort((a, b) => Number(b.potential) - Number(a.potential));
 
     await supabase.from("round_locked_tips_cache").upsert({
-      competition_id: comp.id,
+      competition_id: competitionId,
       round_id: roundId,
       season,
       round_number: round,

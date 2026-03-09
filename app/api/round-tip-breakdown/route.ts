@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase-server";
+import { resolveCompetitionIdForSeasonRound } from "@/lib/competition-resolver";
 
 export async function GET(req: Request) {
   try {
@@ -7,6 +8,7 @@ export async function GET(req: Request) {
 
     const seasonParam = url.searchParams.get("season");
     const roundParam = url.searchParams.get("round");
+    const competitionIdParam = url.searchParams.get("competition_id");
 
     const season = Number(seasonParam);
     const round = Number(roundParam);
@@ -22,21 +24,21 @@ export async function GET(req: Request) {
     // service role (server-only)
     const supabase = createServiceClient();
 
-    // single-comp MVP
-    const { data: comp } = await supabase
-      .from("competitions")
-      .select("id")
-      .limit(1)
-      .single();
+    const competitionId = await resolveCompetitionIdForSeasonRound({
+      season,
+      round,
+      explicitCompetitionId: competitionIdParam,
+      supabase,
+    });
 
-    if (!comp) {
+    if (!competitionId) {
       return NextResponse.json({ error: "No competition" }, { status: 404 });
     }
 
     const { data: roundRow } = await supabase
       .from("rounds")
       .select("id, lock_time_utc")
-      .eq("competition_id", comp.id)
+      .eq("competition_id", competitionId)
       .eq("season", season)
       .eq("round_number", round)
       .single();
@@ -78,7 +80,7 @@ export async function GET(req: Request) {
     const { data: tips, error: tErr } = await supabase
       .from("tips")
       .select("match_id, picked_team")
-      .eq("competition_id", comp.id)
+      .eq("competition_id", competitionId)
       .in("match_id", matchIds);
 
     if (tErr) {
@@ -102,7 +104,7 @@ export async function GET(req: Request) {
       ok: true,
       season,
       round,
-      competition_id: comp.id,
+      competition_id: competitionId,
       byMatch,
     });
 

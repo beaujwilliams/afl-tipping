@@ -25,7 +25,7 @@ export default function InfoPage() {
         </div>
 
         <div>
-          <h2 style={{ marginBottom: 8 }}>2. Correct tips score odds points</h2>
+          <h2 style={{ marginBottom: 8 }}>2. Correct tips earn the listed odds</h2>
           <p>If your tip wins, you get that team’s odds as points.</p>
 
           <div

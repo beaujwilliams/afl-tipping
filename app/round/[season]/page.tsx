@@ -292,7 +292,7 @@ export default function SeasonRoundsPage() {
           flexWrap: "wrap",
         }}
       >
-        <h1 style={{ margin: 0, fontSize: 40, letterSpacing: -0.5 }}>Tip • {season}</h1>
+        <h1 style={{ margin: 0, fontSize: 40, letterSpacing: -0.5 }}>Tip</h1>
         <div style={{ opacity: 0.7, fontSize: 12 }}>All times shown in Melbourne</div>
       </div>
 
@@ -349,7 +349,23 @@ export default function SeasonRoundsPage() {
       )}
 
       {!msg && hasRows && (
-        <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
+        <div style={{ marginTop: 22 }}>
+          <div
+            style={{
+              borderTop: "1px solid var(--border)",
+              paddingTop: 12,
+              marginBottom: 12,
+            }}
+          >
+            <div style={{ opacity: 0.62, fontSize: 11, letterSpacing: 0.6, textTransform: "uppercase" }}>
+              {season} Season
+            </div>
+            <div style={{ marginTop: 4, fontWeight: 900, fontSize: 18, letterSpacing: -0.2 }}>
+              Season rounds
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gap: 12 }}>
           {rows.map((r) => {
             const lock = melbourneMs(r.lock_time_utc);
             const locked = lock ? nowMs >= lock : false;
@@ -540,6 +556,7 @@ export default function SeasonRoundsPage() {
               </div>
             );
           })}
+          </div>
         </div>
       )}
     </main>

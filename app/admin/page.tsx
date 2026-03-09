@@ -196,6 +196,24 @@ export default function AdminPage() {
           </button>
         </div>
 
+        <div>
+          <button
+            disabled={isRunning}
+            onClick={() => router.push("/admin/recaps")}
+            style={{
+              ...btnStyle,
+              ...secondaryActionStyle,
+              ...buttonStateStyle,
+              background: "var(--card-soft)",
+              color: "var(--foreground)",
+              border: "1px solid var(--foreground)",
+              fontWeight: 800,
+            }}
+          >
+            Round Recaps
+          </button>
+        </div>
+
         <details
           style={{
             marginTop: 6,

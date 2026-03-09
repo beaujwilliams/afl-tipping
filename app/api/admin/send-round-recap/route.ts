@@ -345,13 +345,25 @@ export async function GET(req: Request) {
 
     const supabase = createServiceClient();
 
-    const tableCheck = await supabase.from("round_recap_emails").select("id").limit(1);
-    if (tableCheck.error) {
+    const emailTableCheck = await supabase.from("round_recap_emails").select("id").limit(1);
+    if (emailTableCheck.error) {
       return NextResponse.json(
         {
           error: "round_recap_emails table missing or inaccessible",
-          details: tableCheck.error.message,
+          details: emailTableCheck.error.message,
           hint: "Apply migration db/migrations/20260308_round_recap_emails.sql",
+        },
+        { status: 500 }
+      );
+    }
+
+    const recapTableCheck = await supabase.from("round_recaps").select("id").limit(1);
+    if (recapTableCheck.error) {
+      return NextResponse.json(
+        {
+          error: "round_recaps table missing or inaccessible",
+          details: recapTableCheck.error.message,
+          hint: "Apply migration db/migrations/20260310_round_recaps.sql",
         },
         { status: 500 }
       );
@@ -1109,116 +1121,104 @@ export async function GET(req: Request) {
     headlineBits.push(`Round difficulty: ${round2(roundDifficultyPct)}% correct`);
 
     const subject = `Round ${roundNumber} recap (${season})`;
+    const generatedAtIso = new Date().toISOString();
+
+    const narrativeLines: string[] = [];
+    narrativeLines.push("NARRATIVE RECAP");
+    narrativeLines.push(
+      `Round ${roundNumber} is complete. ${roundWinners.length ? `${humanList(roundWinners.map((w) => w.display_name))} topped the round with ${round2(maxRoundScore)} points.` : "No round winner could be resolved."}`
+    );
+    narrativeLines.push(
+      `Round difficulty finished at ${round2(roundDifficultyPct)}% correct tips, with an average round score of ${round2(roundAvg)}.`
+    );
+    narrativeLines.push(
+      `${tippedCount}/${totalMembers} members tipped in this round (${missingCount} missed).`
+    );
+    narrativeLines.push(
+      `Ladder movement: rises ${topRises.length ? topRises.map((r) => `${r.display_name} (+${r.movement})`).join(", ") : "none"}, drops ${topDrops.length ? topDrops.map((r) => `${r.display_name} (${r.movement})`).join(", ") : "none"}.`
+    );
+    narrativeLines.push(
+      `Biggest upset: ${biggestUpset ? `${biggestUpset.winner} at ${round2(biggestUpset.winnerOdds)} (${biggestUpset.match.home_team} vs ${biggestUpset.match.away_team})` : "n/a"}.`
+    );
+    narrativeLines.push(
+      `Most-picked side: ${mostPickedTeam ? `${mostPickedTeam[0]} (${mostPickedTeam[1]} picks)` : "n/a"}. Consensus miss: ${consensusMiss ? `${consensusMiss.match.home_team} vs ${consensusMiss.match.away_team}, where ${consensusMiss.loser} was backed by ${round2(consensusMiss.loserPct)}%` : "n/a"}.`
+    );
+    narrativeLines.push(
+      `Streak watch: ${longestCurrentStreak ? `${longestCurrentStreak.display_name} now leads with ${longestCurrentStreak.post_streak} in a row` : "n/a"}; broken streaks ${brokenStreaks.length ? brokenStreaks.slice(0, 3).map((s) => `${s.display_name} (${s.pre_streak} -> ${s.post_streak})`).join(", ") : "none"}.`
+    );
+    narrativeLines.push(
+      `Next round lock: ${nextRound ? nextRoundLock : "n/a"}. Closest odds matchups: ${nextRoundUpsets.length ? nextRoundUpsets.map((m) => `${m.home} vs ${m.away} (gap ${round2(m.gap)})`).join(", ") : "n/a"}.`
+    );
+
+    const rawStatsLines: string[] = [];
+    rawStatsLines.push("RAW STATS");
+    rawStatsLines.push(`Generated: ${fmtMelbourne(generatedAtIso)} (Melbourne)`);
+    rawStatsLines.push(`First game: ${fmtMelbourne(target.first_game_utc)}`);
+    rawStatsLines.push(`Eligible after ${hoursAfterFirst}h: ${fmtMelbourne(target.due_at_utc)}`);
+    rawStatsLines.push("");
+    rawStatsLines.push("Headline metrics");
+    headlineBits.forEach((h) => rawStatsLines.push(`- ${h}`));
+    rawStatsLines.push(`- Participation: ${tippedCount}/${totalMembers}`);
+    rawStatsLines.push(`- Missing tips: ${missingCount}`);
+    rawStatsLines.push(`- Leader margin: ${round2(leaderMargin)} pts`);
+    rawStatsLines.push(`- Underdog points awarded: ${round2(underdogPointsAwarded)}`);
+    rawStatsLines.push("");
+    rawStatsLines.push("Top ladder snapshot");
+    topN(lbRows, 10).forEach((r) => {
+      rawStatsLines.push(
+        `- #${r.rank} ${r.display_name}: total ${round2(r.total_points)}, round ${round2(r.round_score)}, accuracy ${round2(r.accuracy_pct)}%, move ${Number(r.movement) > 0 ? "+" : ""}${r.movement}`
+      );
+    });
+    rawStatsLines.push("");
+    rawStatsLines.push("Round player stats");
+    [...playerStats]
+      .sort((a, b) => {
+        if (b.round_score !== a.round_score) return b.round_score - a.round_score;
+        if (b.correct_tips !== a.correct_tips) return b.correct_tips - a.correct_tips;
+        return a.display_name.localeCompare(b.display_name, "en", { sensitivity: "base" });
+      })
+      .forEach((p) => {
+        rawStatsLines.push(
+          `- ${p.display_name}: score ${round2(p.round_score)}, correct ${p.correct_tips}/${p.total_tips}, accuracy ${round2(p.accuracy_pct)}%, avg correct odds ${round2(p.avg_correct_odds)}`
+        );
+      });
+    rawStatsLines.push("");
+    rawStatsLines.push("Match outcomes");
+    rrMatches.forEach((m) => {
+      rawStatsLines.push(
+        `- ${m.home_team} vs ${m.away_team}: winner ${m.winner_team ?? "n/a"}, tips ${m.total_tips}, split ${m.home_team} ${m.tipping.home_count} (${round2(m.tipping.home_pct)}%) / ${m.away_team} ${m.tipping.away_count} (${round2(m.tipping.away_pct)}%)`
+      );
+    });
+    rawStatsLines.push("");
+    rawStatsLines.push("Additional signals");
+    rawStatsLines.push(
+      `- Closest rivals: ${closestRivalPairs.length ? topN(closestRivalPairs, 3).map((p) => `${p.a.display_name} vs ${p.b.display_name} (${round2(p.gap)} pts)`).join(", ") : "n/a"}`
+    );
+    rawStatsLines.push(
+      `- Sharp pick leaders: ${sharpPickLeaders.length ? sharpPickLeaders.map((p) => `${p.display_name} (${round2(p.underdog_points)} pts)`).join(", ") : "none"}`
+    );
+    rawStatsLines.push(
+      `- Risk profile: ${highRisk ? `${highRisk.display_name} (${round2(highRisk.avg_correct_odds)} avg correct odds)` : "n/a"}`
+    );
+    rawStatsLines.push(
+      `- Efficiency profile: ${efficient ? `${efficient.display_name} (${round2(efficient.accuracy_pct)}% accuracy)` : "n/a"}`
+    );
+    rawStatsLines.push(
+      `- Missed-tip max swing: ${whatIfRows.length ? topN(whatIfRows, 2).map((r) => `${r.display_name} (+${round2(r.potential_gain)})`).join(", ") : "n/a"}`
+    );
+    rawStatsLines.push(
+      `- Team sentiment shifts: ${sentimentRows.length ? topN(sentimentRows, 3).map((s) => `${s.team} (${s.delta >= 0 ? "+" : ""}${round2(s.delta)}pp)`).join(", ") : "n/a"}`
+    );
+
+    const narrativeText = narrativeLines.join("\n");
+    const rawStatsText = rawStatsLines.join("\n");
 
     const textLines: string[] = [];
     textLines.push(`Needlessly Complicated Tipping - Round ${roundNumber} Recap`);
     textLines.push("");
-    textLines.push(`Generated: ${fmtMelbourne(new Date().toISOString())} (Melbourne)`);
-    textLines.push(`First game: ${fmtMelbourne(target.first_game_utc)}`);
-    textLines.push(`Eligible after ${hoursAfterFirst}h: ${fmtMelbourne(target.due_at_utc)}`);
+    textLines.push(...narrativeLines);
     textLines.push("");
-
-    textLines.push("Top headlines");
-    headlineBits.forEach((h) => textLines.push(`- ${h}`));
-    textLines.push("");
-
-    textLines.push("Round outcomes");
-    textLines.push(`- Average round score: ${round2(roundAvg)}`);
-    textLines.push(
-      `- Closest to perfect: ${closestToPerfect[0] ? `${closestToPerfect[0].display_name} (${closestToPerfect[0].correct_tips}/${perfectTips})` : "n/a"}`
-    );
-    textLines.push(
-      `- Participation: ${tippedCount}/${totalMembers} tipped, ${missingCount} missed`
-    );
-    textLines.push("");
-
-    textLines.push("Ladder movement");
-    textLines.push(
-      `- Top rises: ${topRises.length ? topRises.map((r) => `${r.display_name} (+${r.movement})`).join(", ") : "none"}`
-    );
-    textLines.push(
-      `- Top drops: ${topDrops.length ? topDrops.map((r) => `${r.display_name} (${r.movement})`).join(", ") : "none"}`
-    );
-    textLines.push(
-      `- Podium entered: ${podiumEntered.length ? podiumEntered.map((r) => r.display_name).join(", ") : "none"}`
-    );
-    textLines.push(
-      `- Podium exited: ${podiumExited.length ? podiumExited.map((r) => r.display_name).join(", ") : "none"}`
-    );
-    textLines.push(`- Leader margin: ${round2(leaderMargin)} pts`);
-    textLines.push(
-      `- Highest volatility: ${highestVolatility ? `${highestVolatility.display_name} (${highestVolatility.movement > 0 ? "+" : ""}${highestVolatility.movement})` : "n/a"}`
-    );
-    textLines.push("");
-
-    textLines.push("Rival gaps");
-    textLines.push(
-      `- Closest rivals: ${closestRivalPairs.length ? topN(closestRivalPairs, 3).map((p) => `${p.a.display_name} vs ${p.b.display_name} (${round2(p.gap)} pts)`).join(", ") : "n/a"}`
-    );
-    textLines.push("");
-
-    textLines.push("Pick trends");
-    textLines.push(
-      `- Most-picked team: ${mostPickedTeam ? `${mostPickedTeam[0]} (${mostPickedTeam[1]} picks)` : "n/a"}`
-    );
-    textLines.push(
-      `- Closest split: ${closestSplit ? `${closestSplit.match.home_team} vs ${closestSplit.match.away_team} (${closestSplit.diff.toFixed(1)}% spread)` : "n/a"}`
-    );
-    textLines.push(
-      `- Consensus miss: ${consensusMiss ? `${consensusMiss.match.home_team} vs ${consensusMiss.match.away_team} (${consensusMiss.loser} tipped by ${round2(consensusMiss.loserPct)}%)` : "n/a"}`
-    );
-    textLines.push("");
-
-    textLines.push("Upsets and sharp picks");
-    textLines.push(
-      `- Biggest upset: ${biggestUpset ? `${biggestUpset.winner} won at ${round2(biggestUpset.winnerOdds)} (${biggestUpset.match.home_team} vs ${biggestUpset.match.away_team})` : "n/a"}`
-    );
-    textLines.push(`- Underdog points awarded: ${round2(underdogPointsAwarded)}`);
-    textLines.push(
-      `- Clutch pick: ${clutchPick ? `${clutchPick.winner} picked by ${round2(clutchPick.winnerShare)}%` : "n/a"}`
-    );
-    textLines.push(
-      `- Sharp pick leaders: ${sharpPickLeaders.length ? sharpPickLeaders.map((p) => `${p.display_name} (${round2(p.underdog_points)} pts from underdogs)`).join(", ") : "none"}`
-    );
-    textLines.push("");
-
-    textLines.push("Luck vs skill");
-    textLines.push(
-      `- Risk profile: ${highRisk ? `${highRisk.display_name} (avg correct odds ${round2(highRisk.avg_correct_odds)})` : "n/a"}`
-    );
-    textLines.push(
-      `- Efficiency profile: ${efficient ? `${efficient.display_name} (${round2(efficient.accuracy_pct)}% accuracy)` : "n/a"}`
-    );
-    textLines.push("");
-
-    textLines.push("Streak watch");
-    textLines.push(
-      `- Longest current streak: ${longestCurrentStreak ? `${longestCurrentStreak.display_name} (${longestCurrentStreak.post_streak})` : "n/a"}`
-    );
-    textLines.push(
-      `- Broken streaks: ${brokenStreaks.length ? brokenStreaks.slice(0, 3).map((s) => `${s.display_name} (${s.pre_streak} -> ${s.post_streak})`).join(", ") : "none"}`
-    );
-    textLines.push("");
-
-    textLines.push("Team sentiment heat");
-    textLines.push(
-      `- Biggest shifts vs season baseline: ${sentimentRows.length ? topN(sentimentRows, 3).map((s) => `${s.team} (${s.delta >= 0 ? "+" : ""}${round2(s.delta)}pp)`).join(", ") : "n/a"}`
-    );
-    textLines.push("");
-
-    textLines.push("What-if scenarios");
-    textLines.push(
-      `- Missed-tip max swing: ${whatIfRows.length ? topN(whatIfRows, 2).map((r) => `${r.display_name} (+${round2(r.potential_gain)} max)`).join(", ") : "n/a"}`
-    );
-    textLines.push("");
-
-    textLines.push("Next round forecast");
-    textLines.push(
-      `- Next round lock: ${nextRound ? nextRoundLock : "n/a"}`
-    );
-    textLines.push(
-      `- Closest odds matchups: ${nextRoundUpsets.length ? nextRoundUpsets.map((m) => `${m.home} vs ${m.away} (gap ${round2(m.gap)})`).join(", ") : "n/a"}`
-    );
+    textLines.push(...rawStatsLines);
 
     const text = textLines.join("\n");
     const html = `<div style=\"font-family:Arial,Helvetica,sans-serif;line-height:1.5;color:#111;white-space:pre-wrap\">${text
@@ -1241,6 +1241,38 @@ export async function GET(req: Request) {
       },
       headline_bits: headlineBits,
     };
+
+    let recapSaved = false;
+    if (!dryRun) {
+      const { error: recapErr } = await supabase.from("round_recaps").upsert(
+        {
+          competition_id: comp.id,
+          round_id: roundId,
+          season,
+          round_number: roundNumber,
+          recap_type: RECAP_TYPE,
+          subject,
+          narrative_text: narrativeText,
+          raw_stats_text: rawStatsText,
+          email_text: text,
+          email_html: html,
+          summary_json: payloadForLog,
+          generated_at: generatedAtIso,
+          updated_at: generatedAtIso,
+        },
+        {
+          onConflict: "competition_id,round_id,recap_type",
+        }
+      );
+
+      if (recapErr) {
+        return NextResponse.json(
+          { error: "Failed to save round recap", details: recapErr.message },
+          { status: 500 }
+        );
+      }
+      recapSaved = true;
+    }
 
     let sent = 0;
     let simulated = 0;
@@ -1307,6 +1339,7 @@ export async function GET(req: Request) {
       first_game_utc: target.first_game_utc,
       due_at_utc: target.due_at_utc,
       dry_run: dryRun,
+      recap_saved: recapSaved,
       totals: {
         recipients_total: recipients.length,
         recipients_targeted: recipientsToSend.length,

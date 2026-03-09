@@ -60,6 +60,7 @@ type UserStats = {
   correct_tips: number;
   total_points: number;
   correct_points_sum: number;
+  tips_by_round: Record<number, number>;
   points_by_round: Record<number, number>;
   correct_by_round: Record<number, number>;
   picks_by_match: Map<string, string>;
@@ -109,10 +110,11 @@ function round2(v: number) {
 }
 
 function rankComparator(
-  a: { total_points: number; correct_tips: number; display_name: string },
-  b: { total_points: number; correct_tips: number; display_name: string }
+  a: { total_points: number; accuracy_pct: number; correct_tips: number; display_name: string },
+  b: { total_points: number; accuracy_pct: number; correct_tips: number; display_name: string }
 ) {
   if (b.total_points !== a.total_points) return b.total_points - a.total_points;
+  if (b.accuracy_pct !== a.accuracy_pct) return b.accuracy_pct - a.accuracy_pct;
   if (b.correct_tips !== a.correct_tips) return b.correct_tips - a.correct_tips;
   return a.display_name.localeCompare(b.display_name, "en", { sensitivity: "base" });
 }
@@ -426,6 +428,7 @@ export async function GET(req: Request) {
         correct_tips: 0,
         total_points: 0,
         correct_points_sum: 0,
+        tips_by_round: {},
         points_by_round: {},
         correct_by_round: {},
         picks_by_match: picksByUser.get(userId) ?? new Map<string, string>(),
@@ -449,7 +452,9 @@ export async function GET(req: Request) {
         const picked = stats.picks_by_match.get(match.id);
         if (!picked) continue;
 
+        const roundNo = Number(match.round_number);
         stats.tips_submitted += 1;
+        stats.tips_by_round[roundNo] = (stats.tips_by_round[roundNo] ?? 0) + 1;
         if (picked !== match.winner_team) continue;
 
         const points =
@@ -459,7 +464,6 @@ export async function GET(req: Request) {
         stats.total_points += points;
         stats.correct_points_sum += points;
 
-        const roundNo = Number(match.round_number);
         stats.points_by_round[roundNo] = (stats.points_by_round[roundNo] ?? 0) + points;
         stats.correct_by_round[roundNo] = (stats.correct_by_round[roundNo] ?? 0) + 1;
       }
@@ -490,6 +494,8 @@ export async function GET(req: Request) {
 
       const previousPoints = sumUpTo(stats.points_by_round, previousRoundForMovement);
       const previousCorrect = sumUpTo(stats.correct_by_round, previousRoundForMovement);
+      const previousTips = sumUpTo(stats.tips_by_round, previousRoundForMovement);
+      const previousAccuracy = previousTips ? (previousCorrect / previousTips) * 100 : 0;
 
       return {
         user_id: stats.user_id,
@@ -506,6 +512,7 @@ export async function GET(req: Request) {
         avg_winning_odds: Number(avgWinningOdds),
         previous_points: Number(previousPoints),
         previous_correct: Number(previousCorrect),
+        previous_accuracy_pct: Number(previousAccuracy),
       };
     });
 
@@ -514,11 +521,13 @@ export async function GET(req: Request) {
         rankComparator(
           {
             total_points: a.total_points,
+            accuracy_pct: a.accuracy_pct,
             correct_tips: a.correct_tips,
             display_name: a.display_name,
           },
           {
             total_points: b.total_points,
+            accuracy_pct: b.accuracy_pct,
             correct_tips: b.correct_tips,
             display_name: b.display_name,
           }
@@ -536,11 +545,13 @@ export async function GET(req: Request) {
           rankComparator(
             {
               total_points: a.previous_points,
+              accuracy_pct: a.previous_accuracy_pct,
               correct_tips: a.previous_correct,
               display_name: a.display_name,
             },
             {
               total_points: b.previous_points,
+              accuracy_pct: b.previous_accuracy_pct,
               correct_tips: b.previous_correct,
               display_name: b.display_name,
             }

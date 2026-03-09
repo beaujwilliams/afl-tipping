@@ -55,8 +55,16 @@ export default function InfoPage() {
         </div>
 
         <div>
-          <h2 style={{ marginBottom: 8 }}>5. Season winner</h2>
-          <p>The highest total points across the season wins.</p>
+          <h2 style={{ marginBottom: 8 }}>5. Season winner and tie-breakers</h2>
+          <p>
+            The highest total points across the season wins. If two or more players are tied on
+            total points, ranking is decided in this order:
+          </p>
+          <ol style={{ marginTop: 8, paddingLeft: 22 }}>
+            <li>Higher accuracy percentage</li>
+            <li>More correct tips</li>
+            <li>Alphabetical display name</li>
+          </ol>
         </div>
 
         <div>

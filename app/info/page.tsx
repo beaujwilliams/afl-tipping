@@ -13,9 +13,9 @@ export default function InfoPage() {
             border: "1px solid rgba(239,68,68,0.35)",
           }}
         >
-          <h2 style={{ marginBottom: 8 }}>Start here: payment required</h2>
+          <h2 style={{ marginBottom: 8 }}>Start here: season entry</h2>
           <p style={{ margin: 0 }}>
-            Entry is <b>$30</b>. Pay <b>+61 423 190 713</b> before your tips will be counted.
+            Season entry is <b>$30</b>. Please send payment to <b>+61 423 190 713</b> when you join.
           </p>
         </div>
 

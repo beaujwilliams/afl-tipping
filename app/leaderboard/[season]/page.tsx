@@ -140,35 +140,63 @@ export default function LeaderboardPage() {
   const [isMobile, setIsMobile] = useState(false);
   const [showMoreMobileStats, setShowMoreMobileStats] = useState(false);
 
+  function applyLeaderboardData(json: LeaderboardResponse) {
+    setRows(Array.isArray(json.rows) ? json.rows : []);
+    setReigningChampionUserId(
+      typeof json.reigning_champion_user_id === "string"
+        ? json.reigning_champion_user_id
+        : null
+    );
+    setLatestScoredRound(json.latest_scored_round ?? null);
+    setPreviousRoundForMovement(json.previous_round_for_movement ?? null);
+    setMatchesScored(Number(json.matches_scored ?? 0));
+  }
+
   useEffect(() => {
     (async () => {
-      setMsg("Loading...");
+      const cacheKey = `leaderboard_cache_v1_${season}`;
+      let usedCached = false;
 
-      const { data: auth } = await supabaseBrowser.auth.getUser();
-      if (!auth.user) {
+      try {
+        const cached = window.sessionStorage.getItem(cacheKey);
+        if (cached) {
+          const parsed = JSON.parse(cached) as LeaderboardResponse;
+          if (parsed?.ok && Array.isArray(parsed.rows)) {
+            applyLeaderboardData(parsed);
+            setMsg("");
+            usedCached = true;
+          }
+        }
+      } catch {
+        // Ignore parse/cache errors and continue to network.
+      }
+
+      if (!usedCached) {
+        setMsg("Loading...");
+      }
+
+      const { data: auth } = await supabaseBrowser.auth.getSession();
+      if (!auth.session) {
         window.location.href = "/login";
         return;
       }
 
-      const res = await fetch(`/api/leaderboard?season=${encodeURIComponent(String(season))}`, {
-        cache: "no-store",
-      });
+      const res = await fetch(`/api/leaderboard?season=${encodeURIComponent(String(season))}`);
 
       const json = (await res.json().catch(() => null)) as LeaderboardResponse | null;
       if (!res.ok || !json?.ok) {
-        setMsg(json?.error || "Could not load leaderboard.");
+        if (!usedCached) {
+          setMsg(json?.error || "Could not load leaderboard.");
+        }
         return;
       }
 
-      setRows(Array.isArray(json.rows) ? json.rows : []);
-      setReigningChampionUserId(
-        typeof json.reigning_champion_user_id === "string"
-          ? json.reigning_champion_user_id
-          : null
-      );
-      setLatestScoredRound(json.latest_scored_round ?? null);
-      setPreviousRoundForMovement(json.previous_round_for_movement ?? null);
-      setMatchesScored(Number(json.matches_scored ?? 0));
+      applyLeaderboardData(json);
+      try {
+        window.sessionStorage.setItem(cacheKey, JSON.stringify(json));
+      } catch {
+        // Ignore storage failures (e.g. private mode quota).
+      }
       setMsg("");
     })();
   }, [season]);

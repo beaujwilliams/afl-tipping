@@ -148,6 +148,17 @@ function pickCompetitionIdForSeason(roundRows: RoundRow[]) {
   return picked?.[0] ?? null;
 }
 
+const LEADERBOARD_CACHE_CONTROL = "public, s-maxage=30, stale-while-revalidate=300";
+
+function okJson(payload: object) {
+  return NextResponse.json(payload, {
+    status: 200,
+    headers: {
+      "Cache-Control": LEADERBOARD_CACHE_CONTROL,
+    },
+  });
+}
+
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
@@ -198,7 +209,7 @@ export async function GET(req: Request) {
     const roundIds = roundRows.map((r) => String(r.id));
 
     if (roundIds.length === 0) {
-      return NextResponse.json({
+      return okJson({
         ok: true,
         season,
         competition_id: competitionId,
@@ -565,7 +576,7 @@ export async function GET(req: Request) {
       };
     });
 
-    return NextResponse.json({
+    return okJson({
       ok: true,
       season,
       competition_id: competitionId,

@@ -21,6 +21,25 @@ function isMissingRelationError(message: string, relationName: string) {
   return m.includes(rel) && m.includes("relation") && m.includes("does not exist");
 }
 
+function isMissingSchemaCacheTableError(message: string, relationName: string) {
+  const m = String(message ?? "").toLowerCase();
+  const rel = relationName.toLowerCase();
+  return (
+    m.includes("schema cache") &&
+    (m.includes(rel) || m.includes(`public.${rel}`)) &&
+    m.includes("could not find the table")
+  );
+}
+
+function isMissingRoundRecapsTableError(message: string, code?: string) {
+  const normalizedCode = String(code ?? "").toUpperCase();
+  return (
+    isMissingRelationError(message, "round_recaps") ||
+    isMissingSchemaCacheTableError(message, "round_recaps") ||
+    normalizedCode === "PGRST205"
+  );
+}
+
 export async function GET(req: Request) {
   try {
     const gate = await requireAdminOrCron(req);
@@ -71,11 +90,11 @@ export async function GET(req: Request) {
 
     const { data, error } = await query;
     if (error) {
-      if (isMissingRelationError(error.message, "round_recaps")) {
+      const errCode = "code" in error ? String(error.code ?? "") : "";
+      if (isMissingRoundRecapsTableError(error.message, errCode)) {
         return NextResponse.json(
           {
-            error: "round_recaps table missing or inaccessible",
-            details: error.message,
+            error: "Round recaps storage is not set up yet.",
             hint: "Apply migration db/migrations/20260310_round_recaps.sql",
           },
           { status: 500 }

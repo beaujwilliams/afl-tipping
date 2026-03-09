@@ -1036,8 +1036,8 @@ export default function RoundPage() {
             marginTop: 16,
             padding: 14,
             borderRadius: 14,
-            border: "1px solid rgba(0,0,0,0.10)",
-            background: "rgba(0,0,0,0.02)",
+            border: "1px solid var(--border)",
+            background: "var(--card-soft)",
           }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
@@ -1081,8 +1081,8 @@ export default function RoundPage() {
                     minWidth: 180,
                     padding: "9px 11px",
                     borderRadius: 10,
-                    border: "1px solid rgba(0,0,0,0.16)",
-                    background: "rgba(255,255,255,0.9)",
+                    border: "1px solid var(--border)",
+                    background: "var(--card)",
                     color: "var(--foreground)",
                   }}
                 />
@@ -1112,8 +1112,8 @@ export default function RoundPage() {
                   style={{
                     padding: "8px 10px",
                     borderRadius: 10,
-                    border: "1px solid rgba(0,0,0,0.18)",
-                    background: "rgba(255,255,255,0.86)",
+                    border: "1px solid var(--border)",
+                    background: "var(--card)",
                     color: "var(--foreground)",
                     fontWeight: 800,
                     fontSize: 12,
@@ -1150,8 +1150,8 @@ export default function RoundPage() {
                           lockedTipsRowRefs.current[p.user_id] = node;
                         }}
                         style={{
-                          border: "1px solid rgba(0,0,0,0.10)",
-                          background: "rgba(255,255,255,0.75)",
+                          border: "1px solid var(--border)",
+                          background: "var(--card)",
                           borderRadius: 12,
                         }}
                       >
@@ -1181,18 +1181,18 @@ export default function RoundPage() {
                               flexWrap: "wrap",
                             }}
                           >
-                            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", fontWeight: 900 }}>
-                              <span style={{ opacity: 0.65, minWidth: 22 }}>#{p.row_rank}</span>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", fontWeight: 900 }}>
+                              <span style={{ opacity: 0.78, minWidth: 22 }}>#{p.row_rank}</span>
                               <ChampionCrown isChampion={p.user_id === reigningChampionUserId} />
                               <span>{p.display_name?.trim() ? p.display_name : "(no display name)"}</span>
                               <UnpaidTag paymentStatus={p.payment_status ?? null} />
                             </div>
-                            <div style={{ fontSize: 12, opacity: 0.9 }}>
+                            <div style={{ fontSize: 12, opacity: 0.95 }}>
                               Potential <b>{Number(p.potential ?? 0).toFixed(2)}</b>
                             </div>
                           </div>
 
-                          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", fontSize: 12, opacity: 0.78 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", fontSize: 12, opacity: 0.9 }}>
                             <span>
                               Picks: <b>{p.picks_count}</b>
                             </span>
@@ -1206,14 +1206,14 @@ export default function RoundPage() {
                         {isExpanded && (
                           <div
                             style={{
-                              borderTop: "1px solid rgba(0,0,0,0.08)",
+                              borderTop: "1px solid var(--border)",
                               padding: "8px 12px 10px",
                               display: "grid",
                               gap: 6,
                             }}
                           >
                             {picksForUser.length === 0 ? (
-                              <div style={{ fontSize: 12, opacity: 0.68 }}>
+                              <div style={{ fontSize: 12, opacity: 0.8 }}>
                                 {lockedTipsDifferencesOnly
                                   ? "No differing picks from consensus."
                                   : "No picks available for this member."}
@@ -1232,18 +1232,18 @@ export default function RoundPage() {
                                       justifyContent: "space-between",
                                       gap: 10,
                                       fontSize: 12,
-                                      opacity: 0.92,
-                                      borderTop: "1px solid rgba(0,0,0,0.06)",
+                                      opacity: 0.95,
+                                      borderTop: "1px solid var(--border)",
                                       paddingTop: 6,
                                     }}
                                   >
-                                    <div style={{ opacity: 0.76 }}>
+                                    <div style={{ opacity: 0.9 }}>
                                       {matchTitleById[m.id] ?? `${m.home_team} vs ${m.away_team}`}
                                     </div>
                                     <div style={{ fontWeight: 800, textAlign: "right" }}>
                                       {pick ? (
                                         <>
-                                          {pick.team} <span style={{ opacity: 0.8 }}>({fmtOdds(pick.odds)})</span>
+                                          {pick.team} <span style={{ opacity: 0.9 }}>({fmtOdds(pick.odds)})</span>
                                           {differs && (
                                             <span
                                               style={{

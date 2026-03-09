@@ -200,6 +200,7 @@ export default function RoundPage() {
   const [reigningChampionUserId, setReigningChampionUserId] = useState<string | null>(null);
   const [lockedTipsSearch, setLockedTipsSearch] = useState("");
   const [lockedTipsDifferencesOnly, setLockedTipsDifferencesOnly] = useState(false);
+  const [showLockedTipsInfo, setShowLockedTipsInfo] = useState(false);
   const [expandedLockedTipUserIds, setExpandedLockedTipUserIds] = useState<Record<string, boolean>>({});
   const lockedTipsRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -424,6 +425,7 @@ export default function RoundPage() {
       setReigningChampionUserId(null);
       setLockedTipsSearch("");
       setLockedTipsDifferencesOnly(false);
+      setShowLockedTipsInfo(false);
       setExpandedLockedTipUserIds({});
 
       const { data: auth } = await supabaseBrowser.auth.getUser();
@@ -1125,6 +1127,23 @@ export default function RoundPage() {
 
                 <button
                   type="button"
+                  onClick={() => setShowLockedTipsInfo((prev) => !prev)}
+                  style={{
+                    padding: "8px 10px",
+                    borderRadius: 10,
+                    border: "1px solid var(--border)",
+                    background: "var(--card)",
+                    color: "var(--foreground)",
+                    fontWeight: 800,
+                    fontSize: 12,
+                    cursor: "pointer",
+                  }}
+                >
+                  {showLockedTipsInfo ? "Hide info" : "What do these mean?"}
+                </button>
+
+                <button
+                  type="button"
                   onClick={jumpToMyTips}
                   disabled={!userId || !(lockedTips ?? []).some((p) => p.user_id === userId)}
                   style={{
@@ -1162,6 +1181,29 @@ export default function RoundPage() {
                   {allVisibleExpanded ? "Collapse all" : "Expand all"}
                 </button>
               </div>
+
+              {showLockedTipsInfo && (
+                <div
+                  style={{
+                    marginTop: 10,
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: "1px solid var(--border)",
+                    background: "var(--card)",
+                    fontSize: 12,
+                    lineHeight: 1.45,
+                  }}
+                >
+                  <div style={{ fontWeight: 900 }}>Consensus pick</div>
+                  <div style={{ opacity: 0.88 }}>
+                    For each match, this is the team tipped by the most members.
+                  </div>
+                  <div style={{ marginTop: 8, fontWeight: 900 }}>DIFFERENT</div>
+                  <div style={{ opacity: 0.88 }}>
+                    This badge means that user tipped the other side, not the consensus pick.
+                  </div>
+                </div>
+              )}
 
               {visibleLockedTips.length === 0 ? (
                 <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>

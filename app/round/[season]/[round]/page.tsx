@@ -199,7 +199,6 @@ export default function RoundPage() {
   const [lockedTipsMsg, setLockedTipsMsg] = useState<string>("");
   const [reigningChampionUserId, setReigningChampionUserId] = useState<string | null>(null);
   const [lockedTipsSearch, setLockedTipsSearch] = useState("");
-  const [lockedTipsDifferencesOnly, setLockedTipsDifferencesOnly] = useState(false);
   const [showLockedTipsInfo, setShowLockedTipsInfo] = useState(false);
   const [expandedLockedTipUserIds, setExpandedLockedTipUserIds] = useState<Record<string, boolean>>({});
   const lockedTipsRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -725,47 +724,12 @@ export default function RoundPage() {
     return out;
   }, [lockedTips]);
 
-  const consensusPickByMatchId = useMemo(() => {
-    const out: Record<string, string> = {};
-
-    matches.forEach((m) => {
-      const breakdown = tipBreakdownByMatch[m.id] ?? {};
-      const entries = Object.entries(breakdown).sort((a, b) => {
-        if (b[1] !== a[1]) return b[1] - a[1];
-        return a[0].localeCompare(b[0], "en", { sensitivity: "base" });
-      });
-      if (entries.length) {
-        out[m.id] = entries[0][0];
-      }
-    });
-
-    // fallback when tip breakdown endpoint is unavailable
-    if (Object.keys(out).length === 0 && lockedTips?.length) {
-      matches.forEach((m) => {
-        const counts: Record<string, number> = {};
-        lockedTips.forEach((p) => {
-          const team = p.picks?.[m.id]?.team ?? "";
-          if (!team) return;
-          counts[team] = (counts[team] ?? 0) + 1;
-        });
-        const entries = Object.entries(counts).sort((a, b) => {
-          if (b[1] !== a[1]) return b[1] - a[1];
-          return a[0].localeCompare(b[0], "en", { sensitivity: "base" });
-        });
-        if (entries.length) out[m.id] = entries[0][0];
-      });
-    }
-
-    return out;
-  }, [matches, tipBreakdownByMatch, lockedTips]);
-
   const visibleLockedTips = useMemo(() => {
     if (!lockedTips) return [] as Array<
       LockedTipPlayer & {
         row_rank: number;
         picks_count: number;
         underdog_count: number;
-        consensus_diff_count: number;
       }
     >;
 
@@ -781,7 +745,6 @@ export default function RoundPage() {
       .map((p) => {
         let picksCount = 0;
         let underdogCount = 0;
-        let consensusDiffCount = 0;
 
         matches.forEach((m) => {
           const team = p.picks?.[m.id]?.team ?? "";
@@ -807,9 +770,6 @@ export default function RoundPage() {
               underdogCount += 1;
             }
           }
-
-          const consensus = consensusPickByMatchId[m.id] ?? "";
-          if (consensus && team !== consensus) consensusDiffCount += 1;
         });
 
         return {
@@ -817,7 +777,6 @@ export default function RoundPage() {
           row_rank: lockedTipsRankByUserId[p.user_id] ?? 0,
           picks_count: picksCount,
           underdog_count: underdogCount,
-          consensus_diff_count: consensusDiffCount,
         };
       });
   }, [
@@ -825,7 +784,6 @@ export default function RoundPage() {
     lockedTipsSearch,
     matches,
     oddsByMatchId,
-    consensusPickByMatchId,
     lockedTipsRankByUserId,
   ]);
 
@@ -1142,24 +1100,6 @@ export default function RoundPage() {
                   }}
                 />
 
-                <label
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    fontSize: 12,
-                    opacity: 0.85,
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={lockedTipsDifferencesOnly}
-                    onChange={(e) => setLockedTipsDifferencesOnly(e.target.checked)}
-                  />
-                  Differences only
-                </label>
-
                 <button
                   type="button"
                   onClick={() => setShowLockedTipsInfo((prev) => !prev)}
@@ -1229,15 +1169,7 @@ export default function RoundPage() {
                     lineHeight: 1.45,
                   }}
                 >
-                  <div style={{ fontWeight: 900 }}>Consensus pick</div>
-                  <div style={{ opacity: 0.88 }}>
-                    For each match, this is the team tipped by the most members.
-                  </div>
-                  <div style={{ marginTop: 8, fontWeight: 900 }}>DIFFERENT</div>
-                  <div style={{ opacity: 0.88 }}>
-                    This badge means that user tipped the other side, not the consensus pick.
-                  </div>
-                  <div style={{ marginTop: 8, fontWeight: 900 }}>Underdogs tipped</div>
+                  <div style={{ fontWeight: 900 }}>Underdogs tipped</div>
                   <div style={{ opacity: 0.88 }}>
                     Count of picks where the selected team had higher odds than the opponent.
                   </div>
@@ -1253,13 +1185,7 @@ export default function RoundPage() {
                   {visibleLockedTips.map((p) => {
                     const isExpanded = !!expandedLockedTipUserIds[p.user_id];
 
-                    const picksForUser = matches.filter((m) => {
-                      const pick = p.picks?.[m.id];
-                      if (!pick) return false;
-                      if (!lockedTipsDifferencesOnly) return true;
-                      const consensus = consensusPickByMatchId[m.id] ?? "";
-                      return !!consensus && pick.team !== consensus;
-                    });
+                    const picksForUser = matches.filter((m) => !!p.picks?.[m.id]);
 
                     return (
                       <div
@@ -1317,9 +1243,6 @@ export default function RoundPage() {
                             <span>
                               Underdogs tipped: <b>{p.underdog_count}</b>/<b>{p.picks_count}</b>
                             </span>
-                            <span>
-                              Different to consensus: <b>{p.consensus_diff_count}</b>/<b>{p.picks_count}</b>
-                            </span>
                             <span>{isExpanded ? "Hide picks ▲" : "Show picks ▼"}</span>
                           </div>
                         </button>
@@ -1335,15 +1258,11 @@ export default function RoundPage() {
                           >
                             {picksForUser.length === 0 ? (
                               <div style={{ fontSize: 12, opacity: 0.8 }}>
-                                {lockedTipsDifferencesOnly
-                                  ? "No differing picks from consensus."
-                                  : "No picks available for this member."}
+                                No picks available for this member.
                               </div>
                             ) : (
                               picksForUser.map((m) => {
                                 const pick = p.picks?.[m.id] ?? null;
-                                const consensus = consensusPickByMatchId[m.id] ?? "";
-                                const differs = !!pick && !!consensus && pick.team !== consensus;
 
                                 return (
                                   <div
@@ -1359,21 +1278,6 @@ export default function RoundPage() {
                                     }}
                                   >
                                     <div style={{ opacity: 0.9, display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                                      {differs && (
-                                        <span
-                                          style={{
-                                            fontSize: 11,
-                                            padding: "2px 6px",
-                                            borderRadius: 999,
-                                            border: "1px solid rgba(220, 38, 38, 0.35)",
-                                            background: "rgba(220, 38, 38, 0.08)",
-                                            color: "rgb(185, 28, 28)",
-                                            fontWeight: 900,
-                                          }}
-                                        >
-                                          DIFFERENT
-                                        </span>
-                                      )}
                                       <span>{matchTitleById[m.id] ?? `${m.home_team} vs ${m.away_team}`}</span>
                                     </div>
                                     <div style={{ fontWeight: 800, textAlign: "right" }}>

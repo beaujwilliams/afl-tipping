@@ -495,8 +495,9 @@ export default function AdminMembersPage() {
           style={{
             padding: "10px 12px",
             borderRadius: 10,
-            border: "1px solid #ccc",
-            background: "white",
+            border: "1px solid var(--border)",
+            background: "var(--card)",
+            color: "var(--foreground)",
             fontWeight: 700,
           }}
         >
@@ -521,7 +522,7 @@ export default function AdminMembersPage() {
               alignSelf: "flex-start",
               padding: "10px 12px",
               borderRadius: 10,
-              border: "1px solid #ccc",
+              border: "1px solid var(--border)",
               background: enforceUnpaidTipLock ? "#fee2e2" : "#ecfdf5",
               color: enforceUnpaidTipLock ? "#991b1b" : "#065f46",
               fontWeight: 900,
@@ -560,8 +561,9 @@ export default function AdminMembersPage() {
                 maxWidth: 360,
                 padding: "10px 12px",
                 borderRadius: 10,
-                border: "1px solid #ccc",
-                background: "white",
+                border: "1px solid var(--border)",
+                background: "var(--card)",
+                color: "var(--foreground)",
                 fontWeight: 700,
               }}
             >
@@ -580,8 +582,9 @@ export default function AdminMembersPage() {
               style={{
                 padding: "10px 12px",
                 borderRadius: 10,
-                border: "1px solid #ccc",
-                background: "white",
+                border: "1px solid var(--border)",
+                background: "var(--card)",
+                color: "var(--foreground)",
                 fontWeight: 900,
                 cursor: savingChampion || !championDirty ? "not-allowed" : "pointer",
                 opacity: savingChampion || !championDirty ? 0.7 : 1,
@@ -643,7 +646,9 @@ export default function AdminMembersPage() {
             minWidth: 260,
             padding: 12,
             borderRadius: 12,
-            border: "1px solid #ccc",
+            border: "1px solid var(--border)",
+            background: "var(--card)",
+            color: "var(--foreground)",
           }}
         />
         <select
@@ -652,8 +657,9 @@ export default function AdminMembersPage() {
           style={{
             padding: "12px 14px",
             borderRadius: 12,
-            border: "1px solid #ccc",
-            background: "white",
+            border: "1px solid var(--border)",
+            background: "var(--card)",
+            color: "var(--foreground)",
             fontWeight: 700,
           }}
         >
@@ -719,7 +725,9 @@ export default function AdminMembersPage() {
                               width: "100%",
                               padding: 9,
                               borderRadius: 9,
-                              border: "1px solid #ccc",
+                              border: "1px solid var(--border)",
+                              background: "var(--card)",
+                              color: "var(--foreground)",
                             }}
                           />
                           <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
@@ -773,8 +781,9 @@ export default function AdminMembersPage() {
                               width: "100%",
                               padding: 9,
                               borderRadius: 9,
-                              border: "1px solid #ccc",
-                              background: "white",
+                              border: "1px solid var(--border)",
+                              background: "var(--card)",
+                              color: "var(--foreground)",
                               fontWeight: 700,
                             }}
                           >
@@ -793,8 +802,9 @@ export default function AdminMembersPage() {
                               width: "100%",
                               padding: 9,
                               borderRadius: 9,
-                              border: "1px solid #ccc",
-                              background: "white",
+                              border: "1px solid var(--border)",
+                              background: "var(--card)",
+                              color: "var(--foreground)",
                               fontWeight: 700,
                             }}
                           >
@@ -814,8 +824,9 @@ export default function AdminMembersPage() {
                               style={{
                                 padding: "9px 10px",
                                 borderRadius: 10,
-                                border: "1px solid #ccc",
-                                background: "white",
+                                border: "1px solid var(--border)",
+                                background: "var(--card)",
+                                color: "var(--foreground)",
                                 fontWeight: 800,
                                 cursor: saving || removing ? "not-allowed" : "pointer",
                                 opacity: saving || removing ? 0.7 : 1,
@@ -829,8 +840,9 @@ export default function AdminMembersPage() {
                               style={{
                                 padding: "9px 10px",
                                 borderRadius: 10,
-                                border: "1px solid #f3b",
-                                background: "white",
+                                border: "1px solid rgba(236, 72, 153, 0.45)",
+                                background: "var(--card)",
+                                color: "var(--foreground)",
                                 fontWeight: 900,
                                 cursor: saving || removing ? "not-allowed" : "pointer",
                                 opacity: saving || removing ? 0.7 : 1,

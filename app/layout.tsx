@@ -253,7 +253,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <NavItem href="/results/2026" label="Results" />
               <NavItem href="/leaderboard/2026" label="Leaderboard" />
               <NavItem href="/chat" label="Chat" />
-              <NavItem href="/info" label="Rules" />
+              <NavItem href="/info" label="How it works" />
               {email && <NavItem href="/profile" label="Profile" />}
               {isAdmin && <NavItem href="/admin" label="Admin" tone="danger" />}
 

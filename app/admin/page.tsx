@@ -153,10 +153,16 @@ export default function AdminPage() {
     run(`/api/admin/send-prelock-reminders?season=${season}`);
   }
 
+  function parseMinRound(value: string) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return 1;
+    return Math.max(1, Math.trunc(parsed));
+  }
+
   function runReminderForRoundNow() {
     const round = Math.trunc(reminderRound);
     if (!Number.isFinite(round) || round <= 0) {
-      setResult({ error: "Reminder round must be a positive number." });
+      setResult({ error: "Reminder round must be 1 or higher." });
       return;
     }
     run(`/api/admin/send-prelock-reminders?season=${season}&round=${round}&force=1`);
@@ -170,7 +176,7 @@ export default function AdminPage() {
     }
     const round = Math.trunc(recapRound);
     if (!Number.isFinite(round) || round <= 0) {
-      setResult({ error: "Recap round must be a positive number." });
+      setResult({ error: "Recap round must be 1 or higher." });
       return;
     }
     run(
@@ -302,7 +308,8 @@ export default function AdminPage() {
                     type="number"
                     min={1}
                     value={reminderRound}
-                    onChange={(e) => setReminderRound(Number(e.target.value))}
+                    onChange={(e) => setReminderRound(parseMinRound(e.target.value))}
+                    onBlur={() => setReminderRound((prev) => Math.max(1, Math.trunc(prev)))}
                     style={{
                       padding: 8,
                       borderRadius: 8,
@@ -340,7 +347,8 @@ export default function AdminPage() {
                     type="number"
                     min={1}
                     value={recapRound}
-                    onChange={(e) => setRecapRound(Number(e.target.value))}
+                    onChange={(e) => setRecapRound(parseMinRound(e.target.value))}
+                    onBlur={() => setRecapRound((prev) => Math.max(1, Math.trunc(prev)))}
                     style={{
                       padding: 8,
                       borderRadius: 8,

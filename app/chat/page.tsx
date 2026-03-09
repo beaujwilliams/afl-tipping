@@ -92,6 +92,7 @@ export default function ChatPage() {
   const [text, setText] = useState("");
   const [msg, setMsg] = useState<string>("");
   const [sending, setSending] = useState(false);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
   // --- scroll lock + new messages button ---
   const scrollerRef = useRef<HTMLDivElement | null>(null);
@@ -290,6 +291,17 @@ export default function ChatPage() {
   useEffect(() => {
     ensureSession();
   }, []);
+
+  useEffect(() => {
+    const el = composerRef.current;
+    if (!el) return;
+
+    el.style.height = "0px";
+    const maxHeight = 180;
+    const nextHeight = Math.min(el.scrollHeight, maxHeight);
+    el.style.height = `${nextHeight}px`;
+    el.style.overflowY = el.scrollHeight > maxHeight ? "auto" : "hidden";
+  }, [text]);
 
   useEffect(() => {
     if (!competitionId) {
@@ -610,17 +622,23 @@ export default function ChatPage() {
 
       {/* Composer */}
       <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
-        <input
+        <textarea
+          ref={composerRef}
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="Say something…"
           style={{
             flex: 1,
-            padding: 12,
+            minHeight: 44,
+            padding: "10px 12px",
             borderRadius: 12,
             border: "1px solid rgba(255,255,255,0.14)",
             background: "rgba(255,255,255,0.04)",
             color: "var(--foreground)",
+            resize: "none",
+            lineHeight: 1.35,
+            fontFamily: "inherit",
+            fontSize: 15,
           }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {

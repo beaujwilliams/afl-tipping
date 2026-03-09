@@ -34,6 +34,7 @@ type RoundPlayerStatusRow = {
   user_id: string;
   display_name: string | null;
   payment_status: string | null;
+  tips_entered: number;
 };
 
 function isMissingColumnError(message: string, columnName: string) {
@@ -177,8 +178,8 @@ export async function GET(req: Request) {
     }
 
     // tips for those matches
-    const tipsByRound = new Map<string, Set<string>>(); // round_id -> user_ids who tipped ANY match in that round
-    const myTipsByRound = new Map<string, number>(); // round_id -> current user's total tips
+    // round_id -> (user_id -> tip count entered for this round)
+    const tipCountByRoundUser = new Map<string, Map<string, number>>();
 
     if (matchIds.length) {
       const { data: tips, error: tErr } = await supabase
@@ -196,23 +197,31 @@ export async function GET(req: Request) {
         const rid = matchToRound.get(String(t.match_id));
         if (!rid) return;
 
-        if (uid === userId) {
-          myTipsByRound.set(rid, (myTipsByRound.get(rid) ?? 0) + 1);
+        // Keep counts for competition members and the current user.
+        if (!memberSet.has(uid) && uid !== userId) return;
+
+        if (!tipCountByRoundUser.has(rid)) {
+          tipCountByRoundUser.set(rid, new Map<string, number>());
         }
-
-        if (!memberSet.has(uid)) return;
-
-        if (!tipsByRound.has(rid)) tipsByRound.set(rid, new Set());
-        tipsByRound.get(rid)!.add(uid);
+        const byUser = tipCountByRoundUser.get(rid)!;
+        byUser.set(uid, (byUser.get(uid) ?? 0) + 1);
       });
     }
 
     // build response
     const out = roundList.map((r) => {
-      const tipped = tipsByRound.get(r.id) ?? new Set<string>();
-      const tippedCount = tipped.size;
+      const totalMatches = totalMatchesByRound.get(r.id) ?? 0;
+      const tipsByUser = tipCountByRoundUser.get(r.id) ?? new Map<string, number>();
+      const hasCompletedTips = (uid: string) =>
+        totalMatches > 0 && (tipsByUser.get(uid) ?? 0) >= totalMatches;
+
+      const tippedCount = memberIds.reduce((acc, uid) => {
+        return acc + (hasCompletedTips(uid) ? 1 : 0);
+      }, 0);
+
       const totalPlayers = memberIds.length;
       const missingCount = Math.max(0, totalPlayers - tippedCount);
+      const myTips = Math.min(tipsByUser.get(userId) ?? 0, totalMatches);
 
       let missing:
         | Array<RoundPlayerStatusRow>
@@ -225,12 +234,14 @@ export async function GET(req: Request) {
         const miss: Array<RoundPlayerStatusRow> = [];
         const tippedRows: Array<RoundPlayerStatusRow> = [];
         for (const uid of memberIds) {
+          const tipsEntered = Math.min(tipsByUser.get(uid) ?? 0, totalMatches);
           const row = {
             user_id: uid,
             display_name: profileMap.get(uid) ?? null,
             payment_status: paymentStatusByUserId.get(uid) ?? null,
+            tips_entered: tipsEntered,
           };
-          if (tipped.has(uid)) tippedRows.push(row);
+          if (hasCompletedTips(uid)) tippedRows.push(row);
           else miss.push(row);
         }
 
@@ -259,8 +270,8 @@ export async function GET(req: Request) {
         round_id: r.id,
         round_number: r.round_number,
         lock_time_utc: r.lock_time_utc,
-        total_matches: totalMatchesByRound.get(r.id) ?? 0,
-        my_tips: myTipsByRound.get(r.id) ?? 0,
+        total_matches: totalMatches,
+        my_tips: myTips,
         total_players: memberIds.length,
         tipped_players: tippedCount,
         missing_players: admin ? missing : undefined,

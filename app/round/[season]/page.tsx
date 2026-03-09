@@ -17,6 +17,7 @@ type RoundStatusPlayer = {
   user_id: string;
   display_name: string | null;
   payment_status?: string | null;
+  tips_entered?: number;
 };
 
 type TipStatusRound = {
@@ -96,10 +97,6 @@ function msToCountdown(ms: number) {
   if (days > 0) return `${days}d ${hours}h ${mins}m`;
   if (hours > 0) return `${hours}h ${mins}m`;
   return `${mins}m`;
-}
-
-function shortId(id: string) {
-  return `${id.slice(0, 8)}…`;
 }
 
 export default function SeasonRoundsPage() {
@@ -431,7 +428,7 @@ export default function SeasonRoundsPage() {
                         <span style={{ opacity: 0.65 }}>Tip status loading…</span>
                       ) : (
                         <>
-                          Tipped{" "}
+                          Fully tipped{" "}
                           <b style={{ opacity: 0.95 }}>
                             {tipped}/{total}
                           </b>
@@ -551,7 +548,7 @@ export default function SeasonRoundsPage() {
                           cursor: "pointer",
                         }}
                       >
-                        Missing ({missingPlayers.length})
+                        Not tipped ({missingPlayers.length})
                       </button>
 
                       <button
@@ -590,7 +587,7 @@ export default function SeasonRoundsPage() {
                         onChange={(e) =>
                           setTipListSearchByRoundId((prev) => ({ ...prev, [r.id]: e.target.value }))
                         }
-                        placeholder={`Search ${openTab === "missing" ? "missing" : "tipped"} members...`}
+                        placeholder={`Search ${openTab === "missing" ? "not tipped" : "tipped"} members...`}
                         style={{
                           flex: "1 1 240px",
                           minWidth: 180,
@@ -640,8 +637,8 @@ export default function SeasonRoundsPage() {
                         {q
                           ? "No members match your search."
                           : openTab === "missing"
-                            ? "Everyone has tipped."
-                            : "No tipped members yet."}
+                            ? "Everyone has tipped all games."
+                            : "No fully tipped members yet."}
                       </div>
                     ) : (
                       <div style={{ display: "grid", gap: 8, maxHeight: 300, overflowY: "auto", paddingRight: 4 }}>
@@ -653,18 +650,33 @@ export default function SeasonRoundsPage() {
                               justifyContent: "space-between",
                               gap: 12,
                               alignItems: "center",
-                              padding: "10px 12px",
+                              padding: "8px 10px",
                               borderRadius: 12,
                               border: "1px solid rgba(255,255,255,0.10)",
                               background: "rgba(255,255,255,0.03)",
                             }}
                           >
-                            <div style={{ fontWeight: 800, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                            <div
+                              style={{
+                                fontSize: 16,
+                                fontWeight: 700,
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 6,
+                                flexWrap: "wrap",
+                              }}
+                            >
                               <ChampionCrown isChampion={p.user_id === reigningChampionUserId} />
                               <span>{p.display_name?.trim() ? p.display_name : "(no display name)"}</span>
                               <UnpaidTag paymentStatus={p.payment_status ?? null} />
                             </div>
-                            <div style={{ fontSize: 12, opacity: 0.65 }}>{shortId(p.user_id)}</div>
+                            <div style={{ fontSize: 12, opacity: 0.75, whiteSpace: "nowrap" }}>
+                              Tips entered{" "}
+                              <b>
+                                {Math.min(p.tips_entered ?? 0, status?.total_matches ?? 0)}/
+                                {status?.total_matches ?? 0}
+                              </b>
+                            </div>
                           </div>
                         ))}
                       </div>

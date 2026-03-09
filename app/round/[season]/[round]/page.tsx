@@ -1234,7 +1234,7 @@ export default function RoundPage() {
 
                           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", fontSize: 12, opacity: 0.9 }}>
                             <span>
-                              Diff vs consensus: <b>{p.diff_count}</b>
+                              Underdogs tipped: <b>{p.diff_count}</b>/<b>{p.picks_count}</b>
                             </span>
                             <span>{isExpanded ? "Hide picks ▲" : "Show picks ▼"}</span>
                           </div>

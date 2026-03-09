@@ -25,7 +25,12 @@ export default function InfoPage() {
         </div>
 
         <div>
-          <h2 style={{ marginBottom: 8 }}>2. Correct tips earn the listed odds</h2>
+          <h2 style={{ marginBottom: 8 }}>2. Odds are locked before the round</h2>
+          <p>Scoring odds are captured 36 hours before the round starts.</p>
+        </div>
+
+        <div>
+          <h2 style={{ marginBottom: 8 }}>3. Correct tips earn the listed odds</h2>
           <p>If your tip wins, you get that team’s odds as points.</p>
 
           <div
@@ -42,11 +47,6 @@ export default function InfoPage() {
             <div>• Tip Hawthorn at $2.60 → win → <b>2.60 points</b></div>
             <div style={{ marginTop: 6, opacity: 0.85 }}>Underdogs return more points.</div>
           </div>
-        </div>
-
-        <div>
-          <h2 style={{ marginBottom: 8 }}>3. Odds are locked before the round</h2>
-          <p>Scoring odds are captured 36 hours before the round starts.</p>
         </div>
 
         <div>

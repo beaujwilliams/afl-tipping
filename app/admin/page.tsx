@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
@@ -8,9 +8,25 @@ export default function AdminPage() {
   const router = useRouter();
 
   const [season, setSeason] = useState<number>(2026);
+  const [reminderRound, setReminderRound] = useState<number>(1);
+  const [recapRound, setRecapRound] = useState<number>(1);
+  const [recapToEmail, setRecapToEmail] = useState<string>("");
   const [result, setResult] = useState<unknown>(null);
   const [loading, setLoading] = useState<string | null>(null);
   const isRunning = loading !== null;
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const { data } = await supabaseBrowser.auth.getUser();
+      if (!alive) return;
+      const email = String(data.user?.email ?? "").trim();
+      if (email) setRecapToEmail(email);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   async function getToken() {
     const { data } = await supabaseBrowser.auth.getSession();
@@ -133,6 +149,37 @@ export default function AdminPage() {
     fontSize: 16,
   };
 
+  function runReminderWindow() {
+    run(`/api/admin/send-prelock-reminders?season=${season}`);
+  }
+
+  function runReminderForRoundNow() {
+    const round = Math.trunc(reminderRound);
+    if (!Number.isFinite(round) || round <= 0) {
+      setResult({ error: "Reminder round must be a positive number." });
+      return;
+    }
+    run(`/api/admin/send-prelock-reminders?season=${season}&round=${round}&force=1`);
+  }
+
+  function runRecapToMeNow() {
+    const toEmail = recapToEmail.trim();
+    if (!toEmail) {
+      setResult({ error: "Enter an email for recap delivery." });
+      return;
+    }
+    const round = Math.trunc(recapRound);
+    if (!Number.isFinite(round) || round <= 0) {
+      setResult({ error: "Recap round must be a positive number." });
+      return;
+    }
+    run(
+      `/api/admin/send-round-recap?season=${season}&round=${round}&force=1&to_email=${encodeURIComponent(
+        toEmail
+      )}`
+    );
+  }
+
   return (
     <main style={{ maxWidth: 900, margin: "40px auto", padding: 16 }}>
       <h1>Admin Panel</h1>
@@ -214,6 +261,122 @@ export default function AdminPage() {
           </button>
         </div>
 
+        <section
+          style={{
+            marginTop: 6,
+            padding: 14,
+            borderRadius: 12,
+            border: "1px solid var(--border)",
+            background: "var(--card-soft)",
+          }}
+        >
+          <h2 style={{ margin: 0, fontSize: 18 }}>Manual Email Triggers</h2>
+          <div style={{ ...summaryStyle, marginTop: 8 }}>
+            Trigger reminder and recap emails manually from one place.
+          </div>
+
+          <div style={{ marginTop: 12, display: "grid", gap: 14 }}>
+            <div
+              style={{
+                padding: 12,
+                borderRadius: 10,
+                border: "1px solid var(--border)",
+                background: "var(--card)",
+              }}
+            >
+              <div style={{ fontWeight: 800 }}>Tip reminders</div>
+              <div style={summaryStyle}>
+                Send reminders for members with missing tips either in the normal 3h window or immediately for a specific round.
+              </div>
+              <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+                <button
+                  disabled={isRunning}
+                  onClick={runReminderWindow}
+                  style={{ ...btnStyle, ...buttonStateStyle }}
+                >
+                  Send Tip Reminders (3h Window)
+                </button>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <label style={{ fontWeight: 600 }}>Round</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={reminderRound}
+                    onChange={(e) => setReminderRound(Number(e.target.value))}
+                    style={{
+                      padding: 8,
+                      borderRadius: 8,
+                      border: "1px solid var(--border)",
+                      width: 96,
+                    }}
+                  />
+                  <button
+                    disabled={isRunning}
+                    onClick={runReminderForRoundNow}
+                    style={{ ...btnStyle, ...buttonStateStyle }}
+                  >
+                    Send Tip Reminders Now (Force Round)
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div
+              style={{
+                padding: 12,
+                borderRadius: 10,
+                border: "1px solid var(--border)",
+                background: "var(--card)",
+              }}
+            >
+              <div style={{ fontWeight: 800 }}>Round recap</div>
+              <div style={summaryStyle}>
+                Generate a round recap now and email it directly to you.
+              </div>
+              <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <label style={{ fontWeight: 600 }}>Round</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={recapRound}
+                    onChange={(e) => setRecapRound(Number(e.target.value))}
+                    style={{
+                      padding: 8,
+                      borderRadius: 8,
+                      border: "1px solid var(--border)",
+                      width: 96,
+                    }}
+                  />
+                </div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <label style={{ fontWeight: 600, minWidth: 66 }}>Send to</label>
+                  <input
+                    type="email"
+                    value={recapToEmail}
+                    onChange={(e) => setRecapToEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    style={{
+                      flex: "1 1 260px",
+                      minWidth: 220,
+                      padding: 8,
+                      borderRadius: 8,
+                      border: "1px solid var(--border)",
+                    }}
+                  />
+                </div>
+                <button
+                  disabled={isRunning}
+                  onClick={runRecapToMeNow}
+                  style={{ ...btnStyle, ...buttonStateStyle }}
+                >
+                  Generate Round Recap + Send To Me
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <details
           style={{
             marginTop: 6,
@@ -228,24 +391,6 @@ export default function AdminPage() {
           </summary>
 
           <div style={{ marginTop: 12, display: "grid", gap: 14 }}>
-            <div>
-              <button
-                disabled={isRunning}
-                onClick={() =>
-                  run(`/api/admin/send-prelock-reminders?season=${season}`)
-                }
-                style={{
-                  ...btnStyle,
-                  ...buttonStateStyle,
-                }}
-              >
-                Send Pre-lock Reminders (3h)
-              </button>
-              <div style={summaryStyle}>
-                Sends reminder emails to members who still have not tipped this round, when the round is ~3 hours from lock.
-              </div>
-            </div>
-
             <div>
               <button
                 disabled={isRunning}

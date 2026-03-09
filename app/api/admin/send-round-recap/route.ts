@@ -147,6 +147,25 @@ function parseRecipients(raw: string | null | undefined) {
     .filter(Boolean);
 }
 
+function isLikelyEmail(value: string) {
+  const s = String(value ?? "").trim();
+  if (!s) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+}
+
+function normalizeRecipientEmails(list: string[]) {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of list) {
+    const email = String(raw ?? "").trim().toLowerCase();
+    if (!isLikelyEmail(email)) continue;
+    if (seen.has(email)) continue;
+    seen.add(email);
+    out.push(email);
+  }
+  return out;
+}
+
 function computeTargetRounds(params: {
   rounds: RoundRow[];
   matches: MatchRow[];
@@ -307,6 +326,10 @@ export async function GET(req: Request) {
     const roundFilter = roundParam === null ? null : Number(roundParam);
     const dryRun = url.searchParams.get("dry_run") === "1";
     const force = url.searchParams.get("force") === "1";
+    const recipientOverrideRaw = url.searchParams.get("to_email");
+    const recipientOverride = normalizeRecipientEmails(
+      parseRecipients(recipientOverrideRaw)
+    );
     const hoursAfterFirst = Number(
       url.searchParams.get("hours_after_first") || String(DEFAULT_HOURS_AFTER_FIRST)
     );
@@ -330,7 +353,27 @@ export async function GET(req: Request) {
     const recapFromEmail = process.env.ROUND_RECAP_FROM_EMAIL || process.env.REMINDER_FROM_EMAIL || "";
     const recapReplyTo =
       process.env.ROUND_RECAP_REPLY_TO || process.env.REMINDER_REPLY_TO || null;
-    const recipients = parseRecipients(process.env.ROUND_RECAP_TO_EMAIL);
+    if (recipientOverrideRaw && gate.mode !== "bearer") {
+      return NextResponse.json(
+        { error: "to_email override is only allowed for admin bearer requests" },
+        { status: 403 }
+      );
+    }
+
+    if (recipientOverrideRaw && recipientOverride.length === 0) {
+      return NextResponse.json(
+        { error: "to_email must include at least one valid email" },
+        { status: 400 }
+      );
+    }
+
+    const envRecipients = normalizeRecipientEmails(
+      parseRecipients(process.env.ROUND_RECAP_TO_EMAIL)
+    );
+    const recipients =
+      recipientOverride.length > 0 ? recipientOverride : envRecipients;
+    const recipientSource =
+      recipientOverride.length > 0 ? "to_email_query_param" : "ROUND_RECAP_TO_EMAIL";
 
     if (!dryRun && (!resendApiKey || !recapFromEmail || recipients.length === 0)) {
       return NextResponse.json(
@@ -1334,6 +1377,7 @@ export async function GET(req: Request) {
       season,
       round: roundNumber,
       recap_type: RECAP_TYPE,
+      recipient_source: recipientSource,
       hours_after_first: hoursAfterFirst,
       targeted_round: roundNumber,
       first_game_utc: target.first_game_utc,

@@ -1,10 +1,7 @@
 name: Round recap email
 
 on:
-  schedule:
-    # Runs every 30 minutes; endpoint only sends once a round is complete
-    # and at least 48h after first game start.
-    - cron: "*/30 * * * *"
+  # Manual only: trigger from GitHub Actions when you want to send recap.
   workflow_dispatch:
 
 jobs:

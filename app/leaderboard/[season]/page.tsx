@@ -72,8 +72,8 @@ const ALL_COLUMNS: SortKey[] = [
   "rank",
   "display_name",
   "total_points",
-  "correct_tips",
   "behind_leader",
+  "correct_tips",
   "movement",
   "accuracy_pct",
   "round_score",
@@ -86,8 +86,8 @@ const MOBILE_CORE_COLUMNS: SortKey[] = [
   "rank",
   "display_name",
   "total_points",
-  "correct_tips",
   "behind_leader",
+  "correct_tips",
   "movement",
 ];
 
@@ -131,8 +131,6 @@ export default function LeaderboardPage() {
 
   const [rows, setRows] = useState<LeaderboardRow[]>([]);
   const [latestScoredRound, setLatestScoredRound] = useState<number | null>(null);
-  const [previousRoundForMovement, setPreviousRoundForMovement] = useState<number | null>(null);
-  const [matchesScored, setMatchesScored] = useState(0);
   const [reigningChampionUserId, setReigningChampionUserId] = useState<string | null>(null);
   const [msg, setMsg] = useState("Loading...");
   const [sortBy, setSortBy] = useState<SortKey>("total_points");
@@ -148,8 +146,6 @@ export default function LeaderboardPage() {
         : null
     );
     setLatestScoredRound(json.latest_scored_round ?? null);
-    setPreviousRoundForMovement(json.previous_round_for_movement ?? null);
-    setMatchesScored(Number(json.matches_scored ?? 0));
   }
 
   useEffect(() => {
@@ -344,55 +340,6 @@ export default function LeaderboardPage() {
           <div
             style={{
               marginTop: 12,
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
-              gap: 10,
-            }}
-          >
-            <div
-              style={{
-                border: "1px solid var(--border)",
-                borderRadius: 12,
-                padding: 10,
-                background: "var(--card-soft)",
-              }}
-            >
-              <div style={{ fontSize: 11, opacity: 0.7 }}>Matches scored</div>
-              <div style={{ marginTop: 4, fontWeight: 900, fontSize: 22 }}>{matchesScored}</div>
-            </div>
-
-            <div
-              style={{
-                border: "1px solid var(--border)",
-                borderRadius: 12,
-                padding: 10,
-                background: "var(--card-soft)",
-              }}
-            >
-              <div style={{ fontSize: 11, opacity: 0.7 }}>Round score column</div>
-              <div style={{ marginTop: 4, fontWeight: 900, fontSize: 22 }}>
-                {latestScoredRound === null ? "-" : `R${latestScoredRound}`}
-              </div>
-            </div>
-
-            <div
-              style={{
-                border: "1px solid var(--border)",
-                borderRadius: 12,
-                padding: 10,
-                background: "var(--card-soft)",
-              }}
-            >
-              <div style={{ fontSize: 11, opacity: 0.7 }}>Movement baseline</div>
-              <div style={{ marginTop: 4, fontWeight: 900, fontSize: 22 }}>
-                {previousRoundForMovement === null ? "-" : `End of R${previousRoundForMovement}`}
-              </div>
-            </div>
-          </div>
-
-          <div
-            style={{
-              marginTop: 14,
               border: "1px solid var(--border)",
               borderRadius: 12,
               overflow: "hidden",
@@ -442,8 +389,8 @@ export default function LeaderboardPage() {
                       {showColumn("rank") && sortableHeader("Rank", "rank", 1)}
                       {showColumn("display_name") && sortableHeader("Tipster", "display_name", 2)}
                       {showColumn("total_points") && sortableHeader("Total Pts", "total_points")}
-                      {showColumn("correct_tips") && sortableHeader("Correct", "correct_tips")}
                       {showColumn("behind_leader") && sortableHeader("Behind", "behind_leader")}
+                      {showColumn("correct_tips") && sortableHeader("Correct", "correct_tips")}
                       {showColumn("movement") && sortableHeader("Move", "movement")}
                       {showColumn("accuracy_pct") && sortableHeader("Season Accuracy", "accuracy_pct")}
                       {showColumn("round_score") &&
@@ -507,14 +454,14 @@ export default function LeaderboardPage() {
                             {fmtPts(r.total_points)}
                           </td>
                         )}
-                        {showColumn("correct_tips") && (
-                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
-                            {r.correct_tips}
-                          </td>
-                        )}
                         {showColumn("behind_leader") && (
                           <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
                             {r.behind_leader <= 0 ? "-" : fmtPts(r.behind_leader)}
+                          </td>
+                        )}
+                        {showColumn("correct_tips") && (
+                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
+                            {r.correct_tips}
                           </td>
                         )}
                         {showColumn("movement") && (

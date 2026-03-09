@@ -1237,28 +1237,28 @@ export default function RoundPage() {
                                       paddingTop: 6,
                                     }}
                                   >
-                                    <div style={{ opacity: 0.9 }}>
-                                      {matchTitleById[m.id] ?? `${m.home_team} vs ${m.away_team}`}
+                                    <div style={{ opacity: 0.9, display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                      {differs && (
+                                        <span
+                                          style={{
+                                            fontSize: 11,
+                                            padding: "2px 6px",
+                                            borderRadius: 999,
+                                            border: "1px solid rgba(220, 38, 38, 0.35)",
+                                            background: "rgba(220, 38, 38, 0.08)",
+                                            color: "rgb(185, 28, 28)",
+                                            fontWeight: 900,
+                                          }}
+                                        >
+                                          DIFFERENT
+                                        </span>
+                                      )}
+                                      <span>{matchTitleById[m.id] ?? `${m.home_team} vs ${m.away_team}`}</span>
                                     </div>
                                     <div style={{ fontWeight: 800, textAlign: "right" }}>
                                       {pick ? (
                                         <>
                                           {pick.team} <span style={{ opacity: 0.9 }}>({fmtOdds(pick.odds)})</span>
-                                          {differs && (
-                                            <span
-                                              style={{
-                                                marginLeft: 6,
-                                                fontSize: 11,
-                                                padding: "2px 6px",
-                                                borderRadius: 999,
-                                                border: "1px solid rgba(220, 38, 38, 0.35)",
-                                                background: "rgba(220, 38, 38, 0.08)",
-                                                color: "rgb(185, 28, 28)",
-                                              }}
-                                            >
-                                              DIFFERENT
-                                            </span>
-                                          )}
                                         </>
                                       ) : (
                                         <span style={{ opacity: 0.6 }}>—</span>

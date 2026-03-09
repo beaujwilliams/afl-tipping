@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { supabaseBrowser } from "@/lib/supabase-browser";
 import { UnpaidTag } from "@/components/UnpaidTag";
 import { ChampionCrown } from "@/components/ChampionCrown";
+import { waitForSession } from "@/lib/session-client";
 
 type MatchResultRow = {
   id: string;
@@ -113,6 +113,7 @@ export default function RoundResultsDetailPage() {
   const round = Number(params.round);
 
   const [msg, setMsg] = useState<string>("Checking session…");
+  const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [matches, setMatches] = useState<MatchResultRow[]>([]);
   const [players, setPlayers] = useState<PlayerRoundScore[]>([]);
   const [reigningChampionUserId, setReigningChampionUserId] = useState<string | null>(null);
@@ -123,30 +124,16 @@ export default function RoundResultsDetailPage() {
     let alive = true;
 
     async function ensureSessionOrRedirect() {
-      const { data } = await supabaseBrowser.auth.getSession();
+      const session = await waitForSession(3000, 180);
       if (!alive) return;
 
-      if (data.session) {
-        setMsg("Loading round results…");
+      if (!session) {
+        window.location.href = "/login";
         return;
       }
 
-      const { data: sub } = supabaseBrowser.auth.onAuthStateChange((_event, session) => {
-        if (session) {
-          setMsg("Loading round results…");
-          sub.subscription.unsubscribe();
-        }
-      });
-
-      setTimeout(async () => {
-        const { data: again } = await supabaseBrowser.auth.getSession();
-        if (!alive) return;
-
-        if (!again.session) window.location.href = "/login";
-        else setMsg("Loading round results…");
-
-        sub.subscription.unsubscribe();
-      }, 1200);
+      setSessionToken(session.access_token);
+      setMsg("Loading round results…");
     }
 
     ensureSessionOrRedirect();
@@ -160,22 +147,16 @@ export default function RoundResultsDetailPage() {
     if (invalidParams) {
       return;
     }
+    if (!sessionToken) return;
 
     (async () => {
       try {
         setMsg("Loading round results…");
-        const { data: sessionData } = await supabaseBrowser.auth.getSession();
-        const token = sessionData.session?.access_token ?? null;
-        if (!token) {
-          setMsg("Not authenticated.");
-          return;
-        }
-
         const res = await fetch(
           `/api/round-results?season=${encodeURIComponent(String(season))}&round=${encodeURIComponent(String(round))}`,
           {
             cache: "no-store",
-            headers: { Authorization: `Bearer ${token}` },
+            headers: { Authorization: `Bearer ${sessionToken}` },
           }
         );
 
@@ -198,7 +179,7 @@ export default function RoundResultsDetailPage() {
         setMsg("Could not load round results.");
       }
     })();
-  }, [season, round, invalidParams]);
+  }, [season, round, invalidParams, sessionToken]);
 
   const finishedMatches = useMemo(() => {
     return matches.filter((m) => !!String(m.winner_team ?? "").trim()).length;

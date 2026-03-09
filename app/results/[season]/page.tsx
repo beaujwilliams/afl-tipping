@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { waitForSession } from "@/lib/session-client";
 
 type RoundRow = {
   id: string;
@@ -56,6 +57,7 @@ export default function SeasonResultsPage() {
   const [rows, setRows] = useState<RoundRow[]>([]);
   const [msg, setMsg] = useState("Checking session…");
   const [ready, setReady] = useState(false);
+  const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [statsByRoundId, setStatsByRoundId] = useState<
     Record<string, { total: number; finished: number }>
   >({});
@@ -64,34 +66,17 @@ export default function SeasonResultsPage() {
     let alive = true;
 
     async function ensureSessionOrRedirect() {
-      const { data } = await supabaseBrowser.auth.getSession();
+      const session = await waitForSession(3000, 180);
       if (!alive) return;
 
-      if (data.session) {
-        setReady(true);
-        setMsg("");
+      if (!session) {
+        window.location.href = "/login";
         return;
       }
 
-      const { data: sub } = supabaseBrowser.auth.onAuthStateChange((_event, session) => {
-        if (session) {
-          setReady(true);
-          setMsg("");
-          sub.subscription.unsubscribe();
-        }
-      });
-
-      setTimeout(async () => {
-        const { data: again } = await supabaseBrowser.auth.getSession();
-        if (!alive) return;
-
-        if (!again.session) window.location.href = "/login";
-        else {
-          setReady(true);
-          setMsg("");
-        }
-        sub.subscription.unsubscribe();
-      }, 1200);
+      setSessionToken(session.access_token);
+      setReady(true);
+      setMsg("");
     }
 
     ensureSessionOrRedirect();
@@ -102,19 +87,12 @@ export default function SeasonResultsPage() {
   }, []);
 
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || !sessionToken) return;
 
     (async () => {
       setMsg("Loading results rounds…");
-      const { data: sessionData } = await supabaseBrowser.auth.getSession();
-      const token = sessionData.session?.access_token ?? null;
-      if (!token) {
-        setMsg("Not authenticated.");
-        return;
-      }
-
       const statusRes = await fetch(`/api/round-tip-status?season=${encodeURIComponent(String(season))}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${sessionToken}` },
         cache: "no-store",
       });
       const statusJson = (await statusRes.json().catch(() => null)) as TipStatusResponse | null;
@@ -161,7 +139,7 @@ export default function SeasonResultsPage() {
       setStatsByRoundId(stats);
       setMsg("");
     })();
-  }, [ready, season]);
+  }, [ready, season, sessionToken]);
 
   const hasRows = useMemo(() => rows.length > 0, [rows.length]);
   const [nowMs] = useState<number>(() => Date.now());

@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { supabaseBrowser } from "@/lib/supabase-browser";
 import { UnpaidTag } from "@/components/UnpaidTag";
 import { ChampionCrown } from "@/components/ChampionCrown";
+import { waitForSession } from "@/lib/session-client";
 
 type RoundRow = {
   id: string;
@@ -85,37 +85,17 @@ export default function SeasonRoundsPage() {
     let alive = true;
 
     async function ensureSessionOrRedirect() {
-      const { data } = await supabaseBrowser.auth.getSession();
+      const session = await waitForSession(3000, 180);
       if (!alive) return;
 
-      if (data.session) {
-        setSessionToken(data.session.access_token);
-        setReady(true);
-        setMsg("");
+      if (!session) {
+        window.location.href = "/login";
         return;
       }
 
-      const { data: sub } = supabaseBrowser.auth.onAuthStateChange((_event, session) => {
-        if (session) {
-          setSessionToken(session.access_token);
-          setReady(true);
-          setMsg("");
-          sub.subscription.unsubscribe();
-        }
-      });
-
-      setTimeout(async () => {
-        const { data: again } = await supabaseBrowser.auth.getSession();
-        if (!alive) return;
-
-        if (!again.session) window.location.href = "/login";
-        else {
-          setSessionToken(again.session.access_token);
-          setReady(true);
-          setMsg("");
-        }
-        sub.subscription.unsubscribe();
-      }, 1200);
+      setSessionToken(session.access_token);
+      setReady(true);
+      setMsg("");
     }
 
     ensureSessionOrRedirect();

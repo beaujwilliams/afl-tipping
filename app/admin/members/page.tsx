@@ -699,8 +699,8 @@ export default function AdminMembersPage() {
                     <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>Email</th>
                     <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>Role</th>
                     <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>Payment</th>
-                    <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>Joined</th>
                     <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>Actions</th>
+                    <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>Joined</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -813,9 +813,6 @@ export default function AdminMembersPage() {
                             <option value="waived">waived</option>
                           </select>
                         </td>
-                        <td style={{ padding: 12, borderTop: "1px solid var(--border)", fontSize: 13 }}>
-                          {fmtMelbourne(m.joined_at)}
-                        </td>
                         <td style={{ padding: 12, borderTop: "1px solid var(--border)" }}>
                           <div style={{ display: "flex", gap: 8 }}>
                             <button
@@ -851,6 +848,9 @@ export default function AdminMembersPage() {
                               {removing ? "Removing…" : "Remove"}
                             </button>
                           </div>
+                        </td>
+                        <td style={{ padding: 12, borderTop: "1px solid var(--border)", fontSize: 13 }}>
+                          {fmtMelbourne(m.joined_at)}
                         </td>
                       </tr>
                     );

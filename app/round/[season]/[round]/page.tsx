@@ -200,7 +200,7 @@ export default function RoundPage() {
   const [reigningChampionUserId, setReigningChampionUserId] = useState<string | null>(null);
   const [lockedTipsSearch, setLockedTipsSearch] = useState("");
   const [lockedTipsDifferencesOnly, setLockedTipsDifferencesOnly] = useState(false);
-  const [expandedLockedTipUserId, setExpandedLockedTipUserId] = useState<string | null>(null);
+  const [expandedLockedTipUserIds, setExpandedLockedTipUserIds] = useState<Record<string, boolean>>({});
   const lockedTipsRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   // ✅ NEW: tip breakdown once locked
@@ -424,7 +424,7 @@ export default function RoundPage() {
       setReigningChampionUserId(null);
       setLockedTipsSearch("");
       setLockedTipsDifferencesOnly(false);
-      setExpandedLockedTipUserId(null);
+      setExpandedLockedTipUserIds({});
 
       const { data: auth } = await supabaseBrowser.auth.getUser();
       if (!auth.user) {
@@ -792,11 +792,9 @@ export default function RoundPage() {
       });
   }, [lockedTips, lockedTipsSearch, matches, consensusPickByMatchId, lockedTipsRankByUserId]);
 
-  useEffect(() => {
-    if (!expandedLockedTipUserId) return;
-    const exists = visibleLockedTips.some((p) => p.user_id === expandedLockedTipUserId);
-    if (!exists) setExpandedLockedTipUserId(null);
-  }, [expandedLockedTipUserId, visibleLockedTips]);
+  const allVisibleExpanded =
+    visibleLockedTips.length > 0 &&
+    visibleLockedTips.every((p) => !!expandedLockedTipUserIds[p.user_id]);
 
   function jumpToMyTips() {
     if (!userId || !lockedTips) return;
@@ -804,12 +802,32 @@ export default function RoundPage() {
     if (!me) return;
 
     setLockedTipsSearch("");
-    setExpandedLockedTipUserId(userId);
+    setExpandedLockedTipUserIds((prev) => ({ ...prev, [userId]: true }));
 
     setTimeout(() => {
       const node = lockedTipsRowRefs.current[userId];
       node?.scrollIntoView({ behavior: "smooth", block: "center" });
     }, 0);
+  }
+
+  function toggleExpandAllVisible() {
+    if (!visibleLockedTips.length) return;
+
+    setExpandedLockedTipUserIds((prev) => {
+      const next = { ...prev };
+
+      if (allVisibleExpanded) {
+        visibleLockedTips.forEach((p) => {
+          delete next[p.user_id];
+        });
+      } else {
+        visibleLockedTips.forEach((p) => {
+          next[p.user_id] = true;
+        });
+      }
+
+      return next;
+    });
   }
 
   return (
@@ -1124,6 +1142,25 @@ export default function RoundPage() {
                 >
                   Jump to me
                 </button>
+
+                <button
+                  type="button"
+                  onClick={toggleExpandAllVisible}
+                  disabled={visibleLockedTips.length === 0}
+                  style={{
+                    padding: "8px 10px",
+                    borderRadius: 10,
+                    border: "1px solid var(--border)",
+                    background: "var(--card)",
+                    color: "var(--foreground)",
+                    fontWeight: 800,
+                    fontSize: 12,
+                    cursor: visibleLockedTips.length === 0 ? "not-allowed" : "pointer",
+                    opacity: visibleLockedTips.length === 0 ? 0.55 : 1,
+                  }}
+                >
+                  {allVisibleExpanded ? "Collapse all" : "Expand all"}
+                </button>
               </div>
 
               {visibleLockedTips.length === 0 ? (
@@ -1133,7 +1170,7 @@ export default function RoundPage() {
               ) : (
                 <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
                   {visibleLockedTips.map((p) => {
-                    const isExpanded = expandedLockedTipUserId === p.user_id;
+                    const isExpanded = !!expandedLockedTipUserIds[p.user_id];
 
                     const picksForUser = matches.filter((m) => {
                       const pick = p.picks?.[m.id];
@@ -1158,7 +1195,10 @@ export default function RoundPage() {
                         <button
                           type="button"
                           onClick={() =>
-                            setExpandedLockedTipUserId((prev) => (prev === p.user_id ? null : p.user_id))
+                            setExpandedLockedTipUserIds((prev) => ({
+                              ...prev,
+                              [p.user_id]: !prev[p.user_id],
+                            }))
                           }
                           style={{
                             width: "100%",
@@ -1193,9 +1233,6 @@ export default function RoundPage() {
                           </div>
 
                           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", fontSize: 12, opacity: 0.9 }}>
-                            <span>
-                              Picks: <b>{p.picks_count}</b>
-                            </span>
                             <span>
                               Diff vs consensus: <b>{p.diff_count}</b>
                             </span>

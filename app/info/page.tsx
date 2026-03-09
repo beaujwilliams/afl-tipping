@@ -63,7 +63,6 @@ export default function InfoPage() {
           <ol style={{ marginTop: 8, paddingLeft: 22 }}>
             <li>Higher accuracy percentage</li>
             <li>More correct tips</li>
-            <li>Alphabetical display name</li>
           </ol>
         </div>
 

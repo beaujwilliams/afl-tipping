@@ -68,6 +68,27 @@ async function getPaymentStatusByUserId(
   return out;
 }
 
+async function getDisplayNameByUserId(
+  supabase: ReturnType<typeof createServiceClient>,
+  userIds: string[]
+) {
+  const out: Record<string, string | null> = {};
+  if (!userIds.length) return out;
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, display_name")
+    .in("id", userIds);
+
+  if (error) throw new Error(error.message);
+
+  (data as Array<{ id: string; display_name: string | null }> | null)?.forEach((p) => {
+    out[String(p.id)] = p.display_name ?? null;
+  });
+
+  return out;
+}
+
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
@@ -144,9 +165,11 @@ export async function GET(req: Request) {
         competitionId,
         cachedUserIds
       );
+      const displayNameByUserId = await getDisplayNameByUserId(supabase, cachedUserIds);
 
       const playersWithPayment = cachedPlayers.map((p) => ({
         ...p,
+        display_name: displayNameByUserId[String(p.user_id)] ?? p.display_name ?? null,
         payment_status: paymentStatusByUserId[String(p.user_id)] ?? null,
       }));
 

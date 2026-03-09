@@ -39,6 +39,30 @@ type TipStatusResponse = {
   error?: string;
 };
 
+type ReminderRoundResult = {
+  round: number;
+  missing_tip_members: number;
+  already_reminded: number;
+  candidates: number;
+  no_email: number;
+  sent: number;
+  simulated: number;
+  failed: number;
+};
+
+type ReminderApiResponse = {
+  ok?: boolean;
+  error?: string;
+  results?: ReminderRoundResult[];
+  errors?: Array<{ round: number; error: string }>;
+  totals?: {
+    sent?: number;
+    simulated?: number;
+    failed?: number;
+    no_email?: number;
+  };
+};
+
 function melbourneMs(iso: string | null) {
   if (!iso) return null;
   const ms = new Date(iso).getTime();
@@ -80,6 +104,72 @@ export default function SeasonRoundsPage() {
 
   // per-round expand/collapse for "who hasn't tipped"
   const [openRoundId, setOpenRoundId] = useState<string | null>(null);
+  const [reminderRunningRoundId, setReminderRunningRoundId] = useState<string | null>(null);
+  const [reminderStatusByRoundId, setReminderStatusByRoundId] = useState<Record<string, string>>({});
+
+  function setRoundReminderStatus(roundId: string, text: string) {
+    setReminderStatusByRoundId((prev) => ({ ...prev, [roundId]: text }));
+  }
+
+  async function sendRoundReminders(roundId: string, roundNumber: number) {
+    if (!sessionToken) {
+      setRoundReminderStatus(roundId, "Not authenticated.");
+      return;
+    }
+
+    const ok = confirm(`Send reminder emails now for Round ${roundNumber}?`);
+    if (!ok) return;
+
+    setReminderRunningRoundId(roundId);
+    setRoundReminderStatus(roundId, "Sending reminders…");
+
+    try {
+      const res = await fetch(
+        `/api/admin/send-prelock-reminders?season=${encodeURIComponent(String(season))}&round=${encodeURIComponent(
+          String(roundNumber)
+        )}&force=1`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${sessionToken}`,
+          },
+          cache: "no-store",
+        }
+      );
+
+      const json = (await res.json().catch(() => null)) as ReminderApiResponse | null;
+
+      if (!res.ok || !json) {
+        setRoundReminderStatus(roundId, json?.error ?? "Reminder request failed.");
+        return;
+      }
+
+      const row = (json.results ?? []).find((x) => Number(x.round) === roundNumber) ?? null;
+      const roundError =
+        (json.errors ?? []).find((x) => Number(x.round) === roundNumber)?.error ??
+        json.error ??
+        "";
+
+      if (roundError) {
+        setRoundReminderStatus(roundId, `Error: ${roundError}`);
+        return;
+      }
+
+      if (!row) {
+        setRoundReminderStatus(roundId, "No reminder result returned for this round.");
+        return;
+      }
+
+      setRoundReminderStatus(
+        roundId,
+        `Sent ${row.sent}. Already reminded ${row.already_reminded}. No email ${row.no_email}. Failed ${row.failed}.`
+      );
+    } catch {
+      setRoundReminderStatus(roundId, "Reminder request failed.");
+    } finally {
+      setReminderRunningRoundId(null);
+    }
+  }
 
   useEffect(() => {
     let alive = true;
@@ -287,12 +377,53 @@ export default function SeasonRoundsPage() {
                       background: "rgba(255,255,255,0.03)",
                     }}
                   >
-                    <div style={{ fontWeight: 900, marginBottom: 8, opacity: 0.95 }}>
-                      Still to tip ({status.missing_players.length})
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 10,
+                        flexWrap: "wrap",
+                        marginBottom: 8,
+                      }}
+                    >
+                      <div style={{ fontWeight: 900, opacity: 0.95 }}>
+                        Still to tip ({status.missing_players.length})
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => sendRoundReminders(r.id, r.round_number)}
+                        disabled={reminderRunningRoundId === r.id || status.missing_players.length === 0}
+                        style={{
+                          padding: "8px 10px",
+                          borderRadius: 999,
+                          border: "1px solid rgba(255,255,255,0.16)",
+                          background:
+                            reminderRunningRoundId === r.id
+                              ? "rgba(255,255,255,0.06)"
+                              : "rgba(239,68,68,0.14)",
+                          color: "var(--foreground)",
+                          fontWeight: 900,
+                          cursor:
+                            reminderRunningRoundId === r.id || status.missing_players.length === 0
+                              ? "not-allowed"
+                              : "pointer",
+                          opacity: status.missing_players.length === 0 ? 0.6 : 1,
+                        }}
+                      >
+                        {reminderRunningRoundId === r.id ? "Sending…" : "Send reminders now"}
+                      </button>
                     </div>
 
+                    {reminderStatusByRoundId[r.id] && (
+                      <div style={{ marginBottom: 10, fontSize: 12, opacity: 0.8 }}>
+                        {reminderStatusByRoundId[r.id]}
+                      </div>
+                    )}
+
                     {status.missing_players.length === 0 ? (
-                      <div style={{ opacity: 0.7, fontSize: 13 }}>Everyone has tipped 🎉</div>
+                      <div style={{ opacity: 0.7, fontSize: 13 }}>Everyone has tipped.</div>
                     ) : (
                       <div style={{ display: "grid", gap: 8 }}>
                         {status.missing_players.map((p) => (

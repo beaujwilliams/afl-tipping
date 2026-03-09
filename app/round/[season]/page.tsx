@@ -13,7 +13,7 @@ type RoundRow = {
   lock_time_utc: string | null;
 };
 
-type MissingPlayer = {
+type RoundStatusPlayer = {
   user_id: string;
   display_name: string | null;
   payment_status?: string | null;
@@ -28,7 +28,8 @@ type TipStatusRound = {
   total_players: number;
   tipped_players: number;
   missing_count: number;
-  missing_players?: MissingPlayer[];
+  missing_players?: RoundStatusPlayer[];
+  tipped_players_list?: RoundStatusPlayer[];
 };
 
 type TipStatusResponse = {
@@ -118,6 +119,12 @@ export default function SeasonRoundsPage() {
 
   // per-round expand/collapse for "who hasn't tipped"
   const [openRoundId, setOpenRoundId] = useState<string | null>(null);
+  const [openRoundTabById, setOpenRoundTabById] = useState<
+    Record<string, "missing" | "tipped">
+  >({});
+  const [tipListSearchByRoundId, setTipListSearchByRoundId] = useState<Record<string, string>>(
+    {}
+  );
   const [reminderRunningRoundId, setReminderRunningRoundId] = useState<string | null>(null);
   const [reminderStatusByRoundId, setReminderStatusByRoundId] = useState<Record<string, string>>({});
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -374,8 +381,21 @@ export default function SeasonRoundsPage() {
             const total = status?.total_players ?? null;
             const tipped = status?.tipped_players ?? null;
             const missingCount = status?.missing_count ?? null;
+            const missingPlayers = status?.missing_players ?? [];
+            const tippedPlayers = status?.tipped_players_list ?? [];
 
             const isOpen = openRoundId === r.id;
+            const openTab = openRoundTabById[r.id] ?? "missing";
+            const activeList = openTab === "missing" ? missingPlayers : tippedPlayers;
+            const search = tipListSearchByRoundId[r.id] ?? "";
+            const q = search.trim().toLowerCase();
+            const filteredActiveList = q
+              ? activeList.filter((p) => {
+                  const name = String(p.display_name ?? "").toLowerCase();
+                  const id = String(p.user_id).toLowerCase();
+                  return name.includes(q) || id.includes(q);
+                })
+              : activeList;
 
             return (
               <div key={r.id}>
@@ -448,7 +468,18 @@ export default function SeasonRoundsPage() {
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          setOpenRoundId((prev) => (prev === r.id ? null : r.id));
+                          const nextOpen = openRoundId === r.id ? null : r.id;
+                          setOpenRoundId(nextOpen);
+                          if (nextOpen === r.id) {
+                            setOpenRoundTabById((prev) => ({
+                              ...prev,
+                              [r.id]: prev[r.id] ?? "missing",
+                            }));
+                            setTipListSearchByRoundId((prev) => ({
+                              ...prev,
+                              [r.id]: prev[r.id] ?? "",
+                            }));
+                          }
                         }}
                         style={{
                           padding: "8px 10px",
@@ -461,7 +492,7 @@ export default function SeasonRoundsPage() {
                           whiteSpace: "nowrap",
                         }}
                       >
-                        {isOpen ? "Hide" : "Who hasn’t tipped?"}
+                        {isOpen ? "Hide lists" : "Tip lists"}
                       </button>
                     )}
                   </div>
@@ -489,32 +520,113 @@ export default function SeasonRoundsPage() {
                       }}
                     >
                       <div style={{ fontWeight: 900, opacity: 0.95 }}>
-                        Still to tip ({status.missing_players.length})
+                        Round {r.round_number} tip lists
                       </div>
+                    </div>
 
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        flexWrap: "wrap",
+                        marginBottom: 10,
+                      }}
+                    >
                       <button
                         type="button"
-                        onClick={() => sendRoundReminders(r.id, r.round_number)}
-                        disabled={reminderRunningRoundId === r.id || status.missing_players.length === 0}
+                        onClick={() =>
+                          setOpenRoundTabById((prev) => ({ ...prev, [r.id]: "missing" }))
+                        }
                         style={{
-                          padding: "8px 10px",
+                          padding: "7px 11px",
                           borderRadius: 999,
                           border: "1px solid rgba(255,255,255,0.16)",
                           background:
-                            reminderRunningRoundId === r.id
-                              ? "rgba(255,255,255,0.06)"
-                              : "rgba(239,68,68,0.14)",
+                            openTab === "missing"
+                              ? "rgba(239,68,68,0.16)"
+                              : "rgba(255,255,255,0.06)",
                           color: "var(--foreground)",
                           fontWeight: 900,
-                          cursor:
-                            reminderRunningRoundId === r.id || status.missing_players.length === 0
-                              ? "not-allowed"
-                              : "pointer",
-                          opacity: status.missing_players.length === 0 ? 0.6 : 1,
+                          cursor: "pointer",
                         }}
                       >
-                        {reminderRunningRoundId === r.id ? "Sending…" : "Send reminders now"}
+                        Missing ({missingPlayers.length})
                       </button>
+
+                      <button
+                        type="button"
+                        style={{
+                          padding: "7px 11px",
+                          borderRadius: 999,
+                          border: "1px solid rgba(255,255,255,0.16)",
+                          background:
+                            openTab === "tipped"
+                              ? "rgba(34,197,94,0.16)"
+                              : "rgba(255,255,255,0.06)",
+                          color: "var(--foreground)",
+                          fontWeight: 900,
+                          cursor: "pointer",
+                        }}
+                        onClick={() =>
+                          setOpenRoundTabById((prev) => ({ ...prev, [r.id]: "tipped" }))
+                        }
+                      >
+                        Tipped ({tippedPlayers.length})
+                      </button>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        flexWrap: "wrap",
+                        marginBottom: 10,
+                      }}
+                    >
+                      <input
+                        value={search}
+                        onChange={(e) =>
+                          setTipListSearchByRoundId((prev) => ({ ...prev, [r.id]: e.target.value }))
+                        }
+                        placeholder={`Search ${openTab === "missing" ? "missing" : "tipped"} members...`}
+                        style={{
+                          flex: "1 1 240px",
+                          minWidth: 180,
+                          padding: "8px 10px",
+                          borderRadius: 10,
+                          border: "1px solid rgba(255,255,255,0.16)",
+                          background: "rgba(255,255,255,0.04)",
+                          color: "var(--foreground)",
+                        }}
+                      />
+
+                      {openTab === "missing" && (
+                        <button
+                          type="button"
+                          onClick={() => sendRoundReminders(r.id, r.round_number)}
+                          disabled={reminderRunningRoundId === r.id || missingPlayers.length === 0}
+                          style={{
+                            padding: "8px 10px",
+                            borderRadius: 999,
+                            border: "1px solid rgba(255,255,255,0.16)",
+                            background:
+                              reminderRunningRoundId === r.id
+                                ? "rgba(255,255,255,0.06)"
+                                : "rgba(239,68,68,0.14)",
+                            color: "var(--foreground)",
+                            fontWeight: 900,
+                            cursor:
+                              reminderRunningRoundId === r.id || missingPlayers.length === 0
+                                ? "not-allowed"
+                                : "pointer",
+                            opacity: missingPlayers.length === 0 ? 0.6 : 1,
+                          }}
+                        >
+                          {reminderRunningRoundId === r.id ? "Sending…" : "Send reminders now"}
+                        </button>
+                      )}
                     </div>
 
                     {reminderStatusByRoundId[r.id] && (
@@ -523,11 +635,17 @@ export default function SeasonRoundsPage() {
                       </div>
                     )}
 
-                    {status.missing_players.length === 0 ? (
-                      <div style={{ opacity: 0.7, fontSize: 13 }}>Everyone has tipped.</div>
+                    {filteredActiveList.length === 0 ? (
+                      <div style={{ opacity: 0.7, fontSize: 13 }}>
+                        {q
+                          ? "No members match your search."
+                          : openTab === "missing"
+                            ? "Everyone has tipped."
+                            : "No tipped members yet."}
+                      </div>
                     ) : (
-                      <div style={{ display: "grid", gap: 8 }}>
-                        {status.missing_players.map((p) => (
+                      <div style={{ display: "grid", gap: 8, maxHeight: 300, overflowY: "auto", paddingRight: 4 }}>
+                        {filteredActiveList.map((p) => (
                           <div
                             key={p.user_id}
                             style={{

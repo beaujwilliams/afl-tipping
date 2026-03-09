@@ -30,6 +30,12 @@ type TipRow = {
   match_id: string;
 };
 
+type RoundPlayerStatusRow = {
+  user_id: string;
+  display_name: string | null;
+  payment_status: string | null;
+};
+
 function isMissingColumnError(message: string, columnName: string) {
   const m = message.toLowerCase();
   const col = columnName.toLowerCase();
@@ -209,21 +215,44 @@ export async function GET(req: Request) {
       const missingCount = Math.max(0, totalPlayers - tippedCount);
 
       let missing:
-        | Array<{ user_id: string; display_name: string | null; payment_status: string | null }>
+        | Array<RoundPlayerStatusRow>
+        | undefined = undefined;
+      let tippedPlayersList:
+        | Array<RoundPlayerStatusRow>
         | undefined = undefined;
 
       if (admin) {
-        const miss: Array<{ user_id: string; display_name: string | null; payment_status: string | null }> = [];
+        const miss: Array<RoundPlayerStatusRow> = [];
+        const tippedRows: Array<RoundPlayerStatusRow> = [];
         for (const uid of memberIds) {
-          if (!tipped.has(uid)) {
-            miss.push({
-              user_id: uid,
-              display_name: profileMap.get(uid) ?? null,
-              payment_status: paymentStatusByUserId.get(uid) ?? null,
-            });
-          }
+          const row = {
+            user_id: uid,
+            display_name: profileMap.get(uid) ?? null,
+            payment_status: paymentStatusByUserId.get(uid) ?? null,
+          };
+          if (tipped.has(uid)) tippedRows.push(row);
+          else miss.push(row);
         }
+
+        const byName = (a: RoundPlayerStatusRow, b: RoundPlayerStatusRow) => {
+          const aName = String(a.display_name ?? "").trim();
+          const bName = String(b.display_name ?? "").trim();
+          if (aName && bName) {
+            const cmp = aName.localeCompare(bName, "en", { sensitivity: "base" });
+            if (cmp !== 0) return cmp;
+          } else if (aName) {
+            return -1;
+          } else if (bName) {
+            return 1;
+          }
+          return String(a.user_id).localeCompare(String(b.user_id));
+        };
+
+        miss.sort(byName);
+        tippedRows.sort(byName);
+
         missing = miss;
+        tippedPlayersList = tippedRows;
       }
 
       return {
@@ -235,6 +264,7 @@ export async function GET(req: Request) {
         total_players: memberIds.length,
         tipped_players: tippedCount,
         missing_players: admin ? missing : undefined,
+        tipped_players_list: admin ? tippedPlayersList : undefined,
         missing_count: missingCount,
       };
     });

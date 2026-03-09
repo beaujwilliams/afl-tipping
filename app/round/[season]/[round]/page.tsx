@@ -423,7 +423,6 @@ export default function RoundPage() {
       setLockedTipsMsg("");
       setReigningChampionUserId(null);
       setLockedTipsSearch("");
-      setLockedTipsDifferencesOnly(false);
       setShowLockedTipsInfo(false);
       setExpandedLockedTipUserIds({});
 

@@ -761,7 +761,12 @@ export default function RoundPage() {
 
   const visibleLockedTips = useMemo(() => {
     if (!lockedTips) return [] as Array<
-      LockedTipPlayer & { row_rank: number; picks_count: number; diff_count: number }
+      LockedTipPlayer & {
+        row_rank: number;
+        picks_count: number;
+        underdog_count: number;
+        consensus_diff_count: number;
+      }
     >;
 
     const q = lockedTipsSearch.trim().toLowerCase();
@@ -775,24 +780,54 @@ export default function RoundPage() {
       })
       .map((p) => {
         let picksCount = 0;
-        let diffCount = 0;
+        let underdogCount = 0;
+        let consensusDiffCount = 0;
 
         matches.forEach((m) => {
           const team = p.picks?.[m.id]?.team ?? "";
           if (!team) return;
           picksCount += 1;
+
+          const odds = oddsByMatchId[m.id];
+          if (odds) {
+            const pickedOdds =
+              team === m.home_team
+                ? Number(odds.home_odds ?? 0)
+                : team === m.away_team
+                  ? Number(odds.away_odds ?? 0)
+                  : 0;
+            const otherOdds =
+              team === m.home_team
+                ? Number(odds.away_odds ?? 0)
+                : team === m.away_team
+                  ? Number(odds.home_odds ?? 0)
+                  : 0;
+
+            if (pickedOdds > 0 && otherOdds > 0 && pickedOdds > otherOdds) {
+              underdogCount += 1;
+            }
+          }
+
           const consensus = consensusPickByMatchId[m.id] ?? "";
-          if (consensus && team !== consensus) diffCount += 1;
+          if (consensus && team !== consensus) consensusDiffCount += 1;
         });
 
         return {
           ...p,
           row_rank: lockedTipsRankByUserId[p.user_id] ?? 0,
           picks_count: picksCount,
-          diff_count: diffCount,
+          underdog_count: underdogCount,
+          consensus_diff_count: consensusDiffCount,
         };
       });
-  }, [lockedTips, lockedTipsSearch, matches, consensusPickByMatchId, lockedTipsRankByUserId]);
+  }, [
+    lockedTips,
+    lockedTipsSearch,
+    matches,
+    oddsByMatchId,
+    consensusPickByMatchId,
+    lockedTipsRankByUserId,
+  ]);
 
   const allVisibleExpanded =
     visibleLockedTips.length > 0 &&
@@ -1202,6 +1237,10 @@ export default function RoundPage() {
                   <div style={{ opacity: 0.88 }}>
                     This badge means that user tipped the other side, not the consensus pick.
                   </div>
+                  <div style={{ marginTop: 8, fontWeight: 900 }}>Underdogs tipped</div>
+                  <div style={{ opacity: 0.88 }}>
+                    Count of picks where the selected team had higher odds than the opponent.
+                  </div>
                 </div>
               )}
 
@@ -1276,7 +1315,10 @@ export default function RoundPage() {
 
                           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", fontSize: 12, opacity: 0.9 }}>
                             <span>
-                              Underdogs tipped: <b>{p.diff_count}</b>/<b>{p.picks_count}</b>
+                              Underdogs tipped: <b>{p.underdog_count}</b>/<b>{p.picks_count}</b>
+                            </span>
+                            <span>
+                              Different to consensus: <b>{p.consensus_diff_count}</b>/<b>{p.picks_count}</b>
                             </span>
                             <span>{isExpanded ? "Hide picks ▲" : "Show picks ▼"}</span>
                           </div>

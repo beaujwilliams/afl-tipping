@@ -935,7 +935,7 @@ export default function RoundPage() {
         </div>
       )}
 
-      {!!matches.length && oddsInfo && (
+      {!!matches.length && oddsInfo.startsWith("Odds not loaded:") && (
         <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>{oddsInfo}</div>
       )}
 
@@ -1353,12 +1353,11 @@ export default function RoundPage() {
                     flex: 1,
                     padding: "14px 18px",
                     borderRadius: 12,
-                    border: picked === g.home_team ? "2px solid #0070f3" : "1px solid #ccc",
-                    background: picked === g.home_team ? "#e6f3ff" : "white",
+                    border: picked === g.home_team ? "2px solid #16a34a" : "1px solid #ccc",
+                    background: "white",
                     color: "#111",
                     fontWeight: picked === g.home_team ? 700 : 600,
                     cursor: isLocked || paymentLocked ? "not-allowed" : "pointer",
-                    position: "relative",
                     textAlign: "left",
                     opacity: isLocked || saving || paymentLocked ? 0.65 : 1,
                   }}
@@ -1367,9 +1366,6 @@ export default function RoundPage() {
                     <span>{g.home_team}</span>
                     <span style={{ opacity: 0.85 }}>{fmtOdds(homeOdds)}</span>
                   </div>
-                  {picked === g.home_team && (
-                    <span style={{ position: "absolute", right: 12, top: 10, fontSize: 16 }}>✓</span>
-                  )}
                 </button>
 
                 <button
@@ -1379,12 +1375,11 @@ export default function RoundPage() {
                     flex: 1,
                     padding: "14px 18px",
                     borderRadius: 12,
-                    border: picked === g.away_team ? "2px solid #0070f3" : "1px solid #ccc",
-                    background: picked === g.away_team ? "#e6f3ff" : "white",
+                    border: picked === g.away_team ? "2px solid #16a34a" : "1px solid #ccc",
+                    background: "white",
                     color: "#111",
                     fontWeight: picked === g.away_team ? 700 : 600,
                     cursor: isLocked || paymentLocked ? "not-allowed" : "pointer",
-                    position: "relative",
                     textAlign: "left",
                     opacity: isLocked || saving || paymentLocked ? 0.65 : 1,
                   }}
@@ -1393,9 +1388,6 @@ export default function RoundPage() {
                     <span>{g.away_team}</span>
                     <span style={{ opacity: 0.85 }}>{fmtOdds(awayOdds)}</span>
                   </div>
-                  {picked === g.away_team && (
-                    <span style={{ position: "absolute", right: 12, top: 10, fontSize: 16 }}>✓</span>
-                  )}
                 </button>
               </div>
 

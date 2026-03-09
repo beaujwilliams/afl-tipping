@@ -838,45 +838,80 @@ export default function RoundPage() {
         <div
           style={{
             marginTop: 12,
-            padding: 14,
-            borderRadius: 12,
-            border: "1px solid rgba(0,0,0,0.12)",
-            background: isLocked
-              ? "rgba(220, 38, 38, 0.06)"
-              : "rgba(34, 197, 94, 0.06)",
+            display: "grid",
+            gap: 12,
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
           }}
         >
-          {isLocked ? (
-            <>
-              <div style={{ fontWeight: 700 }}>Round locked ✅</div>
-              <div style={{ marginTop: 4, opacity: 0.85 }}>
-                Locked at <b>{formatMelbourne(roundRow.lock_time_utc)}</b>{" "}
-                (Melbourne time)
-              </div>
-              <div style={{ marginTop: 6, fontSize: 12, color: "crimson" }}>
-                Tips can’t be changed once the round is locked.
-              </div>
-            </>
-          ) : (
-            <>
-              <div style={{ fontWeight: 700 }}>
-                Tips close in <span>{lockCountdown}</span>
-              </div>
-              <div style={{ marginTop: 4, opacity: 0.85 }}>
-                Last time you can tip: <b>{formatMelbourne(roundRow.lock_time_utc)}</b>{" "}
-                (Melbourne time)
-              </div>
-              <div style={{ marginTop: 6, fontSize: 12, opacity: 0.8 }}>
-                After this time, tips are locked and can’t be changed.
-              </div>
-            </>
-          )}
-
-          {oddsInfo && (
-            <div style={{ marginTop: 8, fontSize: 12, opacity: 0.8 }}>
-              {oddsInfo}
+          <div
+            style={{
+              padding: 14,
+              borderRadius: 12,
+              border: "1px solid rgba(0,0,0,0.12)",
+              background: "rgba(34, 197, 94, 0.06)",
+            }}
+          >
+            <div style={{ fontWeight: 800, fontSize: 12, opacity: 0.75 }}>
+              TIPS CLOSE
             </div>
-          )}
+            <div style={{ marginTop: 6, fontSize: 22, fontWeight: 800, lineHeight: 1.2 }}>
+              {formatMelbourne(roundRow.lock_time_utc)}
+            </div>
+            <div style={{ marginTop: 6, fontSize: 13, opacity: 0.85 }}>
+              {isLocked ? "Closed" : `Closes in ${lockCountdown}`}
+            </div>
+          </div>
+
+          <div
+            style={{
+              padding: 14,
+              borderRadius: 12,
+              border: "1px solid rgba(0,0,0,0.12)",
+              background: "rgba(245, 158, 11, 0.10)",
+            }}
+          >
+            <div style={{ fontWeight: 800, fontSize: 12, opacity: 0.75 }}>
+              ODDS DUE TO BE LOADED
+            </div>
+            <div style={{ marginTop: 6, fontSize: 22, fontWeight: 800, lineHeight: 1.2 }}>
+              {oddsExpectedFromIso ? formatMelbourne(oddsExpectedFromIso) : "TBC"}
+            </div>
+            <div style={{ marginTop: 6, fontSize: 13, opacity: 0.85 }}>
+              {!snapshotDueMs && "Waiting for lock time"}
+              {!!snapshotDueMs && nowMs < snapshotDueMs && `Due in ${oddsExpectedCountdown}`}
+              {!!snapshotDueMs &&
+                nowMs >= snapshotDueMs &&
+                !isLocked &&
+                "Loading window is open"}
+              {!!snapshotDueMs && nowMs >= snapshotDueMs && isLocked && "Should already be loaded"}
+            </div>
+            {!!matches.length && (
+              <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75 }}>
+                Loaded for {oddsHaveCount}/{matches.length} matches
+              </div>
+            )}
+          </div>
+
+          <div
+            style={{
+              padding: 14,
+              borderRadius: 12,
+              border: "1px solid rgba(0,0,0,0.12)",
+              background: "rgba(59, 130, 246, 0.08)",
+            }}
+          >
+            <div style={{ fontWeight: 800, fontSize: 12, opacity: 0.75 }}>
+              YOUR SAVED TIPS
+            </div>
+            <div style={{ marginTop: 6, fontSize: 22, fontWeight: 800, lineHeight: 1.2 }}>
+              {tippedCount}/{matches.length || 0}
+            </div>
+            <div style={{ marginTop: 6, fontSize: 13, opacity: 0.85 }}>
+              {isLocked
+                ? "Locked"
+                : `${Math.max(matches.length - tippedCount, 0)} left to tip`}
+            </div>
+          </div>
         </div>
       )}
 
@@ -900,44 +935,8 @@ export default function RoundPage() {
         </div>
       )}
 
-      {!!matches.length && oddsMissing && (
-        <div
-          style={{
-            marginTop: 12,
-            padding: 14,
-            borderRadius: 12,
-            border: "1px solid rgba(0,0,0,0.10)",
-            background: "rgba(245, 158, 11, 0.10)",
-          }}
-        >
-          <div style={{ fontWeight: 800 }}>
-            Your pick is saved now. Odds should appear before tips close.
-          </div>
-          <div style={{ marginTop: 6, fontSize: 12, opacity: 0.85 }}>
-            Odds loaded for <b>{oddsHaveCount}</b>/<b>{matches.length}</b> matches.
-            {oddsExpectedFromIso && nowMs < (snapshotDueMs ?? 0) && (
-              <span style={{ marginLeft: 8, opacity: 0.9 }}>
-                Odds are expected from <b>{formatMelbourne(oddsExpectedFromIso)}</b> (in{" "}
-                <b>{oddsExpectedCountdown}</b>).
-              </span>
-            )}
-            {oddsExpectedFromIso && nowMs >= (snapshotDueMs ?? 0) && !isLocked && (
-              <span style={{ marginLeft: 8, opacity: 0.9 }}>
-                Odds should be coming through now.
-              </span>
-            )}
-            {shouldPollOdds && (
-              <span style={{ marginLeft: 8, opacity: 0.85 }}>
-                (Auto-checking every 90s)
-              </span>
-            )}
-            {!shouldPollOdds && !isLocked && snapshotDueMs && nowMs < snapshotDueMs && (
-              <span style={{ marginLeft: 8, opacity: 0.85 }}>
-                (Auto-check starts 36h before tips close)
-              </span>
-            )}
-          </div>
-        </div>
+      {!!matches.length && oddsInfo && (
+        <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>{oddsInfo}</div>
       )}
 
       {showRefreshHint && (

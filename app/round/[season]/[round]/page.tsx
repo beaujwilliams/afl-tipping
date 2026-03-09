@@ -198,6 +198,10 @@ export default function RoundPage() {
   const [lockedTips, setLockedTips] = useState<LockedTipPlayer[] | null>(null);
   const [lockedTipsMsg, setLockedTipsMsg] = useState<string>("");
   const [reigningChampionUserId, setReigningChampionUserId] = useState<string | null>(null);
+  const [lockedTipsSearch, setLockedTipsSearch] = useState("");
+  const [lockedTipsDifferencesOnly, setLockedTipsDifferencesOnly] = useState(false);
+  const [expandedLockedTipUserId, setExpandedLockedTipUserId] = useState<string | null>(null);
+  const lockedTipsRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   // ✅ NEW: tip breakdown once locked
   const [tipBreakdownByMatch, setTipBreakdownByMatch] = useState<
@@ -418,6 +422,9 @@ export default function RoundPage() {
       setLockedTips(null);
       setLockedTipsMsg("");
       setReigningChampionUserId(null);
+      setLockedTipsSearch("");
+      setLockedTipsDifferencesOnly(false);
+      setExpandedLockedTipUserId(null);
 
       const { data: auth } = await supabaseBrowser.auth.getUser();
       if (!auth.user) {
@@ -708,6 +715,103 @@ export default function RoundPage() {
     return out;
   }, [matches]);
 
+  const lockedTipsRankByUserId = useMemo(() => {
+    const out: Record<string, number> = {};
+    (lockedTips ?? []).forEach((p, idx) => {
+      out[p.user_id] = idx + 1;
+    });
+    return out;
+  }, [lockedTips]);
+
+  const consensusPickByMatchId = useMemo(() => {
+    const out: Record<string, string> = {};
+
+    matches.forEach((m) => {
+      const breakdown = tipBreakdownByMatch[m.id] ?? {};
+      const entries = Object.entries(breakdown).sort((a, b) => {
+        if (b[1] !== a[1]) return b[1] - a[1];
+        return a[0].localeCompare(b[0], "en", { sensitivity: "base" });
+      });
+      if (entries.length) {
+        out[m.id] = entries[0][0];
+      }
+    });
+
+    // fallback when tip breakdown endpoint is unavailable
+    if (Object.keys(out).length === 0 && lockedTips?.length) {
+      matches.forEach((m) => {
+        const counts: Record<string, number> = {};
+        lockedTips.forEach((p) => {
+          const team = p.picks?.[m.id]?.team ?? "";
+          if (!team) return;
+          counts[team] = (counts[team] ?? 0) + 1;
+        });
+        const entries = Object.entries(counts).sort((a, b) => {
+          if (b[1] !== a[1]) return b[1] - a[1];
+          return a[0].localeCompare(b[0], "en", { sensitivity: "base" });
+        });
+        if (entries.length) out[m.id] = entries[0][0];
+      });
+    }
+
+    return out;
+  }, [matches, tipBreakdownByMatch, lockedTips]);
+
+  const visibleLockedTips = useMemo(() => {
+    if (!lockedTips) return [] as Array<
+      LockedTipPlayer & { row_rank: number; picks_count: number; diff_count: number }
+    >;
+
+    const q = lockedTipsSearch.trim().toLowerCase();
+
+    return lockedTips
+      .filter((p) => {
+        if (!q) return true;
+        const name = String(p.display_name ?? "").toLowerCase();
+        const id = String(p.user_id).toLowerCase();
+        return name.includes(q) || id.includes(q);
+      })
+      .map((p) => {
+        let picksCount = 0;
+        let diffCount = 0;
+
+        matches.forEach((m) => {
+          const team = p.picks?.[m.id]?.team ?? "";
+          if (!team) return;
+          picksCount += 1;
+          const consensus = consensusPickByMatchId[m.id] ?? "";
+          if (consensus && team !== consensus) diffCount += 1;
+        });
+
+        return {
+          ...p,
+          row_rank: lockedTipsRankByUserId[p.user_id] ?? 0,
+          picks_count: picksCount,
+          diff_count: diffCount,
+        };
+      });
+  }, [lockedTips, lockedTipsSearch, matches, consensusPickByMatchId, lockedTipsRankByUserId]);
+
+  useEffect(() => {
+    if (!expandedLockedTipUserId) return;
+    const exists = visibleLockedTips.some((p) => p.user_id === expandedLockedTipUserId);
+    if (!exists) setExpandedLockedTipUserId(null);
+  }, [expandedLockedTipUserId, visibleLockedTips]);
+
+  function jumpToMyTips() {
+    if (!userId || !lockedTips) return;
+    const me = lockedTips.find((p) => p.user_id === userId);
+    if (!me) return;
+
+    setLockedTipsSearch("");
+    setExpandedLockedTipUserId(userId);
+
+    setTimeout(() => {
+      const node = lockedTipsRowRefs.current[userId];
+      node?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 0);
+  }
+
   return (
     <main style={{ maxWidth: 1000, margin: "40px auto", padding: 16 }}>
       <h1>
@@ -958,71 +1062,220 @@ export default function RoundPage() {
               No tips found (or tips table not available yet).
             </div>
           ) : (
-            <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-              {lockedTips.map((p) => (
-                <div
-                  key={p.user_id}
+            <>
+              <div
+                style={{
+                  marginTop: 12,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  flexWrap: "wrap",
+                }}
+              >
+                <input
+                  value={lockedTipsSearch}
+                  onChange={(e) => setLockedTipsSearch(e.target.value)}
+                  placeholder="Search member..."
                   style={{
-                    border: "1px solid rgba(0,0,0,0.10)",
-                    background: "rgba(255,255,255,0.65)",
-                    borderRadius: 14,
-                    padding: 12,
+                    flex: "1 1 240px",
+                    minWidth: 180,
+                    padding: "9px 11px",
+                    borderRadius: 10,
+                    border: "1px solid rgba(0,0,0,0.16)",
+                    background: "rgba(255,255,255,0.9)",
+                    color: "var(--foreground)",
+                  }}
+                />
+
+                <label
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    fontSize: 12,
+                    opacity: 0.85,
+                    whiteSpace: "nowrap",
                   }}
                 >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: 10,
-                      alignItems: "baseline",
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <div style={{ fontWeight: 900, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                      <ChampionCrown isChampion={p.user_id === reigningChampionUserId} />
-                      <span>{p.display_name?.trim() ? p.display_name : "(no display name)"}</span>
-                      <UnpaidTag paymentStatus={p.payment_status ?? null} />
-                    </div>
-                    <div style={{ fontSize: 12, opacity: 0.8 }}>
-                      Potential: <b>{Number(p.potential ?? 0).toFixed(2)}</b>
-                    </div>
-                  </div>
+                  <input
+                    type="checkbox"
+                    checked={lockedTipsDifferencesOnly}
+                    onChange={(e) => setLockedTipsDifferencesOnly(e.target.checked)}
+                  />
+                  Differences only
+                </label>
 
-                  <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
-                    {matches.map((m) => {
-                      const pick = p.picks?.[m.id] ?? null;
-                      return (
-                        <div
-                          key={m.id}
+                <button
+                  type="button"
+                  onClick={jumpToMyTips}
+                  disabled={!userId || !(lockedTips ?? []).some((p) => p.user_id === userId)}
+                  style={{
+                    padding: "8px 10px",
+                    borderRadius: 10,
+                    border: "1px solid rgba(0,0,0,0.18)",
+                    background: "rgba(255,255,255,0.86)",
+                    color: "var(--foreground)",
+                    fontWeight: 800,
+                    fontSize: 12,
+                    cursor:
+                      !userId || !(lockedTips ?? []).some((p) => p.user_id === userId) ? "not-allowed" : "pointer",
+                    opacity: !userId || !(lockedTips ?? []).some((p) => p.user_id === userId) ? 0.55 : 1,
+                  }}
+                >
+                  Jump to me
+                </button>
+              </div>
+
+              {visibleLockedTips.length === 0 ? (
+                <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
+                  No members match your search.
+                </div>
+              ) : (
+                <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+                  {visibleLockedTips.map((p) => {
+                    const isExpanded = expandedLockedTipUserId === p.user_id;
+
+                    const picksForUser = matches.filter((m) => {
+                      const pick = p.picks?.[m.id];
+                      if (!pick) return false;
+                      if (!lockedTipsDifferencesOnly) return true;
+                      const consensus = consensusPickByMatchId[m.id] ?? "";
+                      return !!consensus && pick.team !== consensus;
+                    });
+
+                    return (
+                      <div
+                        key={p.user_id}
+                        ref={(node) => {
+                          lockedTipsRowRefs.current[p.user_id] = node;
+                        }}
+                        style={{
+                          border: "1px solid rgba(0,0,0,0.10)",
+                          background: "rgba(255,255,255,0.75)",
+                          borderRadius: 12,
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedLockedTipUserId((prev) => (prev === p.user_id ? null : p.user_id))
+                          }
                           style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            gap: 10,
-                            fontSize: 12,
-                            opacity: 0.9,
-                            borderTop: "1px solid rgba(0,0,0,0.06)",
-                            paddingTop: 6,
+                            width: "100%",
+                            padding: "10px 12px",
+                            border: "none",
+                            background: "transparent",
+                            color: "inherit",
+                            textAlign: "left",
+                            cursor: "pointer",
+                            display: "grid",
+                            gap: 8,
                           }}
                         >
-                          <div style={{ opacity: 0.75 }}>
-                            {matchTitleById[m.id] ?? `${m.home_team} vs ${m.away_team}`}
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              gap: 10,
+                              alignItems: "center",
+                              flexWrap: "wrap",
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", fontWeight: 900 }}>
+                              <span style={{ opacity: 0.65, minWidth: 22 }}>#{p.row_rank}</span>
+                              <ChampionCrown isChampion={p.user_id === reigningChampionUserId} />
+                              <span>{p.display_name?.trim() ? p.display_name : "(no display name)"}</span>
+                              <UnpaidTag paymentStatus={p.payment_status ?? null} />
+                            </div>
+                            <div style={{ fontSize: 12, opacity: 0.9 }}>
+                              Potential <b>{Number(p.potential ?? 0).toFixed(2)}</b>
+                            </div>
                           </div>
-                          <div style={{ fontWeight: 800 }}>
-                            {pick ? (
-                              <>
-                                {pick.team} <span style={{ opacity: 0.8 }}>({fmtOdds(pick.odds)})</span>
-                              </>
+
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", fontSize: 12, opacity: 0.78 }}>
+                            <span>
+                              Picks: <b>{p.picks_count}</b>
+                            </span>
+                            <span>
+                              Diff vs consensus: <b>{p.diff_count}</b>
+                            </span>
+                            <span>{isExpanded ? "Hide picks ▲" : "Show picks ▼"}</span>
+                          </div>
+                        </button>
+
+                        {isExpanded && (
+                          <div
+                            style={{
+                              borderTop: "1px solid rgba(0,0,0,0.08)",
+                              padding: "8px 12px 10px",
+                              display: "grid",
+                              gap: 6,
+                            }}
+                          >
+                            {picksForUser.length === 0 ? (
+                              <div style={{ fontSize: 12, opacity: 0.68 }}>
+                                {lockedTipsDifferencesOnly
+                                  ? "No differing picks from consensus."
+                                  : "No picks available for this member."}
+                              </div>
                             ) : (
-                              <span style={{ opacity: 0.6 }}>—</span>
+                              picksForUser.map((m) => {
+                                const pick = p.picks?.[m.id] ?? null;
+                                const consensus = consensusPickByMatchId[m.id] ?? "";
+                                const differs = !!pick && !!consensus && pick.team !== consensus;
+
+                                return (
+                                  <div
+                                    key={m.id}
+                                    style={{
+                                      display: "flex",
+                                      justifyContent: "space-between",
+                                      gap: 10,
+                                      fontSize: 12,
+                                      opacity: 0.92,
+                                      borderTop: "1px solid rgba(0,0,0,0.06)",
+                                      paddingTop: 6,
+                                    }}
+                                  >
+                                    <div style={{ opacity: 0.76 }}>
+                                      {matchTitleById[m.id] ?? `${m.home_team} vs ${m.away_team}`}
+                                    </div>
+                                    <div style={{ fontWeight: 800, textAlign: "right" }}>
+                                      {pick ? (
+                                        <>
+                                          {pick.team} <span style={{ opacity: 0.8 }}>({fmtOdds(pick.odds)})</span>
+                                          {differs && (
+                                            <span
+                                              style={{
+                                                marginLeft: 6,
+                                                fontSize: 11,
+                                                padding: "2px 6px",
+                                                borderRadius: 999,
+                                                border: "1px solid rgba(220, 38, 38, 0.35)",
+                                                background: "rgba(220, 38, 38, 0.08)",
+                                                color: "rgb(185, 28, 28)",
+                                              }}
+                                            >
+                                              DIFFERENT
+                                            </span>
+                                          )}
+                                        </>
+                                      ) : (
+                                        <span style={{ opacity: 0.6 }}>—</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })
                             )}
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           )}
         </div>
       )}

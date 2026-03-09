@@ -251,9 +251,9 @@ export async function GET(req: Request) {
       );
     }
 
-    if (round !== null && (!Number.isFinite(round) || round <= 0)) {
+    if (round !== null && (!Number.isFinite(round) || round < 0)) {
       return NextResponse.json(
-        { error: "round must be 1 or higher" },
+        { error: "round must be 0 or higher" },
         { status: 400 }
       );
     }

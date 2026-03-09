@@ -338,8 +338,8 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Provide a valid season" }, { status: 400 });
     }
 
-    if (roundFilter !== null && (!Number.isFinite(roundFilter) || roundFilter <= 0)) {
-      return NextResponse.json({ error: "round must be 1 or higher" }, { status: 400 });
+    if (roundFilter !== null && (!Number.isFinite(roundFilter) || roundFilter < 0)) {
+      return NextResponse.json({ error: "round must be 0 or higher" }, { status: 400 });
     }
 
     if (!Number.isFinite(hoursAfterFirst) || hoursAfterFirst < 0) {

@@ -15,6 +15,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const pathname = usePathname();
 
   const [unreadChat, setUnreadChat] = useState(0);
+  const [unreadMentions, setUnreadMentions] = useState(0);
 
   function getLastChatSeenMs() {
     if (typeof window === "undefined") return 0;
@@ -27,22 +28,44 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     window.localStorage.setItem("chat_last_seen_ms", String(Date.now()));
   }
 
+  function isMissingRelationError(message: string, relationName: string) {
+    const m = String(message || "").toLowerCase();
+    const rel = relationName.toLowerCase();
+    return m.includes(rel) && m.includes("relation") && m.includes("does not exist");
+  }
+
   async function refreshChatActivity() {
     const { data } = await supabaseBrowser.auth.getSession();
     if (!data.session) {
       setUnreadChat(0);
+      setUnreadMentions(0);
       return;
     }
 
     const lastSeen = getLastChatSeenMs();
+    const sinceIso = new Date(lastSeen).toISOString();
 
     const { count, error } = await supabaseBrowser
       .from("chat_messages")
       .select("id", { count: "exact", head: true })
-      .gt("created_at", new Date(lastSeen).toISOString());
+      .gt("created_at", sinceIso);
 
     if (error) return;
     setUnreadChat(count ?? 0);
+
+    const { count: mentionCount, error: mentionErr } = await supabaseBrowser
+      .from("chat_message_mentions")
+      .select("id", { count: "exact", head: true })
+      .eq("mentioned_user_id", data.session.user.id)
+      .gt("created_at", sinceIso);
+
+    if (mentionErr) {
+      if (isMissingRelationError(mentionErr.message, "chat_message_mentions")) {
+        setUnreadMentions(0);
+      }
+      return;
+    }
+    setUnreadMentions(mentionCount ?? 0);
   }
 
   useEffect(() => {
@@ -92,8 +115,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     if (!pathname) return;
 
     if (pathname.startsWith("/chat")) {
+      const previousSeen = getLastChatSeenMs();
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("chat_last_seen_snapshot_ms", String(previousSeen));
+      }
       markChatSeenNow();
       setUnreadChat(0);
+      setUnreadMentions(0);
       return;
     }
 
@@ -155,6 +183,21 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             }}
           >
             {unreadChat}
+          </span>
+        )}
+        {isChat && unreadMentions > 0 && (
+          <span
+            style={{
+              fontSize: 12,
+              fontWeight: 900,
+              background: "rgb(217, 119, 6)",
+              color: "white",
+              borderRadius: 999,
+              padding: "2px 7px",
+              lineHeight: 1,
+            }}
+          >
+            @{unreadMentions}
           </span>
         )}
       </Link>

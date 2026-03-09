@@ -50,6 +50,7 @@ type ReigningChampionResponse = {
 const REACTIONS = ["👍", "😂", "😭", "❤️", "🔥", "😮"] as const;
 const CURRENT_SEASON = 2026;
 const EDIT_WINDOW_MS = 5 * 60 * 1000;
+const CHAT_MAX_CHARS = 3000;
 
 function isAdminRole(role: string | null | undefined) {
   const r = String(role ?? "")
@@ -729,7 +730,7 @@ export default function ChatPage() {
     const baseBody = text.trim();
     if (!baseBody || !userId) return;
 
-    const body = baseBody.slice(0, 500);
+    const body = baseBody.slice(0, CHAT_MAX_CHARS);
 
     setSending(true);
     setMsg("");
@@ -834,7 +835,7 @@ export default function ChatPage() {
 
   async function saveEdit(message: MsgRow) {
     if (!userId) return;
-    const nextBody = editText.trim().slice(0, 500);
+    const nextBody = editText.trim().slice(0, CHAT_MAX_CHARS);
     if (!nextBody) return;
 
     setSavingEdit(true);
@@ -1179,6 +1180,7 @@ export default function ChatPage() {
                         <textarea
                           value={editText}
                           onChange={(e) => setEditText(e.target.value)}
+                          maxLength={CHAT_MAX_CHARS}
                           style={{
                             width: "100%",
                             minHeight: 90,
@@ -1346,6 +1348,7 @@ export default function ChatPage() {
             ref={composerRef}
             value={text}
             onChange={(e) => setText(e.target.value)}
+            maxLength={CHAT_MAX_CHARS}
             placeholder="Say something… Use @username to mention someone"
             style={{
               flex: 1,

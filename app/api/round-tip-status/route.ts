@@ -149,6 +149,7 @@ export async function GET(req: Request) {
     // matches in all rounds
     const matchIds: string[] = [];
     const matchToRound = new Map<string, string>();
+    const totalMatchesByRound = new Map<string, number>();
 
     if (roundIds.length) {
       const { data: matches, error: mErr } = await supabase
@@ -162,13 +163,16 @@ export async function GET(req: Request) {
 
       (matches as MatchRow[] | null)?.forEach((m) => {
         const mid = String(m.id);
+        const rid = String(m.round_id);
         matchIds.push(mid);
-        matchToRound.set(mid, String(m.round_id));
+        matchToRound.set(mid, rid);
+        totalMatchesByRound.set(rid, (totalMatchesByRound.get(rid) ?? 0) + 1);
       });
     }
 
     // tips for those matches
     const tipsByRound = new Map<string, Set<string>>(); // round_id -> user_ids who tipped ANY match in that round
+    const myTipsByRound = new Map<string, number>(); // round_id -> current user's total tips
 
     if (matchIds.length) {
       const { data: tips, error: tErr } = await supabase
@@ -183,10 +187,14 @@ export async function GET(req: Request) {
 
       (tips as TipRow[] | null)?.forEach((t) => {
         const uid = String(t.user_id);
-        if (!memberSet.has(uid)) return;
-
         const rid = matchToRound.get(String(t.match_id));
         if (!rid) return;
+
+        if (uid === userId) {
+          myTipsByRound.set(rid, (myTipsByRound.get(rid) ?? 0) + 1);
+        }
+
+        if (!memberSet.has(uid)) return;
 
         if (!tipsByRound.has(rid)) tipsByRound.set(rid, new Set());
         tipsByRound.get(rid)!.add(uid);
@@ -222,6 +230,8 @@ export async function GET(req: Request) {
         round_id: r.id,
         round_number: r.round_number,
         lock_time_utc: r.lock_time_utc,
+        total_matches: totalMatchesByRound.get(r.id) ?? 0,
+        my_tips: myTipsByRound.get(r.id) ?? 0,
         total_players: memberIds.length,
         tipped_players: tippedCount,
         missing_players: admin ? missing : undefined,

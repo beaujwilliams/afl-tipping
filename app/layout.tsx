@@ -249,7 +249,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 gap: 10,
               }}
             >
-              <NavItem href="/round/2026" label="Rounds" />
+              <NavItem href="/round/2026" label="Tip" />
               <NavItem href="/results/2026" label="Results" />
               <NavItem href="/leaderboard/2026" label="Leaderboard" />
               <NavItem href="/chat" label="Chat" />

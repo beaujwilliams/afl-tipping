@@ -23,6 +23,8 @@ type TipStatusRound = {
   round_id: string;
   round_number: number;
   lock_time_utc: string | null;
+  total_matches: number;
+  my_tips: number;
   total_players: number;
   tipped_players: number;
   missing_count: number;
@@ -83,6 +85,18 @@ function fmtMelbourneShort(iso: string | null) {
   }).format(d);
 }
 
+function msToCountdown(ms: number) {
+  if (ms <= 0) return "0m";
+  const totalMins = Math.floor(ms / 60000);
+  const days = Math.floor(totalMins / (60 * 24));
+  const hours = Math.floor((totalMins % (60 * 24)) / 60);
+  const mins = totalMins % 60;
+
+  if (days > 0) return `${days}d ${hours}h ${mins}m`;
+  if (hours > 0) return `${hours}h ${mins}m`;
+  return `${mins}m`;
+}
+
 function shortId(id: string) {
   return `${id.slice(0, 8)}…`;
 }
@@ -106,6 +120,7 @@ export default function SeasonRoundsPage() {
   const [openRoundId, setOpenRoundId] = useState<string | null>(null);
   const [reminderRunningRoundId, setReminderRunningRoundId] = useState<string | null>(null);
   const [reminderStatusByRoundId, setReminderStatusByRoundId] = useState<Record<string, string>>({});
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   function setRoundReminderStatus(roundId: string, text: string) {
     setReminderStatusByRoundId((prev) => ({ ...prev, [roundId]: text }));
@@ -195,13 +210,18 @@ export default function SeasonRoundsPage() {
     };
   }, []);
 
+  useEffect(() => {
+    const timer = setInterval(() => setNowMs(Date.now()), 30000);
+    return () => clearInterval(timer);
+  }, []);
+
   // Load rounds
   // Load rounds + tip status (counts + admin missing list)
   useEffect(() => {
     if (!ready || !sessionToken) return;
 
     (async () => {
-      setMsg("Loading rounds…");
+      setMsg("Loading tip rounds…");
       setReigningChampionUserId(null);
       try {
         const res = await fetch(`/api/round-tip-status?season=${encodeURIComponent(String(season))}`, {
@@ -213,7 +233,7 @@ export default function SeasonRoundsPage() {
 
         if (!res.ok || !json?.ok) {
           // Don’t block the page if this fails
-          setMsg(json?.error ?? "Could not load rounds.");
+          setMsg(json?.error ?? "Could not load tip rounds.");
           return;
         }
 
@@ -236,13 +256,30 @@ export default function SeasonRoundsPage() {
         setStatusByRoundId(map);
         setMsg("");
       } catch {
-        setMsg("Could not load rounds.");
+        setMsg("Could not load tip rounds.");
       }
     })();
   }, [ready, sessionToken, season]);
 
   const hasRows = useMemo(() => rows.length > 0, [rows.length]);
-  const nowMs = Date.now();
+
+  const currentRound = useMemo(() => {
+    if (!rows.length) return null;
+    const sorted = [...rows].sort((a, b) => a.round_number - b.round_number);
+    const nextOpen = sorted.find((r) => {
+      const lock = melbourneMs(r.lock_time_utc);
+      return lock !== null && nowMs < lock;
+    });
+    return nextOpen ?? sorted[sorted.length - 1];
+  }, [rows, nowMs]);
+
+  const currentRoundStatus = currentRound ? statusByRoundId[currentRound.id] : null;
+  const currentRoundLockMs = currentRound ? melbourneMs(currentRound.lock_time_utc) : null;
+  const currentRoundLocked = currentRoundLockMs ? nowMs >= currentRoundLockMs : false;
+  const currentRoundCountdown =
+    currentRoundLockMs && !currentRoundLocked ? msToCountdown(currentRoundLockMs - nowMs) : null;
+  const currentRoundTipsPlaced = currentRoundStatus?.my_tips ?? 0;
+  const currentRoundTipsPossible = currentRoundStatus?.total_matches ?? 0;
 
   return (
     <main style={{ maxWidth: 900, margin: "26px auto", padding: 16 }}>
@@ -255,13 +292,61 @@ export default function SeasonRoundsPage() {
           flexWrap: "wrap",
         }}
       >
-        <h1 style={{ margin: 0, fontSize: 40, letterSpacing: -0.5 }}>Rounds • {season}</h1>
+        <h1 style={{ margin: 0, fontSize: 40, letterSpacing: -0.5 }}>Tip • {season}</h1>
         <div style={{ opacity: 0.7, fontSize: 12 }}>All times shown in Melbourne</div>
       </div>
 
       {msg && <p style={{ marginTop: 14, opacity: 0.8 }}>{msg}</p>}
 
-      {!msg && !hasRows && <div style={{ marginTop: 16, opacity: 0.75 }}>No rounds found.</div>}
+      {!msg && !hasRows && <div style={{ marginTop: 16, opacity: 0.75 }}>No tip rounds found.</div>}
+
+      {!msg && hasRows && currentRound && (
+        <div
+          style={{
+            marginTop: 16,
+            border: "1px solid var(--border)",
+            borderRadius: 16,
+            padding: 14,
+            background: "var(--card-soft)",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ display: "grid", gap: 6 }}>
+            <div style={{ fontWeight: 900, fontSize: 17 }}>Current round: Round {currentRound.round_number}</div>
+            <div style={{ fontSize: 13, opacity: 0.78 }}>
+              {currentRoundLocked
+                ? `Locked ${fmtMelbourneShort(currentRound.lock_time_utc)}`
+                : `Locks in ${currentRoundCountdown} (${fmtMelbourneShort(currentRound.lock_time_utc)})`}
+            </div>
+            <div style={{ fontSize: 13, opacity: 0.86 }}>
+              Your tips:{" "}
+              <b>
+                {currentRoundTipsPlaced}/{currentRoundTipsPossible || "—"}
+              </b>
+            </div>
+          </div>
+
+          <Link
+            href={`/round/${season}/${currentRound.round_number}`}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 12,
+              border: "1px solid var(--border)",
+              background: "var(--card)",
+              color: "var(--foreground)",
+              fontWeight: 900,
+              textDecoration: "none",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {currentRoundLocked ? "View round" : "Continue tipping"}
+          </Link>
+        </div>
+      )}
 
       {!msg && hasRows && (
         <div style={{ marginTop: 16, display: "grid", gap: 12 }}>

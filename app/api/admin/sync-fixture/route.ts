@@ -22,8 +22,11 @@ type SquiggleGame = {
   ateam?: string;
 
   // Time
+  unixtime?: number | string;
   date?: string;      // sometimes parseable/UTC-ish
   localtime?: string; // often "YYYY-MM-DD HH:mm:ss" without tz
+  timestr?: string;   // can include explicit timezone
+  tz?: string;
 
   venue?: string;
 
@@ -85,16 +88,59 @@ function localtimeToUtcIso(localtime: string) {
   return d.toISOString();
 }
 
+function hasExplicitTimezone(raw: string) {
+  const s = raw.trim();
+  if (/z$/i.test(s)) return true;
+  if (/[+-]\d{2}:\d{2}$/.test(s)) return true;
+  if (/[+-]\d{4}$/.test(s)) return true;
+  return false;
+}
+
+function naiveDateTimeToUtcIso(raw: string) {
+  const s = raw.trim().replace("T", " ");
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (!m) return null;
+  const yyyy = Number(m[1]);
+  const mm = Number(m[2]);
+  const dd = Number(m[3]);
+  const hh = m[4];
+  const min = m[5];
+  const ss = m[6] ?? "00";
+  return localtimeToUtcIso(`${yyyy}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")} ${hh}:${min}:${ss}`);
+}
+
+function unixtimeToUtcIso(unixtime: number | string | undefined) {
+  if (unixtime === undefined || unixtime === null) return null;
+  const value = Number(unixtime);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  const ms = value > 1e12 ? value : value * 1000;
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
 function pickCommenceTimeUtc(g: SquiggleGame) {
-  // 1) If Squiggle provides a usable "date", prefer it
-  if (g.date) {
+  // 1) Most reliable: unix timestamp from Squiggle.
+  const byUnix = unixtimeToUtcIso(g.unixtime);
+  if (byUnix) return byUnix;
+
+  // 2) If date/timestr has an explicit timezone, parse directly.
+  if (g.date && hasExplicitTimezone(g.date)) {
     const d = new Date(g.date);
     if (!Number.isNaN(d.getTime())) return d.toISOString();
   }
+  if (g.timestr && hasExplicitTimezone(g.timestr)) {
+    const d = new Date(g.timestr);
+    if (!Number.isNaN(d.getTime())) return d.toISOString();
+  }
 
-  // 2) Otherwise convert localtime (Melbourne) -> UTC
+  // 3) Convert known local (Melbourne) formats.
   if (g.localtime) {
     return localtimeToUtcIso(g.localtime);
+  }
+  if (g.date) {
+    const fromNaiveDate = naiveDateTimeToUtcIso(g.date);
+    if (fromNaiveDate) return fromNaiveDate;
   }
 
   return null;

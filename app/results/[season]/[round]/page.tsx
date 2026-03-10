@@ -355,84 +355,108 @@ export default function RoundResultsDetailPage() {
               marginTop: 12,
               border: "1px solid var(--border)",
               borderRadius: 14,
-              padding: 12,
+              overflow: "hidden",
             }}
           >
-            <div style={{ fontWeight: 900, fontSize: 15 }}>Round leaderboard</div>
+            <div style={{ padding: "12px 12px 8px", fontWeight: 900, fontSize: 15 }}>Round leaderboard</div>
             {players.length === 0 ? (
-              <div style={{ marginTop: 8, opacity: 0.72, fontSize: 12 }}>No tips found for this round.</div>
+              <div style={{ padding: "0 12px 12px", opacity: 0.72, fontSize: 12 }}>No tips found for this round.</div>
             ) : (
-              <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
-                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
-                  <span style={{ fontSize: 11, opacity: 0.75, fontWeight: 700 }}>Sort</span>
-                  {(
-                    [
-                      ["Rank", "rank"],
-                      ["Tipster", "display_name"],
-                      ["Score", "round_score"],
-                      ["Correct", "correct_tips"],
-                      ["Accuracy", "accuracy_pct"],
-                      ["Avg odds", "avg_correct_odds"],
-                    ] as Array<[string, RoundSortKey]>
-                  ).map(([label, key]) => (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => onSort(key)}
-                      title={`Sort by ${label}`}
-                      style={{
-                        appearance: "none",
-                        background: "transparent",
-                        border: "1px solid var(--border)",
-                        borderRadius: 999,
-                        color: "inherit",
-                        cursor: "pointer",
-                        fontSize: 11,
-                        fontWeight: sortBy === key ? 800 : 600,
-                        padding: "4px 8px",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 5,
-                      }}
-                    >
-                      <span>{label}</span>
-                      <span style={{ opacity: sortBy === key ? 1 : 0.45 }}>{sortMarker(key)}</span>
-                    </button>
-                  ))}
-                </div>
-
-                {sortedPlayers.map((p, idx) => (
-                  <div
-                    key={p.user_id}
-                    style={{
-                      border: "1px solid rgba(127,127,127,0.30)",
-                      borderRadius: 10,
-                      padding: 10,
-                      display: "grid",
-                      gridTemplateColumns: "auto 1fr auto",
-                      gap: 10,
-                      alignItems: "center",
-                    }}
-                  >
-                    <div style={{ fontWeight: 900, fontSize: 12, opacity: 0.7 }}>
-                      #{roundRankByUserId[p.user_id] ?? idx + 1}
-                    </div>
-                    <div>
-                      <div style={{ fontWeight: 850, fontSize: 13, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                        <ChampionCrown isChampion={p.user_id === reigningChampionUserId} />
-                        <span>{p.display_name}</span>
-                        <UnpaidTag paymentStatus={p.payment_status ?? null} />
-                      </div>
-                      <div style={{ marginTop: 3, fontSize: 11, opacity: 0.75 }}>
-                        Correct: {p.correct_tips}/{p.total_tips}
-                      </div>
-                      <div style={{ marginTop: 2, fontSize: 11, opacity: 0.75 }}>
-                        Accuracy: {fmtPct(p.accuracy_pct)} • Avg correct odds: {fmtPts(p.avg_correct_odds)}
-                      </div>
-                    </div>
-                    <div style={{ fontWeight: 900, fontSize: 14 }}>{fmtPts(p.round_score)}</div>
-                  </div>
-                ))}
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", minWidth: 760, borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr style={{ background: "var(--card-soft)", textAlign: "left", fontSize: 12 }}>
+                      {(
+                        [
+                          ["Rank", "rank"],
+                          ["Tipster", "display_name"],
+                          [`Round Score (R${round})`, "round_score"],
+                          ["Correct", "correct_tips"],
+                          ["Round Accuracy", "accuracy_pct"],
+                          ["Avg Correct Odds", "avg_correct_odds"],
+                        ] as Array<[string, RoundSortKey]>
+                      ).map(([label, key]) => (
+                        <th
+                          key={key}
+                          style={{
+                            padding: "10px 12px",
+                            borderBottom: "1px solid var(--border)",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => onSort(key)}
+                            title={`Sort by ${label}`}
+                            style={{
+                              appearance: "none",
+                              background: "transparent",
+                              border: "none",
+                              color: "inherit",
+                              cursor: "pointer",
+                              font: "inherit",
+                              fontWeight: sortBy === key ? 800 : 600,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 6,
+                              padding: 0,
+                            }}
+                          >
+                            <span>{label}</span>
+                            <span style={{ opacity: sortBy === key ? 1 : 0.45, fontSize: 11 }}>
+                              {sortMarker(key)}
+                            </span>
+                          </button>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sortedPlayers.map((p) => (
+                      <tr key={p.user_id}>
+                        <td style={{ padding: "12px", borderTop: "1px solid var(--border)", fontWeight: 900 }}>
+                          #{roundRankByUserId[p.user_id] ?? "-"}
+                        </td>
+                        <td
+                          style={{ padding: "12px", borderTop: "1px solid var(--border)", fontWeight: 700 }}
+                          title={
+                            p.payment_status === "pending"
+                              ? `${p.display_name} (unpaid)`
+                              : p.display_name
+                          }
+                        >
+                          <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                            <ChampionCrown isChampion={p.user_id === reigningChampionUserId} />
+                            <UnpaidTag paymentStatus={p.payment_status ?? null} />
+                            <span
+                              style={{
+                                minWidth: 0,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                                display: "block",
+                              }}
+                            >
+                              {p.display_name}
+                            </span>
+                          </span>
+                        </td>
+                        <td style={{ padding: "12px", borderTop: "1px solid var(--border)", fontWeight: 800 }}>
+                          {fmtPts(p.round_score)}
+                        </td>
+                        <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
+                          {p.correct_tips}/{p.total_tips}
+                        </td>
+                        <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
+                          {fmtPct(p.accuracy_pct)}
+                        </td>
+                        <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
+                          {fmtPts(p.avg_correct_odds)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>

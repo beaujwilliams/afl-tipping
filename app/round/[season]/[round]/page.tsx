@@ -886,7 +886,7 @@ export default function RoundPage() {
 
           <div className="ui-card ui-tone-warning">
             <div className="ui-kicker">
-              {showLoadedOddsState ? "Odds loaded date and time" : "Odds due to be loaded"}
+              {showLoadedOddsState ? "Locked odds loaded date and time" : "Odds due to be loaded"}
             </div>
             <div className="ui-value">
               {showLoadedOddsState

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
@@ -11,6 +12,42 @@ type ConfirmAction = {
   path: string;
 };
 
+type RoundStatusPlayer = {
+  user_id: string;
+  display_name: string | null;
+};
+
+type TipStatusRound = {
+  round_id: string;
+  round_number: number;
+  lock_time_utc: string | null;
+  total_players: number;
+  tipped_players: number;
+  missing_count: number;
+  missing_players?: RoundStatusPlayer[];
+};
+
+type TipStatusResponse = {
+  ok?: boolean;
+  error?: string;
+  admin?: boolean;
+  rounds?: TipStatusRound[];
+};
+
+function fmtMelbourneShort(iso: string | null) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return new Intl.DateTimeFormat("en-AU", {
+    timeZone: "Australia/Melbourne",
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(d);
+}
+
 export default function AdminPage() {
   const router = useRouter();
 
@@ -21,6 +58,10 @@ export default function AdminPage() {
   const [result, setResult] = useState<unknown>(null);
   const [loading, setLoading] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
+  const [commandCenterRounds, setCommandCenterRounds] = useState<TipStatusRound[]>([]);
+  const [commandCenterMsg, setCommandCenterMsg] = useState<string>("Loading rounds…");
+  const [commandCenterLoading, setCommandCenterLoading] = useState<boolean>(false);
+  const [openMissingRoundId, setOpenMissingRoundId] = useState<string | null>(null);
   const isRunning = loading !== null;
 
   useEffect(() => {
@@ -35,6 +76,11 @@ export default function AdminPage() {
       alive = false;
     };
   }, []);
+
+  useEffect(() => {
+    void loadRoundCommandCenter(season);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [season]);
 
   async function getToken() {
     const { data } = await supabaseBrowser.auth.getSession();
@@ -71,6 +117,53 @@ export default function AdminPage() {
       setResult({ error: err instanceof Error ? err.message : "Unknown error" });
     } finally {
       setLoading(null);
+    }
+  }
+
+  async function loadRoundCommandCenter(targetSeason: number) {
+    try {
+      setCommandCenterLoading(true);
+      setCommandCenterMsg("Loading rounds…");
+
+      const token = await getToken();
+      if (!token) {
+        setCommandCenterRounds([]);
+        setCommandCenterMsg("Not authenticated.");
+        return;
+      }
+
+      const res = await fetch(
+        `/api/round-tip-status?season=${encodeURIComponent(String(targetSeason))}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        }
+      );
+      const json = (await res.json().catch(() => null)) as TipStatusResponse | null;
+
+      if (!res.ok || !json?.ok) {
+        setCommandCenterRounds([]);
+        setCommandCenterMsg(json?.error ?? "Could not load command center rounds.");
+        return;
+      }
+
+      if (!json.admin) {
+        setCommandCenterRounds([]);
+        setCommandCenterMsg("Admin access required.");
+        return;
+      }
+
+      const rows = [...(json.rounds ?? [])].sort((a, b) => a.round_number - b.round_number);
+      setCommandCenterRounds(rows);
+      setCommandCenterMsg(rows.length ? "" : "No rounds found.");
+      setOpenMissingRoundId((prev) =>
+        prev && rows.some((r) => r.round_id === prev) ? prev : null
+      );
+    } catch {
+      setCommandCenterRounds([]);
+      setCommandCenterMsg("Could not load command center rounds.");
+    } finally {
+      setCommandCenterLoading(false);
     }
   }
 
@@ -203,6 +296,10 @@ export default function AdminPage() {
       setResult({ error: "Reminder round must be 0 or higher." });
       return;
     }
+    openForceReminderConfirm(round);
+  }
+
+  function openForceReminderConfirm(round: number) {
     setConfirmAction({
       title: "Force-send tip reminders?",
       body: `This will send reminder emails now for round ${round}, ignoring the normal 3-hour window.`,
@@ -243,11 +340,14 @@ export default function AdminPage() {
     setConfirmAction(null);
   }
 
-  function confirmAndRun() {
+  async function confirmAndRun() {
     if (!confirmAction) return;
     const path = confirmAction.path;
     setConfirmAction(null);
-    run(path);
+    await run(path);
+    if (path.includes("/api/admin/send-prelock-reminders")) {
+      await loadRoundCommandCenter(season);
+    }
   }
 
   return (
@@ -278,6 +378,129 @@ export default function AdminPage() {
           gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
         }}
       >
+        <section style={{ ...sectionCardStyle, order: 0, gridColumn: "1 / -1" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 10,
+              flexWrap: "wrap",
+            }}
+          >
+            <h2 style={sectionTitleStyle}>Round Command Center</h2>
+            <button
+              disabled={isRunning || commandCenterLoading}
+              onClick={() => loadRoundCommandCenter(season)}
+              style={{ ...btnStyle, ...buttonStateStyle, padding: "8px 12px" }}
+            >
+              {commandCenterLoading ? "Refreshing…" : "Refresh"}
+            </button>
+          </div>
+          <div style={{ ...summaryStyle, marginTop: 8 }}>
+            Quick actions by round: open round, see who is missing tips, and send reminders.
+          </div>
+
+          {commandCenterMsg ? (
+            <div style={{ marginTop: 12, fontSize: 13, opacity: 0.8 }}>{commandCenterMsg}</div>
+          ) : (
+            <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+              {commandCenterRounds.map((round) => {
+                const lockMs = round.lock_time_utc ? new Date(round.lock_time_utc).getTime() : null;
+                const isLocked = lockMs !== null && Date.now() >= lockMs;
+                const missing = round.missing_players ?? [];
+                const isOpen = openMissingRoundId === round.round_id;
+
+                return (
+                  <div key={round.round_id} style={toolCardStyle}>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: 8,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <div style={{ display: "grid", gap: 4 }}>
+                        <div style={{ fontWeight: 800 }}>Round {round.round_number}</div>
+                        <div style={{ ...summaryStyle, marginTop: 0 }}>
+                          Locks {fmtMelbourneShort(round.lock_time_utc)} • Tipped {round.tipped_players}/
+                          {round.total_players} • Missing {round.missing_count}
+                        </div>
+                      </div>
+                      <span className={`ui-badge ${isLocked ? "ui-badge--locked" : "ui-badge--open"}`}>
+                        {isLocked ? "LOCKED" : "OPEN"}
+                      </span>
+                    </div>
+
+                    <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <Link
+                        href={`/round/${season}/${round.round_number}`}
+                        className="ui-btn ui-btn--pill"
+                        style={{ textDecoration: "none" }}
+                      >
+                        Open round
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setOpenMissingRoundId((prev) => (prev === round.round_id ? null : round.round_id))
+                        }
+                        className="ui-btn ui-btn--pill"
+                      >
+                        {isOpen ? "Hide missing" : `Who is missing (${round.missing_count})`}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isRunning || round.missing_count === 0}
+                        onClick={() => openForceReminderConfirm(round.round_number)}
+                        className="ui-btn ui-btn--pill ui-btn--danger-soft"
+                      >
+                        Send reminder
+                      </button>
+                    </div>
+
+                    {isOpen && (
+                      <div
+                        style={{
+                          marginTop: 10,
+                          borderTop: "1px solid var(--border)",
+                          paddingTop: 10,
+                          display: "grid",
+                          gap: 6,
+                          maxHeight: 220,
+                          overflowY: "auto",
+                        }}
+                      >
+                        {missing.length === 0 ? (
+                          <div style={{ fontSize: 13, opacity: 0.75 }}>Everyone has tipped this round.</div>
+                        ) : (
+                          missing.map((p) => (
+                            <div
+                              key={p.user_id}
+                              style={{
+                                fontSize: 14,
+                                lineHeight: 1.3,
+                                padding: "6px 8px",
+                                borderRadius: 8,
+                                border: "1px solid var(--border)",
+                                background: "var(--card-soft)",
+                              }}
+                            >
+                              {p.display_name?.trim() || "(no display name)"}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
         <section style={{ ...sectionCardStyle, order: 4 }}>
           <h2 style={sectionTitleStyle}>Data Sync</h2>
           <div style={{ ...summaryStyle, marginTop: 8 }}>

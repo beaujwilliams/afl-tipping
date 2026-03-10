@@ -151,6 +151,24 @@ function fmtOdds(n: number | null | undefined) {
   return num.toFixed(2);
 }
 
+function tipOptionButtonStyle(isSelected: boolean, isDisabled: boolean) {
+  return {
+    flex: 1,
+    padding: "14px 18px",
+    borderRadius: 12,
+    border: isSelected ? "2px solid #16a34a" : "1px solid #cfcfcf",
+    background: isSelected ? "#eafcf1" : "#ffffff",
+    color: "#111",
+    fontWeight: isSelected ? 800 : 600,
+    cursor: isDisabled ? "not-allowed" : "pointer",
+    textAlign: "left" as const,
+    opacity: isDisabled ? 0.65 : 1,
+    boxShadow: isSelected ? "0 0 0 3px rgba(34, 197, 94, 0.40), 0 8px 18px rgba(22, 163, 74, 0.18)" : "none",
+    transform: isSelected ? "translateY(-1px)" : "none",
+    transition: "box-shadow 140ms ease, border-color 140ms ease, background-color 140ms ease, transform 140ms ease",
+  };
+}
+
 function normalizePaymentStatus(status: string | null | undefined): PaymentStatus {
   const s = String(status ?? "")
     .trim()
@@ -1233,18 +1251,10 @@ export default function RoundPage() {
                 <button
                   disabled={isLocked || saving || paymentLocked}
                   onClick={() => saveTip(g.id, g.home_team)}
-                  style={{
-                    flex: 1,
-                    padding: "14px 18px",
-                    borderRadius: 12,
-                    border: picked === g.home_team ? "2px solid #16a34a" : "1px solid #ccc",
-                    background: "white",
-                    color: "#111",
-                    fontWeight: picked === g.home_team ? 700 : 600,
-                    cursor: isLocked || paymentLocked ? "not-allowed" : "pointer",
-                    textAlign: "left",
-                    opacity: isLocked || saving || paymentLocked ? 0.65 : 1,
-                  }}
+                  style={tipOptionButtonStyle(
+                    picked === g.home_team,
+                    isLocked || saving || paymentLocked,
+                  )}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
                     <span>{g.home_team}</span>
@@ -1255,18 +1265,10 @@ export default function RoundPage() {
                 <button
                   disabled={isLocked || saving || paymentLocked}
                   onClick={() => saveTip(g.id, g.away_team)}
-                  style={{
-                    flex: 1,
-                    padding: "14px 18px",
-                    borderRadius: 12,
-                    border: picked === g.away_team ? "2px solid #16a34a" : "1px solid #ccc",
-                    background: "white",
-                    color: "#111",
-                    fontWeight: picked === g.away_team ? 700 : 600,
-                    cursor: isLocked || paymentLocked ? "not-allowed" : "pointer",
-                    textAlign: "left",
-                    opacity: isLocked || saving || paymentLocked ? 0.65 : 1,
-                  }}
+                  style={tipOptionButtonStyle(
+                    picked === g.away_team,
+                    isLocked || saving || paymentLocked,
+                  )}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
                     <span>{g.away_team}</span>

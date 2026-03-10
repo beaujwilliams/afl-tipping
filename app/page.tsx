@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { waitForSession } from "@/lib/session-client";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { UiBadge, UiButtonLink, UiCard, UiCardGrid } from "@/components/ui";
 
 const CURRENT_SEASON = 2026;
 
@@ -259,7 +259,7 @@ export default function HomePage() {
     <main className="ui-page ui-page--content">
       <div className="ui-page-header">
         <h1 className="ui-title">Welcome back</h1>
-        <div className="ui-caption">Season {CURRENT_SEASON}</div>
+        <UiBadge>Season {CURRENT_SEASON}</UiBadge>
       </div>
 
       {msg && (
@@ -269,8 +269,11 @@ export default function HomePage() {
       )}
 
       {!msg && currentRound && (
-        <div className="ui-card ui-card-soft" style={{ marginTop: 16 }}>
-          <div className="ui-kicker">Continue tipping</div>
+        <UiCard soft style={{ marginTop: 16 }}>
+          <div className="ui-row-wrap" style={{ justifyContent: "space-between" }}>
+            <div className="ui-kicker">Continue tipping</div>
+            <UiBadge tone={locked ? "locked" : "open"}>{locked ? "Locked" : "Open"}</UiBadge>
+          </div>
           <div className="ui-value">Round {currentRound.round_number}</div>
           <div className="ui-meta">
             {locked
@@ -280,18 +283,17 @@ export default function HomePage() {
           <div className="ui-meta">
             Tips entered <b>{tipsEntered}/{tipsPossible}</b>
           </div>
-          <Link
+          <UiButtonLink
             href={`/round/${CURRENT_SEASON}/${currentRound.round_number}`}
-            className="ui-btn"
             style={{ marginTop: 12, padding: "10px 14px" }}
           >
             {locked ? "View round" : "Continue tipping"}
-          </Link>
-        </div>
+          </UiButtonLink>
+        </UiCard>
       )}
 
       {!msg && alerts.length > 0 && (
-        <div className="ui-card ui-tone-warning" style={{ marginTop: 12 }}>
+        <UiCard tone="warning" style={{ marginTop: 12 }}>
           <div className="ui-kicker">Urgent</div>
           <div className="ui-stack" style={{ marginTop: 8, gap: 6 }}>
             {alerts.map((alert) => (
@@ -300,39 +302,39 @@ export default function HomePage() {
               </div>
             ))}
           </div>
-        </div>
+        </UiCard>
       )}
 
       {!msg && (
-        <div className="ui-card ui-card-soft" style={{ marginTop: 12 }}>
+        <UiCard soft style={{ marginTop: 12 }}>
           <div className="ui-kicker">My season snapshot</div>
-          <div className="ui-card-grid ui-card-grid--3" style={{ marginTop: 10 }}>
-            <div className="ui-card">
+          <UiCardGrid style={{ marginTop: 10 }}>
+            <UiCard>
               <div className="ui-kicker">Rank</div>
               <div className="ui-value">{me ? `#${me.rank}` : "-"}</div>
-            </div>
-            <div className="ui-card">
+            </UiCard>
+            <UiCard>
               <div className="ui-kicker">Total points</div>
               <div className="ui-value">{me ? fmtPts(me.total_points) : "-"}</div>
-            </div>
-            <div className="ui-card">
+            </UiCard>
+            <UiCard>
               <div className="ui-kicker">Behind leader</div>
               <div className="ui-value">
                 {me ? (me.behind_leader <= 0 ? "-" : fmtPts(me.behind_leader)) : "-"}
               </div>
-            </div>
-            <div className="ui-card">
+            </UiCard>
+            <UiCard>
               <div className="ui-kicker">Unread chat</div>
               <div className="ui-value">{unreadChat}</div>
               <div className="ui-meta">
                 @mentions <b>{unreadMentions}</b>
               </div>
-            </div>
-          </div>
+            </UiCard>
+          </UiCardGrid>
           <div className="ui-meta" style={{ marginTop: 10 }}>
             Movement: <b>{me ? movementText(me.movement) : "-"}</b>
           </div>
-        </div>
+        </UiCard>
       )}
 
     </main>

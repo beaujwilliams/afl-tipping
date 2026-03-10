@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { UiTableHeadCell } from "@/components/ui";
 
 type Member = {
   user_id: string;
@@ -724,12 +725,12 @@ export default function AdminMembersPage() {
               <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1080 }}>
                 <thead>
                   <tr style={{ background: "var(--card-soft)", textAlign: "left", fontSize: 12 }}>
-                    <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>Name</th>
-                    <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>Email</th>
-                    <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>Role</th>
-                    <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>Payment</th>
-                    <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>Actions</th>
-                    <th style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>Joined</th>
+                    <UiTableHeadCell>Name</UiTableHeadCell>
+                    <UiTableHeadCell>Email</UiTableHeadCell>
+                    <UiTableHeadCell>Role</UiTableHeadCell>
+                    <UiTableHeadCell>Payment</UiTableHeadCell>
+                    <UiTableHeadCell>Actions</UiTableHeadCell>
+                    <UiTableHeadCell>Joined</UiTableHeadCell>
                   </tr>
                 </thead>
                 <tbody>

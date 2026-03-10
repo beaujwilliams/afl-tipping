@@ -317,3 +317,14 @@ button {
   color: rgb(220, 38, 38);
   border-color: rgba(239, 68, 68, 0.35);
 }
+
+.ui-table-shell {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  overflow: hidden;
+}
+
+.ui-table-scroll {
+  overflow-x: auto;
+}

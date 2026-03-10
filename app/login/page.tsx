@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { UiButton, UiButtonLink } from "@/components/ui";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -97,14 +98,13 @@ export default function LoginPage() {
           />
         </label>
 
-        <button
+        <UiButton
           type="submit"
           disabled={busy}
-          className="ui-btn"
           style={{ width: "100%", padding: 12 }}
         >
           {busy ? "Signing in..." : "Sign in"}
-        </button>
+        </UiButton>
 
         <div style={{ marginTop: 10, textAlign: "right" }}>
           <Link
@@ -118,13 +118,12 @@ export default function LoginPage() {
         <div className="ui-caption" style={{ textAlign: "center", marginTop: 8 }}>
           New here?
         </div>
-        <Link
+        <UiButtonLink
           href="/signup"
-          className="ui-btn"
           style={{ width: "100%", padding: 12, marginTop: 6 }}
         >
           Create account
-        </Link>
+        </UiButtonLink>
 
         {displayMsg && (
           <p style={{ marginTop: 12 }} className="ui-caption">

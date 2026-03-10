@@ -1,23 +1,20 @@
+import { UiCard, UiSectionHeader } from "@/components/ui";
+
 export default function InfoPage() {
   return (
-    <main style={{ maxWidth: 800, margin: "40px auto", padding: 16 }}>
-      <h1 style={{ marginBottom: 6 }}>How it works</h1>
-      <div style={{ marginBottom: 22, opacity: 0.72 }}>Needlessly Complicated Tipping 2026</div>
+    <main className="ui-page" style={{ maxWidth: 800 }}>
+      <UiSectionHeader
+        title="How it works"
+        subtitle="Needlessly Complicated Tipping 2026"
+      />
 
       <section style={{ display: "grid", gap: 22, fontSize: 15, lineHeight: 1.6 }}>
-        <div
-          style={{
-            padding: 14,
-            borderRadius: 12,
-            background: "rgba(239,68,68,0.08)",
-            border: "1px solid rgba(239,68,68,0.35)",
-          }}
-        >
+        <UiCard tone="danger">
           <h2 style={{ marginBottom: 8 }}>Start here: season entry</h2>
           <p style={{ margin: 0 }}>
             Season entry is <b>$30</b>. Please send payment to <b>+61 423 190 713</b> when you join.
           </p>
-        </div>
+        </UiCard>
 
         <div>
           <h2 style={{ marginBottom: 8 }}>1. Round locks at first bounce</h2>
@@ -33,20 +30,17 @@ export default function InfoPage() {
           <h2 style={{ marginBottom: 8 }}>3. Correct tips earn the listed odds</h2>
           <p>If your tip wins, you get that team’s odds as points.</p>
 
-          <div
+          <UiCard
+            soft
             style={{
               marginTop: 12,
-              padding: 14,
-              borderRadius: 12,
-              background: "rgba(255,255,255,0.05)",
-              border: "1px solid rgba(255,255,255,0.12)",
               fontSize: 14,
             }}
           >
             <div>• Tip Sydney at $1.29 → win → <b>1.29 points</b></div>
             <div>• Tip Hawthorn at $2.60 → win → <b>2.60 points</b></div>
             <div style={{ marginTop: 6, opacity: 0.85 }}>Underdogs return more points.</div>
-          </div>
+          </UiCard>
         </div>
 
         <div>

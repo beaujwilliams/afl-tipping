@@ -32,6 +32,8 @@ type PlayerRoundScore = {
   display_name: string;
   payment_status?: string | null;
   round_score: number;
+  potential_score: number;
+  difference_score: number;
   correct_tips: number;
   total_tips: number;
   accuracy_pct: number;
@@ -57,7 +59,9 @@ type RoundSortKey =
   | "round_score"
   | "correct_tips"
   | "accuracy_pct"
-  | "avg_correct_odds";
+  | "avg_correct_odds"
+  | "potential_score"
+  | "difference_score";
 
 type SortDirection = "asc" | "desc";
 
@@ -68,6 +72,8 @@ const DEFAULT_SORT_DIR: Record<RoundSortKey, SortDirection> = {
   correct_tips: "desc",
   accuracy_pct: "desc",
   avg_correct_odds: "desc",
+  potential_score: "desc",
+  difference_score: "desc",
 };
 
 const VENUE_MAP: Record<string, string> = {
@@ -251,6 +257,10 @@ export default function RoundResultsDetailPage() {
         primaryCmp = a.correct_tips - b.correct_tips;
       } else if (sortBy === "accuracy_pct") {
         primaryCmp = a.accuracy_pct - b.accuracy_pct;
+      } else if (sortBy === "potential_score") {
+        primaryCmp = a.potential_score - b.potential_score;
+      } else if (sortBy === "difference_score") {
+        primaryCmp = a.difference_score - b.difference_score;
       } else {
         primaryCmp = a.avg_correct_odds - b.avg_correct_odds;
       }
@@ -357,7 +367,7 @@ export default function RoundResultsDetailPage() {
               <div style={{ padding: "0 12px 12px", opacity: 0.72, fontSize: 12 }}>No tips found for this round.</div>
             ) : (
               <UiTableScroll>
-                <table style={{ width: "100%", minWidth: 760, borderCollapse: "collapse" }}>
+                <table style={{ width: "100%", minWidth: 980, borderCollapse: "collapse" }}>
                   <thead>
                     <tr style={{ background: "var(--card-soft)", textAlign: "left", fontSize: 12 }}>
                       {(
@@ -368,6 +378,8 @@ export default function RoundResultsDetailPage() {
                           ["Correct", "correct_tips"],
                           ["Round Accuracy", "accuracy_pct"],
                           ["Avg Correct Odds", "avg_correct_odds"],
+                          ["Potential Score", "potential_score"],
+                          ["Difference", "difference_score"],
                         ] as Array<[string, RoundSortKey]>
                       ).map(([label, key]) => (
                         <UiTableHeadCell
@@ -437,13 +449,19 @@ export default function RoundResultsDetailPage() {
                           {fmtPts(p.round_score)}
                         </td>
                         <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
-                          {p.correct_tips}/{p.total_tips}
+                          {p.correct_tips}
                         </td>
                         <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
                           {fmtPct(p.accuracy_pct)}
                         </td>
                         <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
                           {fmtPts(p.avg_correct_odds)}
+                        </td>
+                        <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
+                          {fmtPts(p.potential_score)}
+                        </td>
+                        <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
+                          {fmtPts(p.difference_score)}
                         </td>
                       </tr>
                     ))}

@@ -250,6 +250,7 @@ export async function GET(req: Request) {
         display_name: string;
         payment_status: string | null;
         round_score: number;
+        potential_score: number;
         correct_tips: number;
         total_tips: number;
         correct_odds_sum: number;
@@ -275,15 +276,17 @@ export async function GET(req: Request) {
       totalTipsByMatch[mid] = (totalTipsByMatch[mid] ?? 0) + 1;
 
       const odds = oddsByMatchId[mid];
+      let pickedOdds = 0;
+      if (odds) {
+        if (pickedTeam === m.home_team) pickedOdds = Number(odds.home_odds ?? 0);
+        else if (pickedTeam === m.away_team) pickedOdds = Number(odds.away_odds ?? 0);
+      }
       let points = 0;
       let isCorrect: boolean | null = null;
 
       if (isFinished) {
         isCorrect = pickedTeam === winner;
-        if (isCorrect && odds) {
-          if (winner === m.home_team) points = Number(odds.home_odds ?? 0);
-          else if (winner === m.away_team) points = Number(odds.away_odds ?? 0);
-        }
+        if (isCorrect) points = pickedOdds;
       }
 
       if (!playersById[uid]) {
@@ -292,6 +295,7 @@ export async function GET(req: Request) {
           display_name: nameByUserId[uid] ?? "Anonymous tipster",
           payment_status: paymentStatusByUserId[uid] ?? null,
           round_score: 0,
+          potential_score: 0,
           correct_tips: 0,
           total_tips: 0,
           correct_odds_sum: 0,
@@ -300,6 +304,7 @@ export async function GET(req: Request) {
       }
 
       playersById[uid].total_tips += 1;
+      playersById[uid].potential_score += pickedOdds;
       playersById[uid].picks[mid] = pickedTeam;
 
       if (isCorrect) {
@@ -336,11 +341,14 @@ export async function GET(req: Request) {
       .map((p) => {
         const accuracyPct = p.total_tips > 0 ? (p.correct_tips / p.total_tips) * 100 : 0;
         const avgCorrectOdds = p.correct_tips > 0 ? p.correct_odds_sum / p.correct_tips : 0;
+        const differenceScore = p.potential_score - p.round_score;
         return {
           user_id: p.user_id,
           display_name: p.display_name,
           payment_status: p.payment_status,
           round_score: p.round_score,
+          potential_score: p.potential_score,
+          difference_score: differenceScore,
           correct_tips: p.correct_tips,
           total_tips: p.total_tips,
           accuracy_pct: accuracyPct,

@@ -149,6 +149,36 @@ export default function AdminPage() {
     fontSize: 16,
   };
 
+  const sectionCardStyle: React.CSSProperties = {
+    padding: 14,
+    borderRadius: 12,
+    border: "1px solid var(--border)",
+    background: "var(--card-soft)",
+  };
+
+  const sectionTitleStyle: React.CSSProperties = {
+    margin: 0,
+    fontSize: 18,
+  };
+
+  const toolCardStyle: React.CSSProperties = {
+    padding: 12,
+    borderRadius: 10,
+    border: "1px solid var(--border)",
+    background: "var(--card)",
+  };
+
+  const dangerBadgeStyle: React.CSSProperties = {
+    fontSize: 11,
+    fontWeight: 800,
+    borderRadius: 999,
+    padding: "2px 8px",
+    border: "1px solid rgba(239,68,68,0.35)",
+    background: "rgba(239,68,68,0.14)",
+    color: "#991b1b",
+    whiteSpace: "nowrap",
+  };
+
   function runReminderWindow() {
     run(`/api/admin/send-prelock-reminders?season=${season}`);
   }
@@ -211,88 +241,90 @@ export default function AdminPage() {
           marginTop: 30,
           display: "grid",
           gap: 16,
+          gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
         }}
       >
-        <div>
-          <button
-            disabled={isRunning}
-            onClick={runSyncAndRecalc}
-            style={{
-              ...btnStyle,
-              ...primaryActionStyle,
-              ...buttonStateStyle,
-              background: "var(--foreground)",
-              color: "var(--background)",
-              border: "1px solid var(--foreground)",
-              fontWeight: 800,
-            }}
-          >
-            Sync Results + Recalculate Leaderboard
-          </button>
-        </div>
-
-        <div>
-          <button
-            disabled={isRunning}
-            onClick={() => router.push("/admin/members")}
-            style={{
-              ...btnStyle,
-              ...secondaryActionStyle,
-              ...buttonStateStyle,
-              background: "var(--card-soft)",
-              color: "var(--foreground)",
-              border: "1px solid var(--foreground)",
-              fontWeight: 800,
-            }}
-          >
-            Manage Members
-          </button>
-        </div>
-
-        <div>
-          <button
-            disabled={isRunning}
-            onClick={() => router.push("/admin/recaps")}
-            style={{
-              ...btnStyle,
-              ...secondaryActionStyle,
-              ...buttonStateStyle,
-              background: "var(--card-soft)",
-              color: "var(--foreground)",
-              border: "1px solid var(--foreground)",
-              fontWeight: 800,
-            }}
-          >
-            Round Recaps
-          </button>
-        </div>
-
-        <section
-          style={{
-            marginTop: 6,
-            padding: 14,
-            borderRadius: 12,
-            border: "1px solid var(--border)",
-            background: "var(--card-soft)",
-          }}
-        >
-          <h2 style={{ margin: 0, fontSize: 18 }}>Manual Email Triggers</h2>
+        <section style={sectionCardStyle}>
+          <h2 style={sectionTitleStyle}>Data Sync</h2>
           <div style={{ ...summaryStyle, marginTop: 8 }}>
-            Trigger reminder and recap emails manually from one place.
+            Keep rounds, fixtures and odds snapshots aligned for this season.
           </div>
 
-          <div style={{ marginTop: 12, display: "grid", gap: 14 }}>
-            <div
+          <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
+            <div style={toolCardStyle}>
+              <button
+                disabled={isRunning}
+                onClick={() => run(`/api/admin/sync-fixture?season=${season}`)}
+                style={{ ...btnStyle, ...buttonStateStyle }}
+              >
+                Sync Fixture (Squiggle)
+              </button>
+              <div style={summaryStyle}>
+                Imports or refreshes rounds and matches for this season.
+              </div>
+            </div>
+
+            <div style={toolCardStyle}>
+              <button
+                disabled={isRunning}
+                onClick={() => run(`/api/admin/snapshot-odds-all-due?season=${season}`)}
+                style={{ ...btnStyle, ...buttonStateStyle }}
+              >
+                Snapshot Next Due Round
+              </button>
+              <div style={summaryStyle}>
+                Captures odds for the next round only when its snapshot window is due.
+              </div>
+            </div>
+
+            <div style={toolCardStyle}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                <div style={{ fontWeight: 700 }}>Force Snapshot (Testing)</div>
+                <span style={dangerBadgeStyle}>Force</span>
+              </div>
+              <button
+                disabled={isRunning}
+                onClick={() => run(`/api/admin/snapshot-odds-all-due?season=${season}&force=1`)}
+                style={{ ...btnStyle, ...buttonStateStyle, marginTop: 8 }}
+              >
+                Run Force Snapshot
+              </button>
+              <div style={summaryStyle}>
+                Forces odds capture immediately, even when not due. Use for testing/backfills only.
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section style={sectionCardStyle}>
+          <h2 style={sectionTitleStyle}>Comms</h2>
+          <div style={{ ...summaryStyle, marginTop: 8 }}>
+            Send reminder/recap emails and manage recap history.
+          </div>
+
+          <div style={{ marginTop: 12 }}>
+            <button
+              disabled={isRunning}
+              onClick={() => router.push("/admin/recaps")}
               style={{
-                padding: 12,
-                borderRadius: 10,
-                border: "1px solid var(--border)",
-                background: "var(--card)",
+                ...btnStyle,
+                ...secondaryActionStyle,
+                ...buttonStateStyle,
+                background: "var(--card-soft)",
+                color: "var(--foreground)",
+                border: "1px solid var(--foreground)",
+                fontWeight: 800,
               }}
             >
+              Round Recaps
+            </button>
+          </div>
+
+          <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
+            <div style={toolCardStyle}>
               <div style={{ fontWeight: 800 }}>Tip reminders</div>
               <div style={summaryStyle}>
-                Send reminders for members with missing tips either in the normal 3h window or immediately for a specific round.
+                Send reminders in the normal 3h window or force-send for a specific round.
               </div>
               <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
                 <button
@@ -322,20 +354,14 @@ export default function AdminPage() {
                     onClick={runReminderForRoundNow}
                     style={{ ...btnStyle, ...buttonStateStyle }}
                   >
-                    Send Tip Reminders Now (Force Round)
+                    Send Tip Reminders Now
                   </button>
+                  <span style={dangerBadgeStyle}>Force</span>
                 </div>
               </div>
             </div>
 
-            <div
-              style={{
-                padding: 12,
-                borderRadius: 10,
-                border: "1px solid var(--border)",
-                background: "var(--card)",
-              }}
-            >
+            <div style={toolCardStyle}>
               <div style={{ fontWeight: 800 }}>Round recap</div>
               <div style={summaryStyle}>
                 Generate a round recap now and email it directly to you.
@@ -385,111 +411,73 @@ export default function AdminPage() {
           </div>
         </section>
 
-        <details
-          style={{
-            marginTop: 6,
-            padding: 14,
-            borderRadius: 12,
-            border: "1px solid var(--border)",
-            background: "var(--card-soft)",
-          }}
-        >
-          <summary style={{ cursor: "pointer", fontWeight: 800 }}>
-            Advanced / More Tools
-          </summary>
+        <section style={sectionCardStyle}>
+          <h2 style={sectionTitleStyle}>Members</h2>
+          <div style={{ ...summaryStyle, marginTop: 8 }}>
+            Manage members, payment states, unpaid tip lock and seasonal settings.
+          </div>
 
-          <div style={{ marginTop: 12, display: "grid", gap: 14 }}>
-            <div>
+          <div style={{ marginTop: 12 }}>
+            <button
+              disabled={isRunning}
+              onClick={() => router.push("/admin/members")}
+              style={{
+                ...btnStyle,
+                ...secondaryActionStyle,
+                ...buttonStateStyle,
+                background: "var(--card-soft)",
+                color: "var(--foreground)",
+                border: "1px solid var(--foreground)",
+                fontWeight: 800,
+              }}
+            >
+              Manage Members
+            </button>
+          </div>
+        </section>
+
+        <section style={sectionCardStyle}>
+          <h2 style={sectionTitleStyle}>Scoring</h2>
+          <div style={{ ...summaryStyle, marginTop: 8 }}>
+            Update finished game results and refresh season totals.
+          </div>
+
+          <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
+            <button
+              disabled={isRunning}
+              onClick={runSyncAndRecalc}
+              style={{
+                ...btnStyle,
+                ...primaryActionStyle,
+                ...buttonStateStyle,
+                background: "var(--foreground)",
+                color: "var(--background)",
+                border: "1px solid var(--foreground)",
+                fontWeight: 800,
+              }}
+            >
+              Sync Results + Recalculate Leaderboard
+            </button>
+
+            <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
               <button
                 disabled={isRunning}
-                onClick={() =>
-                  run(`/api/admin/sync-fixture?season=${season}`)
-                }
-                style={{
-                  ...btnStyle,
-                  ...buttonStateStyle,
-                }}
+                onClick={() => run(`/api/admin/sync-results?season=${season}`)}
+                style={{ ...btnStyle, ...buttonStateStyle }}
               >
-                Sync Fixture (Squiggle)
+                Sync Results (Only)
               </button>
-              <div style={summaryStyle}>
-                Imports or refreshes rounds and matches for this season. Run this first if recap says no rounds were found.
-              </div>
-            </div>
 
-            <div>
               <button
                 disabled={isRunning}
-                onClick={() =>
-                  run(`/api/admin/snapshot-odds-all-due?season=${season}`)
-                }
-                style={{
-                  ...btnStyle,
-                  ...buttonStateStyle,
-                }}
+                onClick={() => run(`/api/admin/recalc-leaderboard?season=${season}`)}
+                style={{ ...btnStyle, ...buttonStateStyle }}
               >
-                Snapshot Next Due Round
+                Recalculate Leaderboard (Only)
               </button>
-              <div style={summaryStyle}>
-                Captures odds for the next round when its snapshot window is due.
-              </div>
-            </div>
-
-            <div>
-              <button
-                disabled={isRunning}
-                onClick={() =>
-                  run(`/api/admin/snapshot-odds-all-due?season=${season}&force=1`)
-                }
-                style={{
-                  ...btnStyle,
-                  ...buttonStateStyle,
-                }}
-              >
-                Force Snapshot (Testing)
-              </button>
-              <div style={summaryStyle}>
-                Forces an odds snapshot immediately, even if it is not due yet. Use for testing or backfills.
-              </div>
-            </div>
-
-            <div>
-              <button
-                disabled={isRunning}
-                onClick={() =>
-                  run(`/api/admin/sync-results?season=${season}`)
-                }
-                style={{
-                  ...btnStyle,
-                  ...buttonStateStyle,
-                }}
-              >
-                Sync Results (Squiggle)
-              </button>
-              <div style={summaryStyle}>
-                Updates winners for finished matches only, without recalculating the leaderboard.
-              </div>
-            </div>
-
-            <div>
-              <button
-                disabled={isRunning}
-                onClick={() =>
-                  run(`/api/admin/recalc-leaderboard?season=${season}`)
-                }
-                style={{
-                  ...btnStyle,
-                  ...buttonStateStyle,
-                }}
-              >
-                Recalculate Leaderboard
-              </button>
-              <div style={summaryStyle}>
-                Recomputes leaderboard totals from current match results and stored odds snapshots.
-              </div>
             </div>
           </div>
-        </details>
+        </section>
       </div>
 
       {result !== null && (

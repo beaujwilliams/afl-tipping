@@ -403,6 +403,24 @@ export default function AdminPage() {
               <button
                 disabled={isRunning}
                 onClick={() =>
+                  run(`/api/admin/sync-fixture?season=${season}`)
+                }
+                style={{
+                  ...btnStyle,
+                  ...buttonStateStyle,
+                }}
+              >
+                Sync Fixture (Squiggle)
+              </button>
+              <div style={summaryStyle}>
+                Imports or refreshes rounds and matches for this season. Run this first if recap says no rounds were found.
+              </div>
+            </div>
+
+            <div>
+              <button
+                disabled={isRunning}
+                onClick={() =>
                   run(`/api/admin/snapshot-odds-all-due?season=${season}`)
                 }
                 style={{

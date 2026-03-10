@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase-server";
-
-const SEASON = 2026;
+import { getDefaultCompetitionId, requireAdminOrCron } from "@/lib/admin-auth";
 
 type SquiggleTeam = {
   id?: number;
@@ -31,6 +30,17 @@ type SquiggleGame = {
   complete?: number;
   winnerteamid?: number;
   winner?: string;
+};
+
+type MatchUpsertRow = {
+  round_id: string;
+  squiggle_game_id: number;
+  commence_time_utc: string;
+  home_team: string;
+  away_team: string;
+  venue: string | null;
+  status: string;
+  winner_team: string | null;
 };
 
 function pickGameId(g: SquiggleGame) {
@@ -101,26 +111,25 @@ async function fetchJson(url: string) {
 }
 
 export async function GET(req: Request) {
+  const gate = await requireAdminOrCron(req);
+  if (!gate.ok) return NextResponse.json(gate.json, { status: gate.status });
+
   const url = new URL(req.url);
-  const secret = url.searchParams.get("secret");
-  if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const season = Number(url.searchParams.get("season") || String(new Date().getFullYear()));
+  if (!Number.isFinite(season) || season < 2000 || season > 2100) {
+    return NextResponse.json({ error: "Provide a valid season" }, { status: 400 });
   }
 
   const supabase = createServiceClient();
 
-  const { data: comp, error: cErr } = await supabase
-    .from("competitions")
-    .select("id")
-    .limit(1)
-    .single();
-
-  if (cErr || !comp) {
-    return NextResponse.json({ error: "No competition found" }, { status: 409 });
+  const competitionId =
+    gate.mode === "bearer" ? gate.competitionId : await getDefaultCompetitionId(supabase);
+  if (!competitionId) {
+    return NextResponse.json({ error: "No competition found" }, { status: 404 });
   }
 
-  const gamesUrl = `https://api.squiggle.com.au/?q=games;year=${SEASON};format=json`;
-  const teamsUrl = `https://api.squiggle.com.au/?q=teams;year=${SEASON};format=json`;
+  const gamesUrl = `https://api.squiggle.com.au/?q=games;year=${season};format=json`;
+  const teamsUrl = `https://api.squiggle.com.au/?q=teams;year=${season};format=json`;
 
   const { json: gamesJson } = await fetchJson(gamesUrl);
   const { json: teamsJson } = await fetchJson(teamsUrl);
@@ -164,8 +173,8 @@ export async function GET(req: Request) {
       .from("rounds")
       .upsert(
         {
-          competition_id: comp.id,
-          season: SEASON,
+          competition_id: competitionId,
+          season,
           round_number: roundNumber,
           first_match_time_utc: firstMatchTimeUtc,
           lock_time_utc: firstMatchTimeUtc,
@@ -220,9 +229,9 @@ export async function GET(req: Request) {
           venue: g.venue ?? null,
           status,
           winner_team: winnerTeam,
-        };
+        } satisfies MatchUpsertRow;
       })
-      .filter(Boolean);
+      .filter((row): row is MatchUpsertRow => row !== null);
 
     if (!matchRows.length) {
       skippedGames += roundGames.length;
@@ -231,7 +240,7 @@ export async function GET(req: Request) {
 
     const { error: mErr } = await supabase
       .from("matches")
-      .upsert(matchRows as any[], { onConflict: "squiggle_game_id" });
+      .upsert(matchRows, { onConflict: "squiggle_game_id" });
 
     if (mErr) {
       console.log("Match upsert error:", mErr);
@@ -244,7 +253,8 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     ok: true,
-    season: SEASON,
+    season,
+    competition_id: competitionId,
     roundsUpserted,
     matchesUpserted,
     skippedGames,

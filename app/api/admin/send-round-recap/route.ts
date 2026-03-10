@@ -443,14 +443,19 @@ export async function GET(req: Request) {
 
     const roundRows = (rounds ?? []) as RoundRow[];
     if (roundRows.length === 0) {
+      const missingReason =
+        roundFilter !== null ? "round_not_found_for_season" : "no_rounds";
       return NextResponse.json({
         ok: true,
         season,
+        round: roundFilter,
         hours_after_first: hoursAfterFirst,
         rounds_considered: 0,
         targeted_round: null,
         sent: 0,
-        skipped_reason: "no_rounds",
+        skipped_reason: missingReason,
+        hint:
+          "No rounds were found for this season/round. Run Sync Fixture (Squiggle) in Admin, then retry.",
       });
     }
 

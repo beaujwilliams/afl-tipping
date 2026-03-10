@@ -33,6 +33,8 @@ type PlayerRoundScore = {
   round_score: number;
   correct_tips: number;
   total_tips: number;
+  accuracy_pct: number;
+  avg_correct_odds: number;
   picks: Record<string, string>;
 };
 
@@ -100,6 +102,12 @@ function fmtPts(n: number) {
   const v = Number(n ?? 0);
   if (Number.isNaN(v)) return "0.00";
   return v.toFixed(2);
+}
+
+function fmtPct(n: number) {
+  const v = Number(n ?? 0);
+  if (Number.isNaN(v)) return "0%";
+  return `${Math.round(v)}%`;
 }
 
 function pctBar(pct: number) {
@@ -292,6 +300,9 @@ export default function RoundResultsDetailPage() {
                       </div>
                       <div style={{ marginTop: 3, fontSize: 11, opacity: 0.75 }}>
                         Correct: {p.correct_tips}/{p.total_tips}
+                      </div>
+                      <div style={{ marginTop: 2, fontSize: 11, opacity: 0.75 }}>
+                        Accuracy: {fmtPct(p.accuracy_pct)} • Avg correct odds: {fmtPts(p.avg_correct_odds)}
                       </div>
                     </div>
                     <div style={{ fontWeight: 900, fontSize: 14 }}>{fmtPts(p.round_score)}</div>

@@ -252,6 +252,7 @@ export async function GET(req: Request) {
         round_score: number;
         correct_tips: number;
         total_tips: number;
+        correct_odds_sum: number;
         picks: Record<string, string>;
       }
     > = {};
@@ -293,6 +294,7 @@ export async function GET(req: Request) {
           round_score: 0,
           correct_tips: 0,
           total_tips: 0,
+          correct_odds_sum: 0,
           picks: {},
         };
       }
@@ -303,6 +305,7 @@ export async function GET(req: Request) {
       if (isCorrect) {
         playersById[uid].correct_tips += 1;
         playersById[uid].round_score += points;
+        playersById[uid].correct_odds_sum += points;
       }
     }
 
@@ -329,11 +332,27 @@ export async function GET(req: Request) {
       };
     });
 
-    const players = Object.values(playersById).sort((a, b) => {
-      if (b.round_score !== a.round_score) return b.round_score - a.round_score;
-      if (b.correct_tips !== a.correct_tips) return b.correct_tips - a.correct_tips;
-      return a.display_name.localeCompare(b.display_name);
-    });
+    const players = Object.values(playersById)
+      .map((p) => {
+        const accuracyPct = p.total_tips > 0 ? (p.correct_tips / p.total_tips) * 100 : 0;
+        const avgCorrectOdds = p.correct_tips > 0 ? p.correct_odds_sum / p.correct_tips : 0;
+        return {
+          user_id: p.user_id,
+          display_name: p.display_name,
+          payment_status: p.payment_status,
+          round_score: p.round_score,
+          correct_tips: p.correct_tips,
+          total_tips: p.total_tips,
+          accuracy_pct: accuracyPct,
+          avg_correct_odds: avgCorrectOdds,
+          picks: p.picks,
+        };
+      })
+      .sort((a, b) => {
+        if (b.round_score !== a.round_score) return b.round_score - a.round_score;
+        if (b.correct_tips !== a.correct_tips) return b.correct_tips - a.correct_tips;
+        return a.display_name.localeCompare(b.display_name);
+      });
 
     return NextResponse.json({
       ok: true,

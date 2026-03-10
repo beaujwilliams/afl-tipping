@@ -1216,19 +1216,6 @@ export async function GET(req: Request) {
       );
     });
     rawStatsLines.push("");
-    rawStatsLines.push("Round player stats");
-    [...playerStats]
-      .sort((a, b) => {
-        if (b.round_score !== a.round_score) return b.round_score - a.round_score;
-        if (b.correct_tips !== a.correct_tips) return b.correct_tips - a.correct_tips;
-        return a.display_name.localeCompare(b.display_name, "en", { sensitivity: "base" });
-      })
-      .forEach((p) => {
-        rawStatsLines.push(
-          `- ${p.display_name}: score ${round2(p.round_score)}, correct ${p.correct_tips}/${p.total_tips}, accuracy ${round2(p.accuracy_pct)}%, avg correct odds ${round2(p.avg_correct_odds)}`
-        );
-      });
-    rawStatsLines.push("");
     rawStatsLines.push("Match outcomes");
     rrMatches.forEach((m) => {
       rawStatsLines.push(

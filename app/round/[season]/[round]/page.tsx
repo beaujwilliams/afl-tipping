@@ -295,6 +295,8 @@ export default function RoundPage() {
   }, [nowMs, snapshotDueMs]);
 
   const snapshotForTimeUtc = roundRow?.odds_snapshot_for_time_utc ?? null;
+  const scoringOddsLocked = !!snapshotForTimeUtc;
+  const showLoadedOddsState = scoringOddsLocked && oddsLoadedForRound;
   const oddsExpectedFromIso = snapshotDueMs ? new Date(snapshotDueMs).toISOString() : null;
   const oddsExpectedCountdown =
     snapshotDueMs && nowMs < snapshotDueMs ? msToCountdown(snapshotDueMs - nowMs) : null;
@@ -884,17 +886,17 @@ export default function RoundPage() {
 
           <div className="ui-card ui-tone-warning">
             <div className="ui-kicker">
-              {oddsLoadedForRound ? "Odds loaded date and time" : "Odds due to be loaded"}
+              {showLoadedOddsState ? "Odds loaded date and time" : "Odds due to be loaded"}
             </div>
             <div className="ui-value">
-              {oddsLoadedForRound
+              {showLoadedOddsState
                 ? formatMelbourne(oddsLoadedAtIso ?? snapshotForTimeUtc ?? oddsExpectedFromIso ?? new Date().toISOString())
                 : oddsExpectedFromIso
                 ? formatMelbourne(oddsExpectedFromIso)
                 : "TBC"}
             </div>
             <div className="ui-meta">
-              {oddsLoadedForRound
+              {showLoadedOddsState
                 ? "Loaded for all matches"
                 : !snapshotDueMs
                 ? "Waiting for lock time"

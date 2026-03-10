@@ -34,13 +34,34 @@ export async function GET(req: Request) {
 
     const supabase = createServiceClient();
 
-    const competitionId =
+    let competitionId =
       gate.mode === "bearer"
         ? gate.competitionId
         : await resolveCompetitionIdForAdminRequest(req, supabase);
 
     if (!competitionId) {
       return NextResponse.json({ error: "No competition" }, { status: 404 });
+    }
+
+    const competitionFromQuery = url.searchParams.get("competition_id")?.trim() ?? "";
+    if (gate.mode === "cron" && !competitionFromQuery) {
+      const { count } = await supabase
+        .from("rounds")
+        .select("id", { count: "exact", head: true })
+        .eq("competition_id", competitionId)
+        .eq("season", season);
+
+      if ((count ?? 0) === 0) {
+        const { data: seasonRounds } = await supabase
+          .from("rounds")
+          .select("competition_id, round_number")
+          .eq("season", season)
+          .order("round_number", { ascending: true })
+          .limit(500);
+
+        const fallbackComp = (seasonRounds ?? []).find((r) => !!r.competition_id)?.competition_id ?? null;
+        if (fallbackComp) competitionId = String(fallbackComp);
+      }
     }
 
     // Fetch rounds

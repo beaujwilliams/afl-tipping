@@ -28,6 +28,14 @@ type OddsApiEvent = {
   bookmakers: OddsApiBookmaker[];
 };
 
+type RoundSnapshotRow = {
+  id: string;
+  lock_time_utc: string | null;
+  odds_snapshot_for_time_utc: string | null;
+  odds_captured_at_utc: string | null;
+  competition_id?: string;
+};
+
 /* ---------------- TEAM NORMALISATION ---------------- */
 
 const TEAM_ALIASES: Record<string, string> = {
@@ -163,7 +171,7 @@ export async function GET(req: Request) {
 
     const supabase = createServiceClient();
 
-    const competitionId =
+    let competitionId =
       gate.mode === "bearer"
         ? gate.competitionId
         : await resolveCompetitionIdForAdminRequest(req, supabase);
@@ -171,13 +179,31 @@ export async function GET(req: Request) {
     if (!competitionId) return NextResponse.json({ error: "No competition" }, { status: 404 });
 
     // ✅ include existing snapshot fields so we can decide whether to overwrite them
-    const { data: roundRow } = await supabase
+    const { data: initialRoundRow } = await supabase
       .from("rounds")
       .select("id, lock_time_utc, odds_snapshot_for_time_utc, odds_captured_at_utc")
       .eq("competition_id", competitionId)
       .eq("season", season)
       .eq("round_number", round)
       .single();
+    let roundRow: RoundSnapshotRow | null = (initialRoundRow as RoundSnapshotRow | null) ?? null;
+
+    const competitionFromQuery = url.searchParams.get("competition_id")?.trim() ?? "";
+    if (!roundRow && gate.mode === "cron" && !competitionFromQuery) {
+      const { data: fallbackRound } = await supabase
+        .from("rounds")
+        .select("id, lock_time_utc, odds_snapshot_for_time_utc, odds_captured_at_utc, competition_id")
+        .eq("season", season)
+        .eq("round_number", round)
+        .limit(1)
+        .maybeSingle();
+
+      if (fallbackRound) {
+        const typedFallback = fallbackRound as RoundSnapshotRow;
+        competitionId = String(typedFallback.competition_id ?? competitionId);
+        roundRow = typedFallback;
+      }
+    }
 
     if (!roundRow) return NextResponse.json({ error: "Round not found" }, { status: 404 });
 

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase-server";
-import { requireAdminOrCron } from "@/lib/admin-auth";
+import { getDefaultCompetitionId, requireAdminOrCron } from "@/lib/admin-auth";
 
 const DEFAULT_SEASON = 2026;
 const DEFAULT_HOURS_AFTER_FIRST = 48;
@@ -412,20 +412,18 @@ export async function GET(req: Request) {
       );
     }
 
-    const { data: comp, error: cErr } = await supabase
-      .from("competitions")
-      .select("id")
-      .limit(1)
-      .single();
-
-    if (cErr || !comp?.id) {
+    const competitionId =
+      gate.mode === "bearer"
+        ? gate.competitionId
+        : await getDefaultCompetitionId(supabase);
+    if (!competitionId) {
       return NextResponse.json({ error: "No competition found" }, { status: 404 });
     }
 
     let roundsQuery = supabase
       .from("rounds")
       .select("id, round_number, lock_time_utc, odds_snapshot_for_time_utc")
-      .eq("competition_id", comp.id)
+      .eq("competition_id", competitionId)
       .eq("season", season)
       .order("round_number", { ascending: true });
 
@@ -564,7 +562,7 @@ export async function GET(req: Request) {
     const existingQuery = await supabase
       .from("round_recap_emails")
       .select("recipient_email")
-      .eq("competition_id", comp.id)
+      .eq("competition_id", competitionId)
       .eq("round_id", roundId)
       .eq("recap_type", RECAP_TYPE);
 
@@ -602,7 +600,7 @@ export async function GET(req: Request) {
     const { data: memberships, error: memErr } = await supabase
       .from("memberships")
       .select("user_id")
-      .eq("competition_id", comp.id);
+      .eq("competition_id", competitionId);
 
     if (memErr) {
       return NextResponse.json(
@@ -617,7 +615,7 @@ export async function GET(req: Request) {
     const { data: tips, error: tErr } = await supabase
       .from("tips")
       .select("user_id, match_id, picked_team")
-      .eq("competition_id", comp.id)
+      .eq("competition_id", competitionId)
       .in("match_id", roundMatchIds);
 
     if (tErr) {
@@ -694,7 +692,7 @@ export async function GET(req: Request) {
     let oddsQuery = supabase
       .from("match_odds")
       .select("match_id, home_odds, away_odds, captured_at_utc, snapshot_for_time_utc")
-      .eq("competition_id", comp.id)
+      .eq("competition_id", competitionId)
       .in("match_id", roundMatchIds)
       .order("captured_at_utc", { ascending: false });
 
@@ -954,7 +952,7 @@ export async function GET(req: Request) {
       const { data: beforeTips, error: btErr } = await supabase
         .from("tips")
         .select("picked_team")
-        .eq("competition_id", comp.id)
+        .eq("competition_id", competitionId)
         .in("match_id", beforeRoundMatchIds);
 
       if (!btErr) {
@@ -1002,7 +1000,7 @@ export async function GET(req: Request) {
       const { data: upTips, error: upTErr } = await supabase
         .from("tips")
         .select("user_id, match_id, picked_team")
-        .eq("competition_id", comp.id)
+        .eq("competition_id", competitionId)
         .in("match_id", scoredMatchIdsUpTo);
 
       if (!upTErr) {
@@ -1115,7 +1113,7 @@ export async function GET(req: Request) {
         const { data: nextOddsRows } = await supabase
           .from("match_odds")
           .select("match_id, home_odds, away_odds, captured_at_utc")
-          .eq("competition_id", comp.id)
+          .eq("competition_id", competitionId)
           .in("match_id", nextIds)
           .order("captured_at_utc", { ascending: false });
 
@@ -1294,7 +1292,7 @@ export async function GET(req: Request) {
     if (!dryRun) {
       const { error: recapErr } = await supabase.from("round_recaps").upsert(
         {
-          competition_id: comp.id,
+          competition_id: competitionId,
           round_id: roundId,
           season,
           round_number: roundNumber,
@@ -1346,7 +1344,7 @@ export async function GET(req: Request) {
 
         const { error: logErr } = await supabase.from("round_recap_emails").upsert(
           {
-            competition_id: comp.id,
+            competition_id: competitionId,
             round_id: roundId,
             season,
             round_number: roundNumber,

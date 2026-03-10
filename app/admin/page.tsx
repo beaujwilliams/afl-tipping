@@ -4,6 +4,13 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
+type ConfirmAction = {
+  title: string;
+  body: string;
+  confirmLabel: string;
+  path: string;
+};
+
 export default function AdminPage() {
   const router = useRouter();
 
@@ -13,6 +20,7 @@ export default function AdminPage() {
   const [recapToEmail, setRecapToEmail] = useState<string>("");
   const [result, setResult] = useState<unknown>(null);
   const [loading, setLoading] = useState<string | null>(null);
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const isRunning = loading !== null;
 
   useEffect(() => {
@@ -195,7 +203,12 @@ export default function AdminPage() {
       setResult({ error: "Reminder round must be 0 or higher." });
       return;
     }
-    run(`/api/admin/send-prelock-reminders?season=${season}&round=${round}&force=1`);
+    setConfirmAction({
+      title: "Force-send tip reminders?",
+      body: `This will send reminder emails now for round ${round}, ignoring the normal 3-hour window.`,
+      confirmLabel: "Yes, send reminders now",
+      path: `/api/admin/send-prelock-reminders?season=${season}&round=${round}&force=1`,
+    });
   }
 
   function runRecapToMeNow() {
@@ -214,6 +227,27 @@ export default function AdminPage() {
         toEmail
       )}`
     );
+  }
+
+  function runForceSnapshotNow() {
+    setConfirmAction({
+      title: "Run force snapshot now?",
+      body: "This will capture odds immediately even when a snapshot is not currently due.",
+      confirmLabel: "Yes, run force snapshot",
+      path: `/api/admin/snapshot-odds-all-due?season=${season}&force=1`,
+    });
+  }
+
+  function closeConfirm() {
+    if (isRunning) return;
+    setConfirmAction(null);
+  }
+
+  function confirmAndRun() {
+    if (!confirmAction) return;
+    const path = confirmAction.path;
+    setConfirmAction(null);
+    run(path);
   }
 
   return (
@@ -284,7 +318,7 @@ export default function AdminPage() {
               </div>
               <button
                 disabled={isRunning}
-                onClick={() => run(`/api/admin/snapshot-odds-all-due?season=${season}&force=1`)}
+                onClick={runForceSnapshotNow}
                 style={{ ...btnStyle, ...buttonStateStyle, marginTop: 8 }}
               >
                 Run Force Snapshot
@@ -503,6 +537,61 @@ export default function AdminPage() {
       {loading && (
         <div style={{ marginTop: 20, opacity: 0.7 }}>
           Running: {loading}
+        </div>
+      )}
+
+      {confirmAction && (
+        <div
+          onClick={closeConfirm}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0, 0, 0, 0.45)",
+            display: "grid",
+            placeItems: "center",
+            zIndex: 1000,
+            padding: 16,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: 520,
+              borderRadius: 14,
+              border: "1px solid var(--border)",
+              background: "var(--card)",
+              color: "var(--foreground)",
+              boxShadow: "0 20px 45px rgba(0,0,0,0.28)",
+              padding: 16,
+            }}
+          >
+            <div style={{ fontSize: 20, fontWeight: 800 }}>{confirmAction.title}</div>
+            <div style={{ marginTop: 10, lineHeight: 1.45, opacity: 0.9 }}>{confirmAction.body}</div>
+            <div style={{ marginTop: 16, display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
+              <button
+                disabled={isRunning}
+                onClick={closeConfirm}
+                style={{ ...btnStyle, ...buttonStateStyle }}
+              >
+                Cancel
+              </button>
+              <button
+                disabled={isRunning}
+                onClick={confirmAndRun}
+                style={{
+                  ...btnStyle,
+                  ...buttonStateStyle,
+                  border: "1px solid rgba(239,68,68,0.55)",
+                  background: "rgba(239,68,68,0.16)",
+                  color: "var(--foreground)",
+                  fontWeight: 800,
+                }}
+              >
+                {confirmAction.confirmLabel}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </main>

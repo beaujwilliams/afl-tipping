@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
 type RecapRow = {
@@ -43,12 +43,7 @@ export default function AdminRecapsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [msg, setMsg] = useState("");
   const [recaps, setRecaps] = useState<RecapRow[]>([]);
-  const [selectedRecapId, setSelectedRecapId] = useState<number | null>(null);
-
-  const selectedRecap = useMemo(
-    () => recaps.find((r) => r.id === selectedRecapId) ?? recaps[0] ?? null,
-    [recaps, selectedRecapId]
-  );
+  const [expandedRecapId, setExpandedRecapId] = useState<number | null>(null);
 
   async function fetchRecaps(sessionToken: string, year: number) {
     const res = await fetch(
@@ -82,14 +77,14 @@ export default function AdminRecapsPage() {
         if (!sessionToken) {
           setMsg("Not authenticated.");
           setRecaps([]);
-          setSelectedRecapId(null);
+          setExpandedRecapId(null);
           return;
         }
 
         setToken(sessionToken);
         const rows = await fetchRecaps(sessionToken, season);
         setRecaps(rows);
-        setSelectedRecapId(rows[0]?.id ?? null);
+        setExpandedRecapId(rows[0]?.id ?? null);
       } catch (err: unknown) {
         setMsg(err instanceof Error ? err.message : "Failed to load recaps.");
       } finally {
@@ -108,7 +103,7 @@ export default function AdminRecapsPage() {
       setMsg("");
       const rows = await fetchRecaps(token, season);
       setRecaps(rows);
-      setSelectedRecapId((prev) => {
+      setExpandedRecapId((prev) => {
         if (!rows.length) return null;
         if (prev && rows.some((r) => r.id === prev)) return prev;
         return rows[0].id;
@@ -201,82 +196,112 @@ export default function AdminRecapsPage() {
           No recaps found for season {season}.
         </div>
       ) : (
-        <>
-          <div style={{ marginTop: 16, display: "grid", gap: 8 }}>
-            {recaps.map((r) => {
-              const active = selectedRecap?.id === r.id;
-              return (
+        <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
+          {recaps.map((r) => {
+            const expanded = expandedRecapId === r.id;
+
+            return (
+              <section
+                key={r.id}
+                style={{
+                  border: expanded ? "1px solid rgba(239, 68, 68, 0.55)" : "1px solid var(--border)",
+                  borderRadius: 14,
+                  background: expanded ? "rgba(239, 68, 68, 0.08)" : "var(--card)",
+                  padding: 12,
+                }}
+              >
                 <button
-                  key={r.id}
                   type="button"
-                  onClick={() => setSelectedRecapId(r.id)}
+                  onClick={() => setExpandedRecapId((prev) => (prev === r.id ? null : r.id))}
                   style={{
-                    padding: "10px 12px",
-                    borderRadius: 10,
-                    border: active ? "1px solid rgba(239, 68, 68, 0.55)" : "1px solid var(--border)",
-                    background: active ? "rgba(239, 68, 68, 0.10)" : "var(--card)",
-                    color: "var(--foreground)",
+                    width: "100%",
+                    background: "transparent",
+                    border: "none",
+                    color: "inherit",
                     textAlign: "left",
                     cursor: "pointer",
+                    padding: 0,
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    alignItems: "center",
                   }}
                 >
-                  <div style={{ fontWeight: 900 }}>
-                    {r.subject}
+                  <div>
+                    <div style={{ fontWeight: 900, fontSize: 20, letterSpacing: -0.2 }}>
+                      Round {r.round_number}
+                    </div>
+                    <div style={{ marginTop: 4, fontSize: 13, opacity: 0.8 }}>
+                      {r.subject}
+                    </div>
+                    <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75 }}>
+                      Season {r.season} • Generated {fmtMelbourne(r.generated_at)}
+                    </div>
                   </div>
-                  <div style={{ marginTop: 3, fontSize: 12, opacity: 0.78 }}>
-                    Season {r.season} • Round {r.round_number} • Generated {fmtMelbourne(r.generated_at)}
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 900,
+                      padding: "7px 10px",
+                      borderRadius: 999,
+                      border: "1px solid var(--border)",
+                      background: "var(--card-soft)",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {expanded ? "Hide recap" : "View recap"}
                   </div>
                 </button>
-              );
-            })}
-          </div>
 
-          {selectedRecap && (
-            <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
-              <section
-                style={{
-                  border: "1px solid var(--border)",
-                  background: "var(--card-soft)",
-                  borderRadius: 12,
-                  padding: 14,
-                }}
-              >
-                <h2 style={{ margin: 0, fontSize: 18 }}>Narrative</h2>
-                <pre
-                  style={{
-                    marginTop: 10,
-                    whiteSpace: "pre-wrap",
-                    fontFamily: "inherit",
-                    lineHeight: 1.5,
-                  }}
-                >
-                  {selectedRecap.narrative_text}
-                </pre>
-              </section>
+                {expanded && (
+                  <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                    <section
+                      style={{
+                        border: "1px solid var(--border)",
+                        background: "var(--card-soft)",
+                        borderRadius: 12,
+                        padding: 14,
+                      }}
+                    >
+                      <h2 style={{ margin: 0, fontSize: 18 }}>Narrative</h2>
+                      <pre
+                        style={{
+                          marginTop: 10,
+                          whiteSpace: "pre-wrap",
+                          fontFamily: "inherit",
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        {r.narrative_text}
+                      </pre>
+                    </section>
 
-              <section
-                style={{
-                  border: "1px solid var(--border)",
-                  background: "var(--card-soft)",
-                  borderRadius: 12,
-                  padding: 14,
-                }}
-              >
-                <h2 style={{ margin: 0, fontSize: 18 }}>Raw Stats</h2>
-                <pre
-                  style={{
-                    marginTop: 10,
-                    whiteSpace: "pre-wrap",
-                    fontFamily: "inherit",
-                    lineHeight: 1.45,
-                  }}
-                >
-                  {selectedRecap.raw_stats_text}
-                </pre>
+                    <details
+                      style={{
+                        border: "1px solid var(--border)",
+                        background: "var(--card-soft)",
+                        borderRadius: 12,
+                        padding: 14,
+                      }}
+                    >
+                      <summary style={{ cursor: "pointer", fontWeight: 800 }}>Raw Stats</summary>
+                      <pre
+                        style={{
+                          marginTop: 10,
+                          whiteSpace: "pre-wrap",
+                          fontFamily: "inherit",
+                          lineHeight: 1.45,
+                        }}
+                      >
+                        {r.raw_stats_text}
+                      </pre>
+                    </details>
+                  </div>
+                )}
               </section>
-            </div>
-          )}
-        </>
+            );
+          })}
+        </div>
       )}
     </main>
   );

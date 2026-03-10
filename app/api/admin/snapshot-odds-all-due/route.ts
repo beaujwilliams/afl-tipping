@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase-server";
-import { requireAdminOrCron } from "@/lib/admin-auth";
+import { requireAdminOrCron, resolveCompetitionIdForAdminRequest } from "@/lib/admin-auth";
 
 // ✅ Must match snapshot-odds/route.ts
 const SNAPSHOT_HOURS_BEFORE_LOCK = 36;
@@ -34,14 +34,12 @@ export async function GET(req: Request) {
 
     const supabase = createServiceClient();
 
-    // MVP: single comp
-    const { data: comp } = await supabase
-      .from("competitions")
-      .select("id")
-      .limit(1)
-      .single();
+    const competitionId =
+      gate.mode === "bearer"
+        ? gate.competitionId
+        : await resolveCompetitionIdForAdminRequest(req, supabase);
 
-    if (!comp) {
+    if (!competitionId) {
       return NextResponse.json({ error: "No competition" }, { status: 404 });
     }
 
@@ -49,7 +47,7 @@ export async function GET(req: Request) {
     let q = supabase
       .from("rounds")
       .select("round_number, lock_time_utc, odds_snapshot_for_time_utc")
-      .eq("competition_id", comp.id)
+      .eq("competition_id", competitionId)
       .eq("season", season)
       .order("round_number", { ascending: true });
 
@@ -69,6 +67,7 @@ export async function GET(req: Request) {
       return NextResponse.json({
         ok: true,
         season,
+        competition_id: competitionId,
         processedDueRounds: 0,
         capturedRounds: 0,
         next: null,
@@ -121,6 +120,7 @@ export async function GET(req: Request) {
       return NextResponse.json({
         ok: true,
         season,
+        competition_id: competitionId,
         processedDueRounds: 0,
         capturedRounds: 0,
         skipped_reason: "no_due_rounds_pending_capture",
@@ -147,6 +147,7 @@ export async function GET(req: Request) {
       return NextResponse.json({
         ok: true,
         season,
+        competition_id: competitionId,
         processedDueRounds: 0,
         capturedRounds: 0,
         skipped_reason: skippedReason,
@@ -183,13 +184,14 @@ export async function GET(req: Request) {
     const forceQS = force ? `&force=1` : "";
 
     const snapUrl = `${url.origin}/api/admin/snapshot-odds?season=${season}&round=${target.round_number}${forceQS}${secretQS}`;
+    const snapUrlWithComp = `${snapUrl}&competition_id=${encodeURIComponent(competitionId)}`;
 
     const headers: Record<string, string> = {};
     if (gate.mode === "bearer" && gate.token) {
       headers["Authorization"] = `Bearer ${gate.token}`;
     }
 
-    const res = await fetch(snapUrl, { headers, cache: "no-store" });
+    const res = await fetch(snapUrlWithComp, { headers, cache: "no-store" });
     const text = await res.text();
 
     let json: unknown;
@@ -213,6 +215,7 @@ export async function GET(req: Request) {
     return NextResponse.json({
       ok: true,
       season,
+      competition_id: competitionId,
       processedDueRounds: 1,
       capturedRounds,
       snapshotHoursBeforeLock: SNAPSHOT_HOURS_BEFORE_LOCK,

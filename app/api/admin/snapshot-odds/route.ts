@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase-server";
-import { requireAdminOrCron } from "@/lib/admin-auth";
+import { requireAdminOrCron, resolveCompetitionIdForAdminRequest } from "@/lib/admin-auth";
 
 const SPORT_KEY = "aussierules_afl";
 const REGIONS = "au";
@@ -163,20 +163,18 @@ export async function GET(req: Request) {
 
     const supabase = createServiceClient();
 
-    // single-comp MVP
-    const { data: comp } = await supabase
-      .from("competitions")
-      .select("id")
-      .limit(1)
-      .single();
+    const competitionId =
+      gate.mode === "bearer"
+        ? gate.competitionId
+        : await resolveCompetitionIdForAdminRequest(req, supabase);
 
-    if (!comp) return NextResponse.json({ error: "No competition" }, { status: 404 });
+    if (!competitionId) return NextResponse.json({ error: "No competition" }, { status: 404 });
 
     // ✅ include existing snapshot fields so we can decide whether to overwrite them
     const { data: roundRow } = await supabase
       .from("rounds")
       .select("id, lock_time_utc, odds_snapshot_for_time_utc, odds_captured_at_utc")
-      .eq("competition_id", comp.id)
+      .eq("competition_id", competitionId)
       .eq("season", season)
       .eq("round_number", round)
       .single();
@@ -258,7 +256,7 @@ export async function GET(req: Request) {
       const { data: existing, error: exErr } = await supabase
         .from("match_odds")
         .select("match_id")
-        .eq("competition_id", comp.id)
+        .eq("competition_id", competitionId)
         .eq("bookmaker_key", BOOKMAKER)
         .eq("market_key", "h2h")
         .eq("snapshot_for_time_utc", snapshotForTimeUtc)
@@ -318,7 +316,7 @@ export async function GET(req: Request) {
 
       const payload = {
         match_id: match.id,
-        competition_id: comp.id,
+        competition_id: competitionId,
         bookmaker_key: BOOKMAKER,
         market_key: "h2h",
         home_team: match.home_team,
@@ -398,6 +396,7 @@ export async function GET(req: Request) {
       ok: true,
       season,
       round,
+      competition_id: competitionId,
       force,
       snapshotForTimeUtc,
       snapshotHoursBeforeLock: SNAPSHOT_HOURS_BEFORE_LOCK,

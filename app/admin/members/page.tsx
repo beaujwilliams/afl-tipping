@@ -47,6 +47,9 @@ type ChampionSettingsResponse = {
 };
 
 const CURRENT_SEASON = 2026;
+const BUY_IN_BY_SEASON: Record<number, number> = {
+  2026: 30,
+};
 
 function normalizeRole(role: string | null | undefined): MemberRole {
   const r = String(role ?? "")
@@ -75,6 +78,11 @@ function fmtMelbourne(iso: string) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(d);
+}
+
+function fmtDollars(amount: number) {
+  const rounded = Math.max(0, Math.round(Number(amount) || 0));
+  return `$${rounded.toLocaleString("en-AU")}`;
 }
 
 function shortId(id: string) {
@@ -288,6 +296,17 @@ export default function AdminMembersPage() {
       waived,
     };
   }, [members]);
+
+  const seasonBuyIn = BUY_IN_BY_SEASON[CURRENT_SEASON] ?? 0;
+  const amounts = useMemo(
+    () => ({
+      total: counts.total * seasonBuyIn,
+      paid: counts.paid * seasonBuyIn,
+      pending: counts.pending * seasonBuyIn,
+      waived: counts.waived * seasonBuyIn,
+    }),
+    [counts, seasonBuyIn]
+  );
 
   const filteredMembers = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -535,12 +554,22 @@ export default function AdminMembersPage() {
         </div>
       </div>
 
-      <div style={{ marginTop: 12, ...cardStyle }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+      <details
+        style={{
+          marginTop: 12,
+          border: "1px solid var(--border)",
+          borderRadius: 14,
+          padding: 12,
+          background: "var(--card-soft)",
+        }}
+      >
+        <summary style={{ cursor: "pointer", fontWeight: 800 }}>Advanced / Seasonal settings</summary>
+
+        <div style={{ marginTop: 12, display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div style={{ minWidth: 260 }}>
             <div style={{ fontWeight: 800 }}>Reigning champion</div>
             <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75 }}>
-              Controls the crown shown next to member names across leaderboard, results, rounds and chat.
+              Used rarely. Usually this stays on auto and uses the previous season winner.
             </div>
             <div style={{ marginTop: 8, fontSize: 12 }}>
               Current: <b>{championResolvedLabel}</b>{" "}
@@ -608,7 +637,7 @@ export default function AdminMembersPage() {
             {championMsg}
           </div>
         )}
-      </div>
+      </details>
 
       <div
         style={{
@@ -619,19 +648,19 @@ export default function AdminMembersPage() {
         }}
       >
         <div style={cardStyle}>
-          <div style={{ fontSize: 12, opacity: 0.7 }}>Total</div>
+          <div style={{ fontSize: 12, opacity: 0.7 }}>Total ({fmtDollars(amounts.total)})</div>
           <div style={{ marginTop: 4, fontWeight: 900, fontSize: 24 }}>{counts.total}</div>
         </div>
         <div style={cardStyle}>
-          <div style={{ fontSize: 12, opacity: 0.7 }}>Paid</div>
+          <div style={{ fontSize: 12, opacity: 0.7 }}>Paid ({fmtDollars(amounts.paid)})</div>
           <div style={{ marginTop: 4, fontWeight: 900, fontSize: 24, color: "#065f46" }}>{counts.paid}</div>
         </div>
         <div style={cardStyle}>
-          <div style={{ fontSize: 12, opacity: 0.7 }}>Pending</div>
+          <div style={{ fontSize: 12, opacity: 0.7 }}>Pending ({fmtDollars(amounts.pending)})</div>
           <div style={{ marginTop: 4, fontWeight: 900, fontSize: 24, color: "#991b1b" }}>{counts.pending}</div>
         </div>
         <div style={cardStyle}>
-          <div style={{ fontSize: 12, opacity: 0.7 }}>Waived</div>
+          <div style={{ fontSize: 12, opacity: 0.7 }}>Waived ({fmtDollars(amounts.waived)})</div>
           <div style={{ marginTop: 4, fontWeight: 900, fontSize: 24, color: "#5b21b6" }}>{counts.waived}</div>
         </div>
       </div>

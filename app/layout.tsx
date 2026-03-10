@@ -211,7 +211,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           margin: 0,
           background: "var(--background)",
           color: "var(--foreground)",
-          fontFamily: "Arial, Helvetica, sans-serif",
+          fontFamily: "var(--font-sans)",
         }}
       >
         <header

@@ -885,9 +885,7 @@ export default function RoundPage() {
           </div>
 
           <div className="ui-card ui-tone-warning">
-            <div className="ui-kicker">
-              {showLoadedOddsState ? "Locked odds loaded date and time" : "Odds due to be loaded"}
-            </div>
+            <div className="ui-kicker">Locked odds loaded at</div>
             <div className="ui-value">
               {showLoadedOddsState
                 ? formatMelbourne(oddsLoadedAtIso ?? snapshotForTimeUtc ?? oddsExpectedFromIso ?? new Date().toISOString())
@@ -917,11 +915,6 @@ export default function RoundPage() {
             <div className="ui-kicker">Your saved tips</div>
             <div className="ui-value">
               {tippedCount}/{matches.length || 0}
-            </div>
-            <div className="ui-meta">
-              {isLocked
-                ? "Locked"
-                : `${Math.max(matches.length - tippedCount, 0)} left to tip`}
             </div>
           </div>
         </div>
@@ -978,6 +971,7 @@ export default function RoundPage() {
             style={{
               display: "flex",
               justifyContent: "space-between",
+              alignItems: "flex-start",
               gap: 12,
               flexWrap: "wrap",
             }}

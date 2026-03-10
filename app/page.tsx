@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { waitForSession } from "@/lib/session-client";
+import { supabaseBrowser } from "@/lib/supabase-browser";
 
 const CURRENT_SEASON = 2026;
 
@@ -76,6 +77,20 @@ function movementText(movement: number) {
   return "No change";
 }
 
+function getLastChatSeenMs() {
+  if (typeof window === "undefined") return 0;
+  const v = window.localStorage.getItem("chat_last_seen_ms");
+  const n = v ? Number(v) : 0;
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return n;
+}
+
+function isMissingRelationError(message: string, relationName: string) {
+  const m = String(message ?? "").toLowerCase();
+  const rel = relationName.toLowerCase();
+  return m.includes(rel) && m.includes("relation") && m.includes("does not exist");
+}
+
 export default function HomePage() {
   const [msg, setMsg] = useState("Loading dashboard...");
   const [token, setToken] = useState<string | null>(null);
@@ -83,6 +98,8 @@ export default function HomePage() {
   const [rounds, setRounds] = useState<RoundStatusRow[]>([]);
   const [me, setMe] = useState<LeaderboardRow | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [unreadChat, setUnreadChat] = useState(0);
+  const [unreadMentions, setUnreadMentions] = useState(0);
 
   useEffect(() => {
     const t = setInterval(() => setNowMs(Date.now()), 30000);
@@ -161,6 +178,48 @@ export default function HomePage() {
       alive = false;
     };
   }, [token, userId]);
+
+  useEffect(() => {
+    if (!userId) return;
+    let alive = true;
+
+    async function refreshUnread() {
+      const sinceIso = new Date(getLastChatSeenMs()).toISOString();
+
+      const { count, error } = await supabaseBrowser
+        .from("chat_messages")
+        .select("id", { count: "exact", head: true })
+        .gt("created_at", sinceIso);
+
+      if (!alive) return;
+      if (!error) {
+        setUnreadChat(count ?? 0);
+      }
+
+      const { count: mentionCount, error: mentionErr } = await supabaseBrowser
+        .from("chat_message_mentions")
+        .select("id", { count: "exact", head: true })
+        .eq("mentioned_user_id", userId)
+        .gt("created_at", sinceIso);
+
+      if (!alive) return;
+      if (mentionErr) {
+        if (isMissingRelationError(mentionErr.message, "chat_message_mentions")) {
+          setUnreadMentions(0);
+        }
+        return;
+      }
+
+      setUnreadMentions(mentionCount ?? 0);
+    }
+
+    refreshUnread();
+    const t = setInterval(refreshUnread, 30000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [userId]);
 
   const currentRound = useMemo(() => {
     if (!rounds.length) return null;
@@ -260,6 +319,13 @@ export default function HomePage() {
               <div className="ui-kicker">Behind leader</div>
               <div className="ui-value">
                 {me ? (me.behind_leader <= 0 ? "-" : fmtPts(me.behind_leader)) : "-"}
+              </div>
+            </div>
+            <div className="ui-card">
+              <div className="ui-kicker">Unread chat</div>
+              <div className="ui-value">{unreadChat}</div>
+              <div className="ui-meta">
+                @mentions <b>{unreadMentions}</b>
               </div>
             </div>
           </div>

@@ -5,7 +5,18 @@ export default function InfoPage() {
     <main className="ui-page" style={{ maxWidth: 800 }}>
       <UiSectionHeader
         title="How it works"
-        subtitle="Needlessly Complicated Tipping 2026"
+        subtitle={
+          <span
+            style={{
+              fontSize: "clamp(1.05rem, 1.7vw, 1.25rem)",
+              fontWeight: 700,
+              color: "var(--text)",
+              letterSpacing: "-0.01em",
+            }}
+          >
+            Needlessly Complicated Tipping 2026
+          </span>
+        }
       />
 
       <section style={{ display: "grid", gap: 22, fontSize: 15, lineHeight: 1.6 }}>

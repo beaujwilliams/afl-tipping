@@ -50,6 +50,25 @@ type RoundResultsResponse = {
   error?: string;
 };
 
+type RoundSortKey =
+  | "rank"
+  | "display_name"
+  | "round_score"
+  | "correct_tips"
+  | "accuracy_pct"
+  | "avg_correct_odds";
+
+type SortDirection = "asc" | "desc";
+
+const DEFAULT_SORT_DIR: Record<RoundSortKey, SortDirection> = {
+  rank: "asc",
+  display_name: "asc",
+  round_score: "desc",
+  correct_tips: "desc",
+  accuracy_pct: "desc",
+  avg_correct_odds: "desc",
+};
+
 const VENUE_MAP: Record<string, string> = {
   "Sydney Showground": "ENGIE Stadium",
   "Sydney Showground Stadium": "ENGIE Stadium",
@@ -126,6 +145,8 @@ export default function RoundResultsDetailPage() {
   const [players, setPlayers] = useState<PlayerRoundScore[]>([]);
   const [reigningChampionUserId, setReigningChampionUserId] = useState<string | null>(null);
   const [lockTimeUtc, setLockTimeUtc] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<RoundSortKey>("round_score");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const invalidParams = !Number.isFinite(season) || !Number.isFinite(round);
 
   useEffect(() => {
@@ -196,6 +217,70 @@ export default function RoundResultsDetailPage() {
   const tipsPlaced = useMemo(() => {
     return matches.reduce((acc, m) => acc + Number(m.total_tips ?? 0), 0);
   }, [matches]);
+
+  const roundRankByUserId = useMemo(() => {
+    const ranked = [...players].sort((a, b) => {
+      if (b.round_score !== a.round_score) return b.round_score - a.round_score;
+      if (b.correct_tips !== a.correct_tips) return b.correct_tips - a.correct_tips;
+      return a.display_name.localeCompare(b.display_name, "en", { sensitivity: "base" });
+    });
+    const out: Record<string, number> = {};
+    ranked.forEach((p, idx) => {
+      out[p.user_id] = idx + 1;
+    });
+    return out;
+  }, [players]);
+
+  const sortedPlayers = useMemo(() => {
+    const list = [...players];
+    const dir = sortDirection === "asc" ? 1 : -1;
+
+    list.sort((a, b) => {
+      let primaryCmp = 0;
+
+      if (sortBy === "display_name") {
+        primaryCmp = a.display_name.localeCompare(b.display_name, "en", { sensitivity: "base" });
+      } else if (sortBy === "rank") {
+        const aRank = roundRankByUserId[a.user_id] ?? Number.MAX_SAFE_INTEGER;
+        const bRank = roundRankByUserId[b.user_id] ?? Number.MAX_SAFE_INTEGER;
+        primaryCmp = aRank - bRank;
+      } else if (sortBy === "round_score") {
+        primaryCmp = a.round_score - b.round_score;
+      } else if (sortBy === "correct_tips") {
+        primaryCmp = a.correct_tips - b.correct_tips;
+      } else if (sortBy === "accuracy_pct") {
+        primaryCmp = a.accuracy_pct - b.accuracy_pct;
+      } else {
+        primaryCmp = a.avg_correct_odds - b.avg_correct_odds;
+      }
+
+      if (primaryCmp !== 0) {
+        return primaryCmp * dir;
+      }
+
+      const aRank = roundRankByUserId[a.user_id] ?? Number.MAX_SAFE_INTEGER;
+      const bRank = roundRankByUserId[b.user_id] ?? Number.MAX_SAFE_INTEGER;
+      if (aRank !== bRank) return aRank - bRank;
+
+      return a.display_name.localeCompare(b.display_name, "en", { sensitivity: "base" });
+    });
+
+    return list;
+  }, [players, roundRankByUserId, sortBy, sortDirection]);
+
+  function onSort(nextKey: RoundSortKey) {
+    if (sortBy === nextKey) {
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortBy(nextKey);
+    setSortDirection(DEFAULT_SORT_DIR[nextKey]);
+  }
+
+  function sortMarker(key: RoundSortKey) {
+    if (sortBy !== key) return "↕";
+    return sortDirection === "asc" ? "↑" : "↓";
+  }
 
   return (
     <main style={{ maxWidth: 900, margin: "24px auto", padding: 12 }}>
@@ -278,7 +363,45 @@ export default function RoundResultsDetailPage() {
               <div style={{ marginTop: 8, opacity: 0.72, fontSize: 12 }}>No tips found for this round.</div>
             ) : (
               <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
-                {players.map((p, idx) => (
+                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: 11, opacity: 0.75, fontWeight: 700 }}>Sort</span>
+                  {(
+                    [
+                      ["Rank", "rank"],
+                      ["Tipster", "display_name"],
+                      ["Score", "round_score"],
+                      ["Correct", "correct_tips"],
+                      ["Accuracy", "accuracy_pct"],
+                      ["Avg odds", "avg_correct_odds"],
+                    ] as Array<[string, RoundSortKey]>
+                  ).map(([label, key]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => onSort(key)}
+                      title={`Sort by ${label}`}
+                      style={{
+                        appearance: "none",
+                        background: "transparent",
+                        border: "1px solid var(--border)",
+                        borderRadius: 999,
+                        color: "inherit",
+                        cursor: "pointer",
+                        fontSize: 11,
+                        fontWeight: sortBy === key ? 800 : 600,
+                        padding: "4px 8px",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 5,
+                      }}
+                    >
+                      <span>{label}</span>
+                      <span style={{ opacity: sortBy === key ? 1 : 0.45 }}>{sortMarker(key)}</span>
+                    </button>
+                  ))}
+                </div>
+
+                {sortedPlayers.map((p, idx) => (
                   <div
                     key={p.user_id}
                     style={{
@@ -291,7 +414,9 @@ export default function RoundResultsDetailPage() {
                       alignItems: "center",
                     }}
                   >
-                    <div style={{ fontWeight: 900, fontSize: 12, opacity: 0.7 }}>#{idx + 1}</div>
+                    <div style={{ fontWeight: 900, fontSize: 12, opacity: 0.7 }}>
+                      #{roundRankByUserId[p.user_id] ?? idx + 1}
+                    </div>
                     <div>
                       <div style={{ fontWeight: 850, fontSize: 13, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                         <ChampionCrown isChampion={p.user_id === reigningChampionUserId} />

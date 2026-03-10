@@ -52,7 +52,6 @@ export default function AdminPage() {
   const router = useRouter();
 
   const [season, setSeason] = useState<number>(2026);
-  const [reminderRound, setReminderRound] = useState<number>(1);
   const [recapRound, setRecapRound] = useState<number>(1);
   const [recapToEmail, setRecapToEmail] = useState<string>("");
   const [result, setResult] = useState<unknown>(null);
@@ -280,23 +279,10 @@ export default function AdminPage() {
     whiteSpace: "nowrap",
   };
 
-  function runReminderWindow() {
-    run(`/api/admin/send-prelock-reminders?season=${season}`);
-  }
-
   function parseMinRound(value: string) {
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) return 0;
     return Math.max(0, Math.trunc(parsed));
-  }
-
-  function runReminderForRoundNow() {
-    const round = Math.trunc(reminderRound);
-    if (!Number.isFinite(round) || round < 0) {
-      setResult({ error: "Reminder round must be 0 or higher." });
-      return;
-    }
-    openForceReminderConfirm(round);
   }
 
   function openForceReminderConfirm(round: number) {
@@ -594,42 +580,12 @@ export default function AdminPage() {
 
           <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
             <div style={toolCardStyle}>
-              <div style={{ fontWeight: 800 }}>Tip reminders</div>
+              <div style={{ fontWeight: 800 }}>Tip reminders (automated)</div>
               <div style={summaryStyle}>
-                Send reminders in the normal 3h window or force-send for a specific round.
+                Runs automatically every 30 minutes and only sends in the configured 3-hour pre-lock window.
               </div>
-              <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-                <button
-                  disabled={isRunning}
-                  onClick={runReminderWindow}
-                  style={{ ...btnStyle, ...buttonStateStyle }}
-                >
-                  Send Tip Reminders (3h Window)
-                </button>
-                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                  <label style={{ fontWeight: 600 }}>Round</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={reminderRound}
-                    onChange={(e) => setReminderRound(parseMinRound(e.target.value))}
-                    onBlur={() => setReminderRound((prev) => Math.max(0, Math.trunc(prev)))}
-                    style={{
-                      padding: 8,
-                      borderRadius: 8,
-                      border: "1px solid var(--border)",
-                      width: 96,
-                    }}
-                  />
-                  <button
-                    disabled={isRunning}
-                    onClick={runReminderForRoundNow}
-                    style={{ ...btnStyle, ...buttonStateStyle }}
-                  >
-                    Send Tip Reminders Now
-                  </button>
-                  <span style={dangerBadgeStyle}>Force</span>
-                </div>
+              <div style={{ ...summaryStyle, marginTop: 10 }}>
+                Manual override is available in the Round Command Center via <b>Send reminder</b>.
               </div>
             </div>
 

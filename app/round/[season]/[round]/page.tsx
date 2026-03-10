@@ -270,6 +270,19 @@ export default function RoundPage() {
     return oddsHaveCount < matches.length;
   }, [matches.length, oddsHaveCount]);
 
+  const oddsLoadedForRound = useMemo(() => {
+    return matches.length > 0 && oddsHaveCount >= matches.length;
+  }, [matches.length, oddsHaveCount]);
+
+  const oddsLoadedAtIso = useMemo(() => {
+    const captured = Object.values(oddsByMatchId)
+      .map((row) => new Date(row.captured_at_utc).getTime())
+      .filter((ms) => Number.isFinite(ms));
+
+    if (!captured.length) return null;
+    return new Date(Math.max(...captured)).toISOString();
+  }, [oddsByMatchId]);
+
   // Start polling only within 36 hours of lock time.
   const snapshotDueMs = useMemo(() => {
     if (!lockMs) return null;
@@ -870,18 +883,26 @@ export default function RoundPage() {
           </div>
 
           <div className="ui-card ui-tone-warning">
-            <div className="ui-kicker">Odds due to be loaded</div>
+            <div className="ui-kicker">
+              {oddsLoadedForRound ? "Odds loaded date and time" : "Odds due to be loaded"}
+            </div>
             <div className="ui-value">
-              {oddsExpectedFromIso ? formatMelbourne(oddsExpectedFromIso) : "TBC"}
+              {oddsLoadedForRound
+                ? formatMelbourne(oddsLoadedAtIso ?? snapshotForTimeUtc ?? oddsExpectedFromIso ?? new Date().toISOString())
+                : oddsExpectedFromIso
+                ? formatMelbourne(oddsExpectedFromIso)
+                : "TBC"}
             </div>
             <div className="ui-meta">
-              {!snapshotDueMs && "Waiting for lock time"}
-              {!!snapshotDueMs && nowMs < snapshotDueMs && `Due in ${oddsExpectedCountdown}`}
-              {!!snapshotDueMs &&
-                nowMs >= snapshotDueMs &&
-                !isLocked &&
-                "Loading window is open"}
-              {!!snapshotDueMs && nowMs >= snapshotDueMs && isLocked && "Should already be loaded"}
+              {oddsLoadedForRound
+                ? "Loaded for all matches"
+                : !snapshotDueMs
+                ? "Waiting for lock time"
+                : nowMs < snapshotDueMs
+                ? `Due in ${oddsExpectedCountdown}`
+                : nowMs >= snapshotDueMs && !isLocked
+                ? "Loading window is open"
+                : "Should already be loaded"}
             </div>
             {!!matches.length && (
               <div className="ui-caption" style={{ marginTop: 4 }}>

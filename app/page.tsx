@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { supabaseBrowser } from "@/lib/supabase-browser";
 import { waitForSession } from "@/lib/session-client";
 
 const CURRENT_SEASON = 2026;
@@ -83,7 +82,6 @@ export default function HomePage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [rounds, setRounds] = useState<RoundStatusRow[]>([]);
   const [me, setMe] = useState<LeaderboardRow | null>(null);
-  const [unreadChat, setUnreadChat] = useState(0);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
@@ -164,49 +162,6 @@ export default function HomePage() {
     };
   }, [token, userId]);
 
-  useEffect(() => {
-    if (!userId) return;
-    if (typeof window === "undefined") return;
-
-    let alive = true;
-    const lastSeenRaw = window.localStorage.getItem("chat_last_seen_ms");
-    const lastSeen = Number(lastSeenRaw ?? "");
-
-    if (!lastSeenRaw) {
-      const resetTimer = window.setTimeout(() => {
-        if (alive) setUnreadChat(0);
-      }, 0);
-      return () => {
-        alive = false;
-        window.clearTimeout(resetTimer);
-      };
-    }
-
-    if (!Number.isFinite(lastSeen) || lastSeen <= 0) {
-      const resetTimer = window.setTimeout(() => {
-        if (alive) setUnreadChat(0);
-      }, 0);
-      return () => {
-        alive = false;
-        window.clearTimeout(resetTimer);
-      };
-    }
-
-    (async () => {
-      const sinceIso = new Date(lastSeen).toISOString();
-      const { count, error } = await supabaseBrowser
-        .from("chat_messages")
-        .select("id", { count: "exact", head: true })
-        .gt("created_at", sinceIso);
-      if (!alive || error) return;
-      setUnreadChat(count ?? 0);
-    })();
-
-    return () => {
-      alive = false;
-    };
-  }, [userId]);
-
   const currentRound = useMemo(() => {
     if (!rounds.length) return null;
     const sorted = [...rounds].sort((a, b) => a.round_number - b.round_number);
@@ -227,7 +182,7 @@ export default function HomePage() {
   const alerts = useMemo(() => {
     const out: string[] = [];
     if (me?.payment_status === "pending") {
-      out.push("Payment is pending. Tipping may be locked until payment is marked paid or waived.");
+      out.push("Payment is pending. Tipping may be locked until payment is marked paid.");
     }
     if (currentRound && locked) {
       out.push(`Round ${currentRound.round_number} is locked.`);
@@ -314,20 +269,6 @@ export default function HomePage() {
         </div>
       )}
 
-      {!msg && (
-        <div className="ui-card" style={{ marginTop: 12 }}>
-          <div className="ui-kicker">Quick links</div>
-          <div className="ui-row-wrap" style={{ marginTop: 10, gap: 10 }}>
-            <Link className="ui-btn" href={`/round/${CURRENT_SEASON}`}>Tip</Link>
-            <Link className="ui-btn" href={`/leaderboard/${CURRENT_SEASON}`}>Leaderboard</Link>
-            <Link className="ui-btn" href={`/results/${CURRENT_SEASON}`}>Results</Link>
-            <Link className="ui-btn" href="/chat">
-              Chat{unreadChat > 0 ? ` (${unreadChat})` : ""}
-            </Link>
-            <Link className="ui-btn" href="/info">How it works</Link>
-          </div>
-        </div>
-      )}
     </main>
   );
 }

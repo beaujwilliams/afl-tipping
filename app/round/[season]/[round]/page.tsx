@@ -829,54 +829,34 @@ export default function RoundPage() {
   }
 
   return (
-    <main style={{ maxWidth: 1000, margin: "40px auto", padding: 16 }}>
-      <h1>
+    <main className="ui-page ui-page--content">
+      <h1 className="ui-title">
         Round {round} • {season}
       </h1>
 
       {roundRow && (
         <div
+          className="ui-card-grid ui-card-grid--3"
           style={{
             marginTop: 12,
-            display: "grid",
-            gap: 12,
-            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
           }}
         >
-          <div
-            style={{
-              padding: 14,
-              borderRadius: 12,
-              border: "1px solid rgba(0,0,0,0.12)",
-              background: "rgba(34, 197, 94, 0.06)",
-            }}
-          >
-            <div style={{ fontWeight: 800, fontSize: 12, opacity: 0.75 }}>
-              TIPS CLOSE
-            </div>
-            <div style={{ marginTop: 6, fontSize: 22, fontWeight: 800, lineHeight: 1.2 }}>
+          <div className="ui-card ui-tone-success">
+            <div className="ui-kicker">Tips close</div>
+            <div className="ui-value">
               {formatMelbourne(roundRow.lock_time_utc)}
             </div>
-            <div style={{ marginTop: 6, fontSize: 13, opacity: 0.85 }}>
+            <div className="ui-meta">
               {isLocked ? "Closed" : `Closes in ${lockCountdown}`}
             </div>
           </div>
 
-          <div
-            style={{
-              padding: 14,
-              borderRadius: 12,
-              border: "1px solid rgba(0,0,0,0.12)",
-              background: "rgba(245, 158, 11, 0.10)",
-            }}
-          >
-            <div style={{ fontWeight: 800, fontSize: 12, opacity: 0.75 }}>
-              ODDS DUE TO BE LOADED
-            </div>
-            <div style={{ marginTop: 6, fontSize: 22, fontWeight: 800, lineHeight: 1.2 }}>
+          <div className="ui-card ui-tone-warning">
+            <div className="ui-kicker">Odds due to be loaded</div>
+            <div className="ui-value">
               {oddsExpectedFromIso ? formatMelbourne(oddsExpectedFromIso) : "TBC"}
             </div>
-            <div style={{ marginTop: 6, fontSize: 13, opacity: 0.85 }}>
+            <div className="ui-meta">
               {!snapshotDueMs && "Waiting for lock time"}
               {!!snapshotDueMs && nowMs < snapshotDueMs && `Due in ${oddsExpectedCountdown}`}
               {!!snapshotDueMs &&
@@ -886,27 +866,18 @@ export default function RoundPage() {
               {!!snapshotDueMs && nowMs >= snapshotDueMs && isLocked && "Should already be loaded"}
             </div>
             {!!matches.length && (
-              <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75 }}>
+              <div className="ui-caption" style={{ marginTop: 4 }}>
                 Loaded for {oddsHaveCount}/{matches.length} matches
               </div>
             )}
           </div>
 
-          <div
-            style={{
-              padding: 14,
-              borderRadius: 12,
-              border: "1px solid rgba(0,0,0,0.12)",
-              background: "rgba(59, 130, 246, 0.08)",
-            }}
-          >
-            <div style={{ fontWeight: 800, fontSize: 12, opacity: 0.75 }}>
-              YOUR SAVED TIPS
-            </div>
-            <div style={{ marginTop: 6, fontSize: 22, fontWeight: 800, lineHeight: 1.2 }}>
+          <div className="ui-card ui-tone-info">
+            <div className="ui-kicker">Your saved tips</div>
+            <div className="ui-value">
               {tippedCount}/{matches.length || 0}
             </div>
-            <div style={{ marginTop: 6, fontSize: 13, opacity: 0.85 }}>
+            <div className="ui-meta">
               {isLocked
                 ? "Locked"
                 : `${Math.max(matches.length - tippedCount, 0)} left to tip`}
@@ -917,13 +888,8 @@ export default function RoundPage() {
 
       {showSnapshotMissedAlert && (
         <div
-          style={{
-            marginTop: 12,
-            padding: 14,
-            borderRadius: 12,
-            border: "1px solid rgba(220, 38, 38, 0.35)",
-            background: "rgba(220, 38, 38, 0.08)",
-          }}
+          className="ui-card ui-tone-danger"
+          style={{ marginTop: 12 }}
         >
           <div style={{ fontWeight: 900, color: "crimson" }}>
             ⚠️ Scoring odds are still missing for this locked round.
@@ -936,50 +902,35 @@ export default function RoundPage() {
       )}
 
       {!!matches.length && oddsInfo.startsWith("Odds not loaded:") && (
-        <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>{oddsInfo}</div>
+        <div style={{ marginTop: 8 }} className="ui-caption">{oddsInfo}</div>
       )}
 
       {showRefreshHint && (
         <div
-          style={{
-            marginTop: 12,
-            padding: 14,
-            borderRadius: 12,
-            border: "1px solid rgba(0,0,0,0.10)",
-            background: "rgba(59, 130, 246, 0.10)",
-          }}
+          className="ui-card ui-tone-info"
+          style={{ marginTop: 12 }}
         >
           <div style={{ fontWeight: 800 }}>Still waiting on odds.</div>
-          <div style={{ marginTop: 6, fontSize: 12, opacity: 0.85 }}>
+          <div style={{ marginTop: 6 }} className="ui-caption">
             We’ll stop auto-checking to save requests. Refresh this page to check again.
           </div>
           <button
             onClick={() => window.location.reload()}
-            style={{
-              marginTop: 10,
-              padding: "10px 12px",
-              borderRadius: 10,
-              border: "1px solid rgba(0,0,0,0.18)",
-              background: "white",
-              fontWeight: 700,
-              cursor: "pointer",
-            }}
+            className="ui-btn"
+            style={{ marginTop: 10, padding: "10px 12px" }}
           >
             Refresh now
           </button>
         </div>
       )}
 
-      {msg && <p style={{ marginTop: 16 }}>{msg}</p>}
+      {msg && <p style={{ marginTop: 16 }} className="ui-caption">{msg}</p>}
 
       {!!matches.length && (
         <div
+          className="ui-card ui-card-soft"
           style={{
             marginTop: 18,
-            padding: 14,
-            borderRadius: 12,
-            border: "1px solid rgba(0,0,0,0.10)",
-            background: "rgba(0,0,0,0.02)",
           }}
         >
           <div
@@ -1000,11 +951,11 @@ export default function RoundPage() {
             </div>
 
             {isLocked ? (
-              <div style={{ fontWeight: 700, color: "crimson" }}>LOCKED</div>
+              <div className="ui-badge ui-badge--locked">LOCKED</div>
             ) : paymentLocked ? (
-              <div style={{ fontWeight: 700, color: "crimson" }}>PAYMENT LOCK</div>
+              <div className="ui-badge ui-badge--locked">PAYMENT LOCK</div>
             ) : (
-              <div style={{ fontWeight: 700, color: "green" }}>OPEN</div>
+              <div className="ui-badge ui-badge--open">OPEN</div>
             )}
           </div>
 
@@ -1036,13 +987,8 @@ export default function RoundPage() {
 
       {paymentLocked && !isLocked && (
         <div
-          style={{
-            marginTop: 12,
-            padding: 14,
-            borderRadius: 12,
-            border: "1px solid rgba(220, 38, 38, 0.35)",
-            background: "rgba(220, 38, 38, 0.08)",
-          }}
+          className="ui-card ui-tone-danger"
+          style={{ marginTop: 12 }}
         >
           <div style={{ fontWeight: 900, color: "crimson" }}>
             Tipping is locked until payment is marked paid or waived.
@@ -1056,74 +1002,46 @@ export default function RoundPage() {
       {/* ✅ NEW: Everyone’s tips section (only after lock) */}
       {isLocked && (
         <div
+          className="ui-card ui-card-soft"
           style={{
             marginTop: 16,
-            padding: 14,
-            borderRadius: 14,
-            border: "1px solid var(--border)",
-            background: "var(--card-soft)",
           }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
             <div style={{ fontWeight: 900, fontSize: 16 }}>Everyone’s tips</div>
-            <div style={{ fontSize: 12, opacity: 0.7 }}>
+            <div className="ui-caption">
               Sorted by potential total
             </div>
           </div>
 
           {lockedTipsMsg && (
-            <div style={{ marginTop: 10, fontSize: 12, color: "crimson" }}>
+            <div style={{ marginTop: 10 }} className="ui-caption">
               {lockedTipsMsg}
             </div>
           )}
 
           {lockedTips === null ? (
-            <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
+            <div style={{ marginTop: 10 }} className="ui-caption">
               Loading everyone’s tips…
             </div>
           ) : lockedTips.length === 0 ? (
-            <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
+            <div style={{ marginTop: 10 }} className="ui-caption">
               No tips found (or tips table not available yet).
             </div>
           ) : (
             <>
-              <div
-                style={{
-                  marginTop: 12,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  flexWrap: "wrap",
-                }}
-              >
+              <div className="ui-row-wrap" style={{ marginTop: 12, alignItems: "center", gap: 10 }}>
                 <input
                   value={lockedTipsSearch}
                   onChange={(e) => setLockedTipsSearch(e.target.value)}
                   placeholder="Search member..."
-                  style={{
-                    flex: "1 1 240px",
-                    minWidth: 180,
-                    padding: "9px 11px",
-                    borderRadius: 10,
-                    border: "1px solid var(--border)",
-                    background: "var(--card)",
-                    color: "var(--foreground)",
-                  }}
+                  className="ui-input"
                 />
 
                 <button
                   type="button"
                   onClick={() => setShowLockedTipsInfo((prev) => !prev)}
-                  style={{
-                    padding: "8px 10px",
-                    borderRadius: 10,
-                    border: "1px solid var(--border)",
-                    background: "var(--card)",
-                    color: "var(--foreground)",
-                    fontWeight: 800,
-                    fontSize: 12,
-                    cursor: "pointer",
-                  }}
+                  className="ui-btn"
                 >
                   {showLockedTipsInfo ? "Hide info" : "What do these mean?"}
                 </button>
@@ -1132,18 +1050,7 @@ export default function RoundPage() {
                   type="button"
                   onClick={jumpToMyTips}
                   disabled={!userId || !(lockedTips ?? []).some((p) => p.user_id === userId)}
-                  style={{
-                    padding: "8px 10px",
-                    borderRadius: 10,
-                    border: "1px solid var(--border)",
-                    background: "var(--card)",
-                    color: "var(--foreground)",
-                    fontWeight: 800,
-                    fontSize: 12,
-                    cursor:
-                      !userId || !(lockedTips ?? []).some((p) => p.user_id === userId) ? "not-allowed" : "pointer",
-                    opacity: !userId || !(lockedTips ?? []).some((p) => p.user_id === userId) ? 0.55 : 1,
-                  }}
+                  className="ui-btn"
                 >
                   Jump to me
                 </button>
@@ -1152,34 +1059,14 @@ export default function RoundPage() {
                   type="button"
                   onClick={toggleExpandAllVisible}
                   disabled={visibleLockedTips.length === 0}
-                  style={{
-                    padding: "8px 10px",
-                    borderRadius: 10,
-                    border: "1px solid var(--border)",
-                    background: "var(--card)",
-                    color: "var(--foreground)",
-                    fontWeight: 800,
-                    fontSize: 12,
-                    cursor: visibleLockedTips.length === 0 ? "not-allowed" : "pointer",
-                    opacity: visibleLockedTips.length === 0 ? 0.55 : 1,
-                  }}
+                  className="ui-btn"
                 >
                   {allVisibleExpanded ? "Collapse all" : "Expand all"}
                 </button>
               </div>
 
               {showLockedTipsInfo && (
-                <div
-                  style={{
-                    marginTop: 10,
-                    padding: "10px 12px",
-                    borderRadius: 10,
-                    border: "1px solid var(--border)",
-                    background: "var(--card)",
-                    fontSize: 12,
-                    lineHeight: 1.45,
-                  }}
-                >
+                <div className="ui-card" style={{ marginTop: 10, padding: "10px 12px", fontSize: 12, lineHeight: 1.45 }}>
                   <div style={{ fontWeight: 900 }}>Underdogs tipped</div>
                   <div style={{ opacity: 0.88 }}>
                     Count of picks where the selected team had higher odds than the opponent.
@@ -1200,14 +1087,13 @@ export default function RoundPage() {
 
                     return (
                       <div
+                        className="ui-card"
                         key={p.user_id}
                         ref={(node) => {
                           lockedTipsRowRefs.current[p.user_id] = node;
                         }}
                         style={{
-                          border: "1px solid var(--border)",
-                          background: "var(--card)",
-                          borderRadius: 12,
+                          padding: 0,
                         }}
                       >
                         <button
@@ -1288,7 +1174,7 @@ export default function RoundPage() {
                                       paddingTop: 6,
                                     }}
                                   >
-                                    <div style={{ opacity: 0.9, display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                              <div style={{ opacity: 0.9, display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                                       <span>{matchTitleById[m.id] ?? `${m.home_team} vs ${m.away_team}`}</span>
                                     </div>
                                     <div style={{ fontWeight: 800, textAlign: "right" }}>
@@ -1333,10 +1219,8 @@ export default function RoundPage() {
           return (
             <div
               key={g.id}
+              className="ui-card"
               style={{
-                border: "1px solid #eee",
-                borderRadius: 12,
-                padding: 16,
                 marginBottom: 16,
                 opacity: isLocked ? 0.98 : 1,
               }}

@@ -330,23 +330,19 @@ export default function LeaderboardPage() {
   }
 
   return (
-    <main style={{ maxWidth: 1250, margin: "32px auto", padding: 16 }}>
-      <h1>Leaderboard • {season}</h1>
+    <main className="ui-page ui-page--wide">
+      <h1 className="ui-title">Leaderboard • {season}</h1>
 
-      {msg && <p style={{ marginTop: 16 }}>{msg}</p>}
+      {msg && <p style={{ marginTop: 16 }} className="ui-caption">{msg}</p>}
 
       {!msg && (
         <>
           <div
-            style={{
-              marginTop: 12,
-              border: "1px solid var(--border)",
-              borderRadius: 12,
-              overflow: "hidden",
-            }}
+            className="ui-card"
+            style={{ marginTop: 12, padding: 0, overflow: "hidden" }}
           >
             {rows.length === 0 ? (
-              <div style={{ padding: 16, opacity: 0.82 }}>No leaderboard data yet.</div>
+              <div style={{ padding: 16 }} className="ui-caption">No leaderboard data yet.</div>
             ) : (
               <div style={{ overflowX: "auto" }}>
                 {isMobile && (
@@ -361,22 +357,14 @@ export default function LeaderboardPage() {
                       background: "var(--card-soft)",
                     }}
                   >
-                    <div style={{ fontSize: 12, opacity: 0.8 }}>
+                    <div className="ui-caption">
                       {showMoreMobileStats ? "Showing all stats" : "Showing always-on stats"}
                     </div>
                     <button
                       type="button"
                       onClick={() => setShowMoreMobileStats((prev) => !prev)}
-                      style={{
-                        border: "1px solid var(--border)",
-                        borderRadius: 8,
-                        padding: "6px 10px",
-                        background: "var(--card)",
-                        color: "inherit",
-                        fontSize: 12,
-                        fontWeight: 700,
-                        cursor: "pointer",
-                      }}
+                      className="ui-btn"
+                      style={{ padding: "6px 10px" }}
                     >
                       {showMoreMobileStats ? "Show fewer" : "More stats"}
                     </button>

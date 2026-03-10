@@ -286,32 +286,21 @@ export default function SeasonRoundsPage() {
   const currentRoundTipsPossible = currentRoundStatus?.total_matches ?? 0;
 
   return (
-    <main style={{ maxWidth: 900, margin: "26px auto", padding: 16 }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "baseline",
-          justifyContent: "space-between",
-          gap: 12,
-          flexWrap: "wrap",
-        }}
-      >
-        <h1 style={{ margin: 0, fontSize: 40, letterSpacing: -0.5 }}>Tip</h1>
-        <div style={{ opacity: 0.7, fontSize: 12 }}>All times shown in Melbourne</div>
+    <main className="ui-page ui-page--narrow">
+      <div className="ui-page-header">
+        <h1 className="ui-title">Tip</h1>
+        <div className="ui-caption">All times shown in Melbourne</div>
       </div>
 
-      {msg && <p style={{ marginTop: 14, opacity: 0.8 }}>{msg}</p>}
+      {msg && <p style={{ marginTop: 14 }} className="ui-caption">{msg}</p>}
 
-      {!msg && !hasRows && <div style={{ marginTop: 16, opacity: 0.75 }}>No tip rounds found.</div>}
+      {!msg && !hasRows && <div style={{ marginTop: 16 }} className="ui-caption">No tip rounds found.</div>}
 
       {!msg && hasRows && currentRound && (
         <div
+          className="ui-card ui-card-soft"
           style={{
             marginTop: 16,
-            border: "1px solid var(--border)",
-            borderRadius: 16,
-            padding: 14,
-            background: "var(--card-soft)",
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
@@ -320,13 +309,13 @@ export default function SeasonRoundsPage() {
           }}
         >
           <div style={{ display: "grid", gap: 6 }}>
-            <div style={{ fontWeight: 900, fontSize: 17 }}>Current round: Round {currentRound.round_number}</div>
-            <div style={{ fontSize: 13, opacity: 0.78 }}>
+            <div className="ui-title--section">Current round: Round {currentRound.round_number}</div>
+            <div className="ui-meta">
               {currentRoundLocked
                 ? `Locked ${fmtMelbourneShort(currentRound.lock_time_utc)}`
                 : `Locks in ${currentRoundCountdown} (${fmtMelbourneShort(currentRound.lock_time_utc)})`}
             </div>
-            <div style={{ fontSize: 13, opacity: 0.86 }}>
+            <div className="ui-meta">
               Your tips:{" "}
               <b>
                 {currentRoundTipsPlaced}/{currentRoundTipsPossible || "—"}
@@ -336,16 +325,8 @@ export default function SeasonRoundsPage() {
 
           <Link
             href={`/round/${season}/${currentRound.round_number}`}
-            style={{
-              padding: "10px 14px",
-              borderRadius: 12,
-              border: "1px solid var(--border)",
-              background: "var(--card)",
-              color: "var(--foreground)",
-              fontWeight: 900,
-              textDecoration: "none",
-              whiteSpace: "nowrap",
-            }}
+            className="ui-btn"
+            style={{ padding: "10px 14px" }}
           >
             {currentRoundLocked ? "View round" : "Continue tipping"}
           </Link>
@@ -398,13 +379,8 @@ export default function SeasonRoundsPage() {
               <div key={r.id}>
                 <Link
                   href={`/round/${season}/${r.round_number}`}
+                  className="ui-card ui-card-soft"
                   style={{
-                    border: "1px solid rgba(255,255,255,0.14)",
-                    borderRadius: 18,
-                    padding: "16px 16px",
-                    textDecoration: "none",
-                    color: "var(--foreground)",
-                    background: "rgba(255,255,255,0.04)",
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "center",
@@ -443,18 +419,7 @@ export default function SeasonRoundsPage() {
                   </div>
 
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 900,
-                        padding: "8px 10px",
-                        borderRadius: 999,
-                        border: "1px solid rgba(255,255,255,0.16)",
-                        background: locked ? "rgba(239,68,68,0.12)" : "rgba(34,197,94,0.12)",
-                        color: locked ? "rgb(239,68,68)" : "rgb(34,197,94)",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
+                    <div className={`ui-badge ${locked ? "ui-badge--locked" : "ui-badge--open"}`}>
                       {locked ? "LOCKED" : "OPEN"}
                     </div>
 
@@ -478,16 +443,7 @@ export default function SeasonRoundsPage() {
                             }));
                           }
                         }}
-                        style={{
-                          padding: "8px 10px",
-                          borderRadius: 999,
-                          border: "1px solid rgba(255,255,255,0.16)",
-                          background: "rgba(255,255,255,0.06)",
-                          color: "var(--foreground)",
-                          fontWeight: 900,
-                          cursor: "pointer",
-                          whiteSpace: "nowrap",
-                        }}
+                        className="ui-btn ui-btn--pill"
                       >
                         {isOpen ? "Hide lists" : "Tip lists"}
                       </button>
@@ -497,15 +453,7 @@ export default function SeasonRoundsPage() {
 
                 {/* Admin expandable list */}
                 {isAdmin && isOpen && status?.missing_players && (
-                  <div
-                    style={{
-                      marginTop: 10,
-                      border: "1px solid rgba(255,255,255,0.12)",
-                      borderRadius: 16,
-                      padding: 14,
-                      background: "rgba(255,255,255,0.03)",
-                    }}
-                  >
+                  <div className="ui-card ui-card-soft" style={{ marginTop: 10 }}>
                     <div
                       style={{
                         display: "flex",
@@ -521,50 +469,24 @@ export default function SeasonRoundsPage() {
                       </div>
                     </div>
 
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        flexWrap: "wrap",
-                        marginBottom: 10,
-                      }}
-                    >
+                    <div className="ui-row-wrap" style={{ marginBottom: 10 }}>
                       <button
                         type="button"
                         onClick={() =>
                           setOpenRoundTabById((prev) => ({ ...prev, [r.id]: "missing" }))
                         }
-                        style={{
-                          padding: "7px 11px",
-                          borderRadius: 999,
-                          border: "1px solid rgba(255,255,255,0.16)",
-                          background:
-                            openTab === "missing"
-                              ? "rgba(239,68,68,0.16)"
-                              : "rgba(255,255,255,0.06)",
-                          color: "var(--foreground)",
-                          fontWeight: 900,
-                          cursor: "pointer",
-                        }}
+                        className={`ui-btn ui-btn--pill ${
+                          openTab === "missing" ? "ui-btn--active-danger" : ""
+                        }`}
                       >
                         Not tipped ({missingPlayers.length})
                       </button>
 
                       <button
                         type="button"
-                        style={{
-                          padding: "7px 11px",
-                          borderRadius: 999,
-                          border: "1px solid rgba(255,255,255,0.16)",
-                          background:
-                            openTab === "tipped"
-                              ? "rgba(34,197,94,0.16)"
-                              : "rgba(255,255,255,0.06)",
-                          color: "var(--foreground)",
-                          fontWeight: 900,
-                          cursor: "pointer",
-                        }}
+                        className={`ui-btn ui-btn--pill ${
+                          openTab === "tipped" ? "ui-btn--active-success" : ""
+                        }`}
                         onClick={() =>
                           setOpenRoundTabById((prev) => ({ ...prev, [r.id]: "tipped" }))
                         }
@@ -573,30 +495,14 @@ export default function SeasonRoundsPage() {
                       </button>
                     </div>
 
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        flexWrap: "wrap",
-                        marginBottom: 10,
-                      }}
-                    >
+                    <div className="ui-row-wrap" style={{ marginBottom: 10 }}>
                       <input
                         value={search}
                         onChange={(e) =>
                           setTipListSearchByRoundId((prev) => ({ ...prev, [r.id]: e.target.value }))
                         }
                         placeholder={`Search ${openTab === "missing" ? "not tipped" : "tipped"} members...`}
-                        style={{
-                          flex: "1 1 240px",
-                          minWidth: 180,
-                          padding: "8px 10px",
-                          borderRadius: 10,
-                          border: "1px solid rgba(255,255,255,0.16)",
-                          background: "rgba(255,255,255,0.04)",
-                          color: "var(--foreground)",
-                        }}
+                        className="ui-input"
                       />
 
                       {openTab === "missing" && (
@@ -604,22 +510,7 @@ export default function SeasonRoundsPage() {
                           type="button"
                           onClick={() => sendRoundReminders(r.id, r.round_number)}
                           disabled={reminderRunningRoundId === r.id || missingPlayers.length === 0}
-                          style={{
-                            padding: "8px 10px",
-                            borderRadius: 999,
-                            border: "1px solid rgba(255,255,255,0.16)",
-                            background:
-                              reminderRunningRoundId === r.id
-                                ? "rgba(255,255,255,0.06)"
-                                : "rgba(239,68,68,0.14)",
-                            color: "var(--foreground)",
-                            fontWeight: 900,
-                            cursor:
-                              reminderRunningRoundId === r.id || missingPlayers.length === 0
-                                ? "not-allowed"
-                                : "pointer",
-                            opacity: missingPlayers.length === 0 ? 0.6 : 1,
-                          }}
+                          className="ui-btn ui-btn--pill ui-btn--danger-soft"
                         >
                           {reminderRunningRoundId === r.id ? "Sending…" : "Send reminders now"}
                         </button>

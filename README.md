@@ -47,3 +47,16 @@ Required GitHub settings:
 
 - Secret: `CRON_SECRET` (must match production `CRON_SECRET`)
 - Optional repository variable: `SITE_URL` (defaults to `https://www.complicatedtips.com`)
+
+## Scheduled Odds Snapshot
+
+This repo includes a GitHub Actions workflow at `.github/workflows/snapshot-odds.yml` that runs every 10 minutes and calls:
+
+`/api/admin/snapshot-odds-all-due?season=2026`
+
+The endpoint only captures odds when a round is due (36 hours before round lock), so frequent polling is safe and keeps capture close to the exact due time.
+
+Required GitHub settings:
+
+- Secret: `CRON_SECRET` (must match production `CRON_SECRET`)
+- Optional repository variable: `SITE_URL` (defaults to `https://www.complicatedtips.com`)

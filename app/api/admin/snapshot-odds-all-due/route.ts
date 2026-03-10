@@ -16,7 +16,11 @@ function computeSnapshotDueTimeUtc(lockTimeUtcIso: string): string {
   return new Date(dueMs).toISOString();
 }
 
-type RoundRow = { round_number: number; lock_time_utc: string };
+type RoundRow = {
+  round_number: number;
+  lock_time_utc: string;
+  odds_snapshot_for_time_utc: string | null;
+};
 
 export async function GET(req: Request) {
   try {
@@ -44,7 +48,7 @@ export async function GET(req: Request) {
     // Fetch rounds
     let q = supabase
       .from("rounds")
-      .select("round_number, lock_time_utc")
+      .select("round_number, lock_time_utc, odds_snapshot_for_time_utc")
       .eq("competition_id", comp.id)
       .eq("season", season)
       .order("round_number", { ascending: true });
@@ -78,18 +82,26 @@ export async function GET(req: Request) {
     const enriched = (rounds as RoundRow[]).map((r) => {
       const snapshotForTimeUtc = computeSnapshotDueTimeUtc(r.lock_time_utc);
       const due = now >= new Date(snapshotForTimeUtc);
+      const alreadyCaptured = String(r.odds_snapshot_for_time_utc ?? "") === snapshotForTimeUtc;
       return {
         round_number: r.round_number,
         lock_time_utc: r.lock_time_utc,
+        storedSnapshotForTimeUtc: r.odds_snapshot_for_time_utc,
         snapshotForTimeUtc,
         due,
+        alreadyCaptured,
       };
     });
+
+    const nextUpcomingPendingRound =
+      enriched.find((r) => !r.due && !r.alreadyCaptured) ?? null;
+    const firstDuePendingRound =
+      enriched.find((r) => r.due && !r.alreadyCaptured) ?? null;
 
     // Decide which single round to act on
     // - If ?round= is provided, list is already restricted to that one.
     // - Otherwise:
-    //    * normal mode: pick first due round (in round order)
+    //    * normal mode: pick first due round that has not already been captured
     //    * force mode: pick next upcoming round (first not-due); if none, fall back to last
     let target: (typeof enriched)[number] | null = null;
 
@@ -97,9 +109,12 @@ export async function GET(req: Request) {
       target = enriched[0] ?? null;
     } else if (force) {
       target =
-        enriched.find((r) => !r.due) ?? enriched[enriched.length - 1] ?? null;
+        nextUpcomingPendingRound ??
+        enriched.find((r) => !r.due) ??
+        enriched[enriched.length - 1] ??
+        null;
     } else {
-      target = enriched.find((r) => r.due) ?? enriched[0] ?? null;
+      target = firstDuePendingRound;
     }
 
     if (!target) {
@@ -108,32 +123,51 @@ export async function GET(req: Request) {
         season,
         processedDueRounds: 0,
         capturedRounds: 0,
-        next: null,
+        skipped_reason: "no_due_rounds_pending_capture",
+        next: nextUpcomingPendingRound
+          ? {
+              round: nextUpcomingPendingRound.round_number,
+              due: false,
+              alreadyCaptured: false,
+              snapshotForTimeUtc: nextUpcomingPendingRound.snapshotForTimeUtc,
+              lockTimeUtc: nextUpcomingPendingRound.lock_time_utc,
+            }
+          : null,
         results: [],
       });
     }
 
-    const shouldRun = force || target.due;
+    const shouldRun = force || (target.due && !target.alreadyCaptured);
 
-    // If we’re not running (not due yet and not forced), return single “next”
+    // If we’re not running (not due yet / already captured and not forced), return single “next”
     if (!shouldRun) {
+      const skippedReason = target.due
+        ? "already_captured_for_due_snapshot"
+        : "not_due_yet";
       return NextResponse.json({
         ok: true,
         season,
         processedDueRounds: 0,
         capturedRounds: 0,
+        skipped_reason: skippedReason,
         next: {
           round: target.round_number,
-          due: false,
+          due: target.due,
+          alreadyCaptured: target.alreadyCaptured,
+          storedSnapshotForTimeUtc: target.storedSnapshotForTimeUtc,
           snapshotForTimeUtc: target.snapshotForTimeUtc,
           lockTimeUtc: target.lock_time_utc,
         },
         results: [
           {
             round: target.round_number,
-            due: false,
+            due: target.due,
+            alreadyCaptured: target.alreadyCaptured,
             snapshotForTimeUtc: target.snapshotForTimeUtc,
-            note: "Not due yet",
+            note:
+              skippedReason === "already_captured_for_due_snapshot"
+                ? "Already captured for this due snapshot"
+                : "Not due yet",
           },
         ],
       });
@@ -158,7 +192,7 @@ export async function GET(req: Request) {
     const res = await fetch(snapUrl, { headers, cache: "no-store" });
     const text = await res.text();
 
-    let json: any;
+    let json: unknown;
     try {
       json = JSON.parse(text);
     } catch {
@@ -169,7 +203,12 @@ export async function GET(req: Request) {
       };
     }
 
-    const capturedRounds = res.status === 200 && json?.ok ? 1 : 0;
+    const jsonOk =
+      typeof json === "object" &&
+      json !== null &&
+      "ok" in json &&
+      (json as { ok?: unknown }).ok === true;
+    const capturedRounds = res.status === 200 && jsonOk ? 1 : 0;
 
     return NextResponse.json({
       ok: true,
@@ -179,23 +218,26 @@ export async function GET(req: Request) {
       snapshotHoursBeforeLock: SNAPSHOT_HOURS_BEFORE_LOCK,
       next: {
         round: target.round_number,
-        due: true,
+        due: target.due,
+        alreadyCaptured: target.alreadyCaptured,
         snapshotForTimeUtc: target.snapshotForTimeUtc,
         lockTimeUtc: target.lock_time_utc,
       },
       results: [
         {
           round: target.round_number,
-          due: true,
+          due: target.due,
+          alreadyCaptured: target.alreadyCaptured,
           snapshotForTimeUtc: target.snapshotForTimeUtc,
           status: res.status,
           snapshotResult: json,
         },
       ],
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
+    const details = e instanceof Error ? e.message : String(e);
     return NextResponse.json(
-      { error: "Unexpected error", details: e?.message ?? String(e) },
+      { error: "Unexpected error", details },
       { status: 500 }
     );
   }

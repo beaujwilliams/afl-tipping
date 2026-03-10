@@ -1,0 +1,34 @@
+name: Odds snapshot automation
+
+on:
+  schedule:
+    # Runs every 10 minutes; endpoint only captures when a round is due (36h before lock).
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  snapshot-next-due-round:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger odds snapshot endpoint
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SEASON: "2026"
+        run: |
+          set -euo pipefail
+
+          BASE_URL="${SITE_URL:-https://www.complicatedtips.com}"
+          BASE_URL="${BASE_URL%/}"
+
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "Missing GitHub secret: CRON_SECRET"
+            exit 1
+          fi
+
+          URL="${BASE_URL}/api/admin/snapshot-odds-all-due?season=${SEASON}"
+          echo "Calling ${URL}"
+
+          curl -fsS \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${URL}"

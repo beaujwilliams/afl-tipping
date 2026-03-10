@@ -19,10 +19,10 @@ export default function InfoPage() {
         }
       />
 
-      <section style={{ display: "grid", gap: 22, fontSize: 15, lineHeight: 1.6 }}>
-        <UiCard tone="danger">
-          <h2 style={{ marginBottom: 8 }}>Start here: season entry</h2>
-          <p style={{ margin: 0 }}>
+      <section style={{ display: "grid", gap: 22, marginTop: 16, fontSize: 15, lineHeight: 1.6 }}>
+        <UiCard tone="danger" style={{ padding: 22 }}>
+          <h2 style={{ marginBottom: 12 }}>Start here: season entry</h2>
+          <p style={{ margin: 0, lineHeight: 1.55 }}>
             Season entry is <b>$30</b>. Please send payment to <b>+61 423 190 713</b> when you join.
           </p>
         </UiCard>

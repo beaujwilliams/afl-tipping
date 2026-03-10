@@ -244,7 +244,7 @@ export default function AdminPage() {
           gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
         }}
       >
-        <section style={sectionCardStyle}>
+        <section style={{ ...sectionCardStyle, order: 4 }}>
           <h2 style={sectionTitleStyle}>Data Sync</h2>
           <div style={{ ...summaryStyle, marginTop: 8 }}>
             Keep rounds, fixtures and odds snapshots aligned for this season.
@@ -296,7 +296,7 @@ export default function AdminPage() {
           </div>
         </section>
 
-        <section style={sectionCardStyle}>
+        <section style={{ ...sectionCardStyle, order: 2 }}>
           <h2 style={sectionTitleStyle}>Comms</h2>
           <div style={{ ...summaryStyle, marginTop: 8 }}>
             Send reminder/recap emails and manage recap history.
@@ -411,7 +411,7 @@ export default function AdminPage() {
           </div>
         </section>
 
-        <section style={sectionCardStyle}>
+        <section style={{ ...sectionCardStyle, order: 3 }}>
           <h2 style={sectionTitleStyle}>Members</h2>
           <div style={{ ...summaryStyle, marginTop: 8 }}>
             Manage members, payment states, unpaid tip lock and seasonal settings.
@@ -436,7 +436,7 @@ export default function AdminPage() {
           </div>
         </section>
 
-        <section style={sectionCardStyle}>
+        <section style={{ ...sectionCardStyle, order: 1 }}>
           <h2 style={sectionTitleStyle}>Scoring</h2>
           <div style={{ ...summaryStyle, marginTop: 8 }}>
             Update finished game results and refresh season totals.

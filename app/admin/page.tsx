@@ -350,6 +350,16 @@ export default function AdminPage() {
     }
   }
 
+  const currentCommandRound = (() => {
+    if (commandCenterRounds.length === 0) return null;
+    const nextOpen = commandCenterRounds.find((round) => {
+      if (!round.lock_time_utc) return false;
+      const lockMs = new Date(round.lock_time_utc).getTime();
+      return Number.isFinite(lockMs) && Date.now() < lockMs;
+    });
+    return nextOpen ?? commandCenterRounds[commandCenterRounds.length - 1] ?? null;
+  })();
+
   return (
     <main style={{ maxWidth: 900, margin: "40px auto", padding: 16 }}>
       <h1>Admin Panel</h1>
@@ -405,14 +415,16 @@ export default function AdminPage() {
             <div style={{ marginTop: 12, fontSize: 13, opacity: 0.8 }}>{commandCenterMsg}</div>
           ) : (
             <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-              {commandCenterRounds.map((round) => {
-                const lockMs = round.lock_time_utc ? new Date(round.lock_time_utc).getTime() : null;
-                const isLocked = lockMs !== null && Date.now() >= lockMs;
-                const missing = round.missing_players ?? [];
-                const isOpen = openMissingRoundId === round.round_id;
+              {currentCommandRound ? (
+                (() => {
+                  const round = currentCommandRound;
+                  const lockMs = round.lock_time_utc ? new Date(round.lock_time_utc).getTime() : null;
+                  const isLocked = lockMs !== null && Date.now() >= lockMs;
+                  const missing = round.missing_players ?? [];
+                  const isOpen = openMissingRoundId === round.round_id;
 
-                return (
-                  <div key={round.round_id} style={toolCardStyle}>
+                  return (
+                    <div key={round.round_id} style={toolCardStyle}>
                     <div
                       style={{
                         display: "flex",
@@ -494,9 +506,12 @@ export default function AdminPage() {
                         )}
                       </div>
                     )}
-                  </div>
-                );
-              })}
+                    </div>
+                  );
+                })()
+              ) : (
+                <div style={{ fontSize: 13, opacity: 0.75 }}>No current round available.</div>
+              )}
             </div>
           )}
         </section>

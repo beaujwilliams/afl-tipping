@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
-import { UiTableHeadCell } from "@/components/ui";
+import { UiTableHeadCell, UiTableScroll, UiTableShell } from "@/components/ui";
 
 type Member = {
   user_id: string;
@@ -709,19 +709,11 @@ export default function AdminMembersPage() {
       {loading ? (
         <p style={{ marginTop: 16 }}>Loading…</p>
       ) : (
-        <div
-          style={{
-            marginTop: 14,
-            border: "1px solid var(--border)",
-            borderRadius: 14,
-            overflow: "hidden",
-            background: "var(--card)",
-          }}
-        >
+        <UiTableShell style={{ marginTop: 14 }}>
           {filteredMembers.length === 0 ? (
             <div style={{ padding: 16, opacity: 0.75 }}>No matching members.</div>
           ) : (
-            <div style={{ overflowX: "auto" }}>
+            <UiTableScroll>
               <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1080 }}>
                 <thead>
                   <tr style={{ background: "var(--card-soft)", textAlign: "left", fontSize: 12 }}>
@@ -887,9 +879,9 @@ export default function AdminMembersPage() {
                   })}
                 </tbody>
               </table>
-            </div>
+            </UiTableScroll>
           )}
-        </div>
+        </UiTableShell>
       )}
     </main>
   );

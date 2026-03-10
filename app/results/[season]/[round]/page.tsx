@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { UnpaidTag } from "@/components/UnpaidTag";
 import { ChampionCrown } from "@/components/ChampionCrown";
 import { waitForSession } from "@/lib/session-client";
+import { UiTableHeadCell, UiTableScroll, UiTableShell } from "@/components/ui";
 
 type MatchResultRow = {
   id: string;
@@ -350,19 +351,12 @@ export default function RoundResultsDetailPage() {
             </div>
           </div>
 
-          <div
-            style={{
-              marginTop: 12,
-              border: "1px solid var(--border)",
-              borderRadius: 14,
-              overflow: "hidden",
-            }}
-          >
+          <UiTableShell style={{ marginTop: 12 }}>
             <div style={{ padding: "12px 12px 8px", fontWeight: 900, fontSize: 15 }}>Round leaderboard</div>
             {players.length === 0 ? (
               <div style={{ padding: "0 12px 12px", opacity: 0.72, fontSize: 12 }}>No tips found for this round.</div>
             ) : (
-              <div style={{ overflowX: "auto" }}>
+              <UiTableScroll>
                 <table style={{ width: "100%", minWidth: 760, borderCollapse: "collapse" }}>
                   <thead>
                     <tr style={{ background: "var(--card-soft)", textAlign: "left", fontSize: 12 }}>
@@ -376,11 +370,9 @@ export default function RoundResultsDetailPage() {
                           ["Avg Correct Odds", "avg_correct_odds"],
                         ] as Array<[string, RoundSortKey]>
                       ).map(([label, key]) => (
-                        <th
+                        <UiTableHeadCell
                           key={key}
                           style={{
-                            padding: "10px 12px",
-                            borderBottom: "1px solid var(--border)",
                             whiteSpace: "nowrap",
                           }}
                         >
@@ -407,7 +399,7 @@ export default function RoundResultsDetailPage() {
                               {sortMarker(key)}
                             </span>
                           </button>
-                        </th>
+                        </UiTableHeadCell>
                       ))}
                     </tr>
                   </thead>
@@ -457,9 +449,9 @@ export default function RoundResultsDetailPage() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </UiTableScroll>
             )}
-          </div>
+          </UiTableShell>
 
           <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
             {matches.map((m) => {

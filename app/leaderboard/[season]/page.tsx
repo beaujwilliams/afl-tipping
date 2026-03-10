@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { UnpaidTag } from "@/components/UnpaidTag";
 import { ChampionCrown } from "@/components/ChampionCrown";
+import { UiTableHeadCell, UiTableScroll, UiTableShell } from "@/components/ui";
 
 type LeaderboardRow = {
   user_id: string;
@@ -296,10 +297,8 @@ export default function LeaderboardPage() {
 
   function sortableHeader(label: string, key: SortKey, stickyCol?: 1 | 2) {
     return (
-      <th
+      <UiTableHeadCell
         style={{
-          padding: "10px 12px",
-          borderBottom: "1px solid var(--border)",
           ...(stickyCol ? stickyColumnStyle(stickyCol, true) : {}),
         }}
       >
@@ -325,7 +324,7 @@ export default function LeaderboardPage() {
           <span>{label}</span>
           <span style={{ opacity: sortBy === key ? 1 : 0.45, fontSize: 11 }}>{sortMarker(key)}</span>
         </button>
-      </th>
+      </UiTableHeadCell>
     );
   }
 
@@ -337,14 +336,11 @@ export default function LeaderboardPage() {
 
       {!msg && (
         <>
-          <div
-            className="ui-card"
-            style={{ marginTop: 12, padding: 0, overflow: "hidden" }}
-          >
+          <UiTableShell style={{ marginTop: 12 }}>
             {rows.length === 0 ? (
               <div style={{ padding: 16 }} className="ui-caption">No leaderboard data yet.</div>
             ) : (
-              <div style={{ overflowX: "auto" }}>
+              <UiTableScroll>
                 {isMobile && (
                   <div
                     style={{
@@ -494,9 +490,9 @@ export default function LeaderboardPage() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </UiTableScroll>
             )}
-          </div>
+          </UiTableShell>
         </>
       )}
     </main>

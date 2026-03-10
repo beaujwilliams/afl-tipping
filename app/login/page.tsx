@@ -3,45 +3,17 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
-import { validateUsername } from "@/lib/username";
-
-const SIGNUP_COOLDOWN_MS = 60_000;
-const SIGNUP_COOLDOWN_KEY = "afl_last_signup_attempt_ms";
-
-function msLeftToCooldown(): number {
-  if (typeof window === "undefined") return 0;
-  const raw = window.localStorage.getItem(SIGNUP_COOLDOWN_KEY);
-  const last = raw ? Number(raw) : 0;
-  if (!last || Number.isNaN(last)) return 0;
-  const left = SIGNUP_COOLDOWN_MS - (Date.now() - last);
-  return Math.max(0, left);
-}
-
-function setCooldownNow() {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(SIGNUP_COOLDOWN_KEY, String(Date.now()));
-}
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [username, setUsername] = useState("");
-
   const [msg, setMsg] = useState<string | null>(null);
-
-  const [busySignIn, setBusySignIn] = useState(false);
-  const [busySignUp, setBusySignUp] = useState(false);
-
-  const busy = busySignIn || busySignUp;
-
-  const [cooldownLeftMs, setCooldownLeftMs] = useState<number>(() => msLeftToCooldown());
-  useEffect(() => {
-    // tick cooldown text while on page
-    const t = setInterval(() => setCooldownLeftMs(msLeftToCooldown()), 500);
-    return () => clearInterval(t);
-  }, []);
-
-  const canSignUp = useMemo(() => cooldownLeftMs === 0 && !busy, [cooldownLeftMs, busy]);
+  const [busy, setBusy] = useState(false);
+  const [callbackError] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return new URLSearchParams(window.location.search).get("error");
+  });
+  const displayMsg = useMemo(() => msg ?? callbackError, [msg, callbackError]);
 
   // ✅ Auto-forward if already logged in (initial check + auth change listener)
   useEffect(() => {
@@ -70,14 +42,14 @@ export default function LoginPage() {
     if (busy) return;
 
     setMsg(null);
-    setBusySignIn(true);
+    setBusy(true);
 
     const { error } = await supabaseBrowser.auth.signInWithPassword({
       email,
       password,
     });
 
-    setBusySignIn(false);
+    setBusy(false);
 
     if (error) {
       setMsg(error.message);
@@ -87,88 +59,21 @@ export default function LoginPage() {
     window.location.href = "/round/2026";
   }
 
-  async function signUp() {
-    if (busy) return;
-
-    const usernameValidation = validateUsername(username);
-    if (!usernameValidation.ok) {
-      setMsg(usernameValidation.error);
-      return;
-    }
-    const normalizedUsername = usernameValidation.value;
-
-    const left = msLeftToCooldown();
-    if (left > 0) {
-      const secs = Math.ceil(left / 1000);
-      setMsg(`Please wait ${secs}s before trying again.`);
-      return;
-    }
-
-    setMsg(null);
-    setBusySignUp(true);
-
-    const check = await fetch(
-      `/api/username-check?username=${encodeURIComponent(normalizedUsername)}`,
-      { cache: "no-store" }
-    );
-    const checkJson = (await check.json().catch(() => null)) as
-      | null
-      | { ok?: boolean; available?: boolean; error?: string };
-
-    if (!check.ok || !checkJson?.ok) {
-      setBusySignUp(false);
-      setCooldownLeftMs(msLeftToCooldown());
-      setMsg(checkJson?.error ?? "Could not validate username.");
-      return;
-    }
-
-    if (!checkJson.available) {
-      setBusySignUp(false);
-      setCooldownLeftMs(msLeftToCooldown());
-      setMsg("That username is already taken.");
-      return;
-    }
-
-    setCooldownNow(); // throttle only once we're about to request an email
-
-    const { error } = await supabaseBrowser.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-        data: {
-          username: normalizedUsername,
-          display_name: normalizedUsername,
-        },
-      },
-    });
-
-    setBusySignUp(false);
-    setCooldownLeftMs(msLeftToCooldown());
-
-    if (error) {
-      // Friendlier copy for the common rate limit case
-      const m = error.message?.toLowerCase?.() ?? "";
-      if (m.includes("rate limit")) {
-        setMsg("Too many signup emails were requested. Please wait a minute and try again.");
-      } else {
-        setMsg(error.message);
-      }
-      return;
-    }
-
-    setMsg("Account created. Check your email to confirm, then come back and sign in.");
-  }
-
   return (
-    <main style={{ maxWidth: 420, margin: "40px auto", padding: 16 }}>
-      <h1>Needlessly Complicated AFL Tipping</h1>
+    <main className="ui-page" style={{ maxWidth: 420 }}>
+      <h1 className="ui-title" style={{ fontSize: "clamp(2rem, 6vw, 2.4rem)" }}>
+        Log in
+      </h1>
+      <div className="ui-caption" style={{ marginTop: 6 }}>
+        Sign in to continue tipping.
+      </div>
 
-      <form onSubmit={signIn} style={{ marginTop: 16 }}>
+      <form onSubmit={signIn} className="ui-card ui-stack" style={{ marginTop: 16 }}>
         <label style={{ display: "block", marginBottom: 10 }}>
-          <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 6 }}>Email</div>
+          <div className="ui-caption" style={{ marginBottom: 6 }}>Email</div>
           <input
-            style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #ccc" }}
+            className="ui-input"
+            style={{ width: "100%" }}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             type="email"
@@ -179,25 +84,10 @@ export default function LoginPage() {
         </label>
 
         <label style={{ display: "block", marginBottom: 10 }}>
-          <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 6 }}>Username (for new account)</div>
+          <div className="ui-caption" style={{ marginBottom: 6 }}>Password</div>
           <input
-            style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #ccc" }}
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            type="text"
-            placeholder="e.g. beau_w"
-            autoComplete="username"
-            maxLength={24}
-          />
-          <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
-            Lowercase letters, numbers, underscores only (3-24 chars).
-          </div>
-        </label>
-
-        <label style={{ display: "block", marginBottom: 10 }}>
-          <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 6 }}>Password</div>
-          <input
-            style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #ccc" }}
+            className="ui-input"
+            style={{ width: "100%" }}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             type="password"
@@ -210,18 +100,10 @@ export default function LoginPage() {
         <button
           type="submit"
           disabled={busy}
-          style={{
-            width: "100%",
-            padding: 12,
-            borderRadius: 12,
-            border: "1px solid #ddd",
-            background: "white",
-            fontWeight: 800,
-            cursor: busy ? "not-allowed" : "pointer",
-            opacity: busy ? 0.7 : 1,
-          }}
+          className="ui-btn"
+          style={{ width: "100%", padding: 12 }}
         >
-          {busySignIn ? "Signing in…" : "Sign in"}
+          {busy ? "Signing in..." : "Sign in"}
         </button>
 
         <div style={{ marginTop: 10, textAlign: "right" }}>
@@ -233,30 +115,22 @@ export default function LoginPage() {
           </Link>
         </div>
 
-        <button
-          type="button"
-          disabled={!canSignUp}
-          onClick={signUp}
-          style={{
-            width: "100%",
-            padding: 12,
-            borderRadius: 12,
-            border: "1px solid #ddd",
-            background: "white",
-            fontWeight: 700,
-            cursor: canSignUp ? "pointer" : "not-allowed",
-            opacity: canSignUp ? 1 : 0.7,
-            marginTop: 10,
-          }}
+        <div className="ui-caption" style={{ textAlign: "center", marginTop: 8 }}>
+          New here?
+        </div>
+        <Link
+          href="/signup"
+          className="ui-btn"
+          style={{ width: "100%", padding: 12, marginTop: 6 }}
         >
-          {busySignUp
-            ? "Creating…"
-            : cooldownLeftMs > 0
-            ? `Create account (wait ${Math.ceil(cooldownLeftMs / 1000)}s)`
-            : "Create account"}
-        </button>
+          Create account
+        </Link>
 
-        {msg && <p style={{ marginTop: 12 }}>{msg}</p>}
+        {displayMsg && (
+          <p style={{ marginTop: 12 }} className="ui-caption">
+            {displayMsg}
+          </p>
+        )}
       </form>
     </main>
   );

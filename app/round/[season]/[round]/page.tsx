@@ -896,15 +896,15 @@ export default function RoundPage() {
                 : "TBC"}
             </div>
             <div className="ui-meta">
-              {showLoadedOddsState
-                ? "Loaded for all matches"
-                : !snapshotDueMs
+              {!showLoadedOddsState
+                ? !snapshotDueMs
                 ? "Waiting for lock time"
                 : nowMs < snapshotDueMs
                 ? `Due in ${oddsExpectedCountdown}`
                 : nowMs >= snapshotDueMs && !isLocked
                 ? "Loading window is open"
-                : "Should already be loaded"}
+                : "Should already be loaded"
+                : null}
             </div>
             {!!matches.length && (
               <div className="ui-caption" style={{ marginTop: 4 }}>

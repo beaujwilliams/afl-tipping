@@ -324,9 +324,9 @@ export default function AdminPage() {
   function openPaymentReminderConfirm() {
     setConfirmAction({
       title: "Send payment reminders now?",
-      body: "This will email all members currently marked as payment pending for this season.",
+      body: "This will email pending members who have not already been sent this reminder this season.",
       confirmLabel: "Yes, send payment reminders",
-      path: `/api/admin/send-payment-reminders?season=${season}&force=1`,
+      path: `/api/admin/send-payment-reminders?season=${season}`,
     });
   }
 
@@ -566,25 +566,7 @@ export default function AdminPage() {
         <section style={{ ...sectionCardStyle, order: 2 }}>
           <h2 style={sectionTitleStyle}>Comms</h2>
           <div style={{ ...summaryStyle, marginTop: 8 }}>
-            Send reminder/recap emails and manage recap history.
-          </div>
-
-          <div style={{ marginTop: 12 }}>
-            <button
-              disabled={isRunning}
-              onClick={() => router.push(`/recaps/${season}`)}
-              style={{
-                ...btnStyle,
-                ...secondaryActionStyle,
-                ...buttonStateStyle,
-                background: "var(--card-soft)",
-                color: "var(--foreground)",
-                border: "1px solid var(--foreground)",
-                fontWeight: 800,
-              }}
-            >
-              Round Recaps
-            </button>
+            Send reminder and recap emails.
           </div>
 
           <div style={{ marginTop: 12, display: "grid", gap: 12 }}>

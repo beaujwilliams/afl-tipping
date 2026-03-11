@@ -9,6 +9,8 @@ const DEFAULT_SEASON = 2026;
 const REMINDER_TYPE = "season_payment_pending_v1";
 const DEFAULT_PAYMENT_INSTRUCTIONS =
   "Season entry is $30. Please send payment to +61 423 190 713.";
+const RESEND_RATE_LIMIT_RETRY_ATTEMPTS = 3;
+const MIN_SEND_SPACING_MS = 600;
 
 type MembershipRow = {
   user_id: string;
@@ -55,6 +57,40 @@ function safeDisplayName(name: string | null | undefined, userId: string) {
   const n = String(name ?? "").trim();
   if (n) return n;
   return `${userId.slice(0, 8)}...`;
+}
+
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, Math.max(0, ms));
+  });
+}
+
+function getRetryDelayMsFromHeaders(headers: Headers, attempt: number) {
+  const retryAfter = headers.get("retry-after");
+  if (retryAfter) {
+    const seconds = Number(retryAfter);
+    if (Number.isFinite(seconds) && seconds > 0) {
+      return Math.ceil(seconds * 1000);
+    }
+    const dateMs = Date.parse(retryAfter);
+    if (Number.isFinite(dateMs)) {
+      const delta = dateMs - Date.now();
+      if (delta > 0) return delta;
+    }
+  }
+
+  const resetRaw =
+    headers.get("x-ratelimit-reset") ?? headers.get("ratelimit-reset");
+  if (resetRaw) {
+    const reset = Number(resetRaw);
+    if (Number.isFinite(reset) && reset > 0) {
+      const resetMs = reset > 1_000_000_000_000 ? reset : reset * 1000;
+      const delta = Math.ceil(resetMs - Date.now());
+      if (delta > 0) return delta;
+    }
+  }
+
+  return Math.min(4000, 500 * 2 ** Math.max(0, attempt - 1));
 }
 
 async function mapLimit<T, R>(
@@ -152,25 +188,50 @@ async function sendPaymentReminderEmail(params: {
 
   if (params.replyTo) payload.reply_to = params.replyTo;
 
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${params.apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
+  for (let attempt = 1; attempt <= RESEND_RATE_LIMIT_RETRY_ATTEMPTS; attempt += 1) {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${params.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
 
-  const bodyText = await res.text();
-  let bodyJson: unknown = null;
-  try {
-    bodyJson = JSON.parse(bodyText);
-  } catch {
-    bodyJson = null;
-  }
+    const bodyText = await res.text();
+    let bodyJson: unknown = null;
+    try {
+      bodyJson = JSON.parse(bodyText);
+    } catch {
+      bodyJson = null;
+    }
 
-  if (!res.ok) {
+    if (res.ok) {
+      const providerMessageId =
+        typeof bodyJson === "object" &&
+        bodyJson !== null &&
+        "id" in bodyJson &&
+        typeof (bodyJson as { id?: unknown }).id === "string"
+          ? (bodyJson as { id: string }).id
+          : null;
+
+      return {
+        status: "sent",
+        provider: "resend",
+        providerMessageId,
+        error: null,
+      };
+    }
+
     const errHead = bodyText.slice(0, 300);
+    const retryable = res.status === 429 || res.status >= 500;
+
+    if (retryable && attempt < RESEND_RATE_LIMIT_RETRY_ATTEMPTS) {
+      const delayMs = getRetryDelayMsFromHeaders(res.headers, attempt);
+      await sleep(delayMs);
+      continue;
+    }
+
     return {
       status: "failed",
       provider: "resend",
@@ -179,19 +240,11 @@ async function sendPaymentReminderEmail(params: {
     };
   }
 
-  const providerMessageId =
-    typeof bodyJson === "object" &&
-    bodyJson !== null &&
-    "id" in bodyJson &&
-    typeof (bodyJson as { id?: unknown }).id === "string"
-      ? (bodyJson as { id: string }).id
-      : null;
-
   return {
-    status: "sent",
+    status: "failed",
     provider: "resend",
-    providerMessageId,
-    error: null,
+    providerMessageId: null,
+    error: "Resend error: retry attempts exhausted",
   };
 }
 
@@ -392,6 +445,7 @@ export async function GET(req: Request) {
     let simulated = 0;
     let failed = 0;
     let noEmail = 0;
+    let lastSendAttemptAtMs = 0;
 
     const results: Array<{
       user_id: string;
@@ -414,6 +468,14 @@ export async function GET(req: Request) {
         });
         continue;
       }
+
+      if (!dryRun && lastSendAttemptAtMs > 0) {
+        const elapsed = Date.now() - lastSendAttemptAtMs;
+        if (elapsed < MIN_SEND_SPACING_MS) {
+          await sleep(MIN_SEND_SPACING_MS - elapsed);
+        }
+      }
+      lastSendAttemptAtMs = Date.now();
 
       const sendResult = await sendPaymentReminderEmail({
         apiKey: resendApiKey,

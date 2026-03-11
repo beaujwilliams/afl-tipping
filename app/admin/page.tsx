@@ -563,7 +563,7 @@ export default function AdminPage() {
           <div style={{ marginTop: 12 }}>
             <button
               disabled={isRunning}
-              onClick={() => router.push("/admin/recaps")}
+              onClick={() => router.push(`/recaps/${season}`)}
               style={{
                 ...btnStyle,
                 ...secondaryActionStyle,

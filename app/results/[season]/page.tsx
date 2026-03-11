@@ -58,6 +58,7 @@ export default function SeasonResultsPage() {
   const [msg, setMsg] = useState("Checking session…");
   const [ready, setReady] = useState(false);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
+  const [canViewRecaps, setCanViewRecaps] = useState(false);
   const [statsByRoundId, setStatsByRoundId] = useState<
     Record<string, { total: number; finished: number }>
   >({});
@@ -91,6 +92,17 @@ export default function SeasonResultsPage() {
 
     (async () => {
       setMsg("Loading results rounds…");
+      setCanViewRecaps(false);
+
+      const recapAccess = await fetch(
+        `/api/admin/round-recaps?season=${encodeURIComponent(String(season))}&limit=1`,
+        {
+          headers: { Authorization: `Bearer ${sessionToken}` },
+          cache: "no-store",
+        }
+      ).catch(() => null);
+      setCanViewRecaps(!!recapAccess?.ok);
+
       const statusRes = await fetch(`/api/round-tip-status?season=${encodeURIComponent(String(season))}`, {
         headers: { Authorization: `Bearer ${sessionToken}` },
         cache: "no-store",
@@ -179,6 +191,29 @@ export default function SeasonResultsPage() {
       {!msg && hiddenCount > 0 && visibleRows.length > 0 && (
         <div style={{ marginTop: 12, opacity: 0.7, fontSize: 12 }}>
           {hiddenCount} future round{hiddenCount === 1 ? "" : "s"} hidden until lock time.
+        </div>
+      )}
+
+      {!msg && canViewRecaps && visibleRows.length > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <Link
+            href={`/recaps/${season}`}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "9px 12px",
+              borderRadius: 10,
+              border: "1px solid var(--border)",
+              background: "var(--card-soft)",
+              color: "var(--foreground)",
+              textDecoration: "none",
+              fontSize: 13,
+              fontWeight: 800,
+            }}
+          >
+            View Round Recap Archive
+          </Link>
         </div>
       )}
 

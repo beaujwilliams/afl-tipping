@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { UnpaidTag } from "@/components/UnpaidTag";
@@ -396,68 +396,69 @@ export default function RoundPage() {
     }
   }
 
-  function oddsLockLabel(snapshot: string | null) {
+  const oddsLockLabel = useCallback((snapshot: string | null) => {
     return snapshot
       ? `Scoring odds time: ${formatMelbourne(snapshot)} (Melbourne)`
       : "Scoring odds time not set yet (showing latest available odds)";
-  }
+  }, []);
 
   // -------- odds loader (LOCKED to round snapshot when present) --------
-  async function loadOddsForMatchesLocked(
-    competitionId: string,
-    matchIds: string[],
-    totalMatches: number,
-    snapshot: string | null
-  ) {
-    if (!matchIds.length) return;
+  const loadOddsForMatchesLocked = useCallback(
+    async (
+      competitionId: string,
+      matchIds: string[],
+      totalMatches: number,
+      snapshot: string | null
+    ) => {
+      if (!matchIds.length) return;
 
-    let q = supabaseBrowser
-      .from("match_odds")
-      .select(
-        "match_id, home_team, away_team, home_odds, away_odds, captured_at_utc, snapshot_for_time_utc"
-      )
-      .eq("competition_id", competitionId)
-      .in("match_id", matchIds);
+      let q = supabaseBrowser
+        .from("match_odds")
+        .select(
+          "match_id, home_team, away_team, home_odds, away_odds, captured_at_utc, snapshot_for_time_utc"
+        )
+        .eq("competition_id", competitionId)
+        .in("match_id", matchIds);
 
-    if (snapshot) {
-      q = q.eq("snapshot_for_time_utc", snapshot);
-    } else {
-      q = q.order("snapshot_for_time_utc", { ascending: false });
-    }
+      if (snapshot) {
+        q = q.eq("snapshot_for_time_utc", snapshot);
+      } else {
+        q = q.order("snapshot_for_time_utc", { ascending: false });
+      }
 
-    q = q.order("captured_at_utc", { ascending: false });
+      q = q.order("captured_at_utc", { ascending: false });
 
-    const { data: oddsRows, error: oErr } = await q;
+      const { data: oddsRows, error: oErr } = await q;
 
-    if (oErr) {
-      setOddsInfo(`Odds not loaded: ${oErr.message}`);
-      return;
-    }
+      if (oErr) {
+        setOddsInfo(`Odds not loaded: ${oErr.message}`);
+        return;
+      }
 
-    const map: Record<string, OddsRow> = {};
-    (oddsRows as OddsRow[] | null)?.forEach((row) => {
-      if (!map[row.match_id]) map[row.match_id] = row;
-    });
+      const map: Record<string, OddsRow> = {};
+      (oddsRows as OddsRow[] | null)?.forEach((row) => {
+        if (!map[row.match_id]) map[row.match_id] = row;
+      });
 
-    setOddsByMatchId(map);
+      setOddsByMatchId(map);
 
-    const have = Object.keys(map).length;
-    setOddsInfo(
-      have
-        ? `Odds loaded for ${have}/${totalMatches} matches. • ${oddsLockLabel(
-            snapshot
-          )}`
-        : `No odds loaded yet for this round. • ${oddsLockLabel(snapshot)}`
-    );
+      const have = Object.keys(map).length;
+      setOddsInfo(
+        have
+          ? `Odds loaded for ${have}/${totalMatches} matches. • ${oddsLockLabel(snapshot)}`
+          : `No odds loaded yet for this round. • ${oddsLockLabel(snapshot)}`
+      );
 
-    if (have >= totalMatches && totalMatches > 0) {
-      setOddsPollingStopped(true);
-      setOddsPollingReason("complete");
-    }
-  }
+      if (have >= totalMatches && totalMatches > 0) {
+        setOddsPollingStopped(true);
+        setOddsPollingReason("complete");
+      }
+    },
+    [oddsLockLabel]
+  );
 
   // -------- helper: refresh round snapshot --------
-  async function refreshRoundSnapshot(competitionId: string, roundId: string) {
+  const refreshRoundSnapshot = useCallback(async (competitionId: string, roundId: string) => {
     const { data, error } = await supabaseBrowser
       .from("rounds")
       .select("odds_snapshot_for_time_utc")
@@ -468,7 +469,7 @@ export default function RoundPage() {
     if (error || !data) return null;
     const row = data as { odds_snapshot_for_time_utc?: string | null };
     return row.odds_snapshot_for_time_utc ?? null;
-  }
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -645,7 +646,7 @@ export default function RoundPage() {
         pickedRound.odds_snapshot_for_time_utc ?? null
       );
     })();
-  }, [season, round]);
+  }, [season, round, loadOddsForMatchesLocked]);
 
   // ✅ when round is locked, fetch tip breakdown per match
   useEffect(() => {
@@ -756,8 +757,16 @@ export default function RoundPage() {
     }, POLL_MS);
 
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shouldPollOdds, compId, matches, snapshotKey, roundRow?.id]);
+  }, [
+    shouldPollOdds,
+    compId,
+    matches,
+    snapshotKey,
+    roundRow?.id,
+    refreshRoundSnapshot,
+    loadOddsForMatchesLocked,
+    snapshotForTimeUtc,
+  ]);
 
   useEffect(() => {
     if (!oddsMissing) pollStartRef.current = null;

@@ -33,8 +33,8 @@ All existing `BL-*` items from the previous single backlog are preserved in
 ## Cross-Backlog Next 6
 
 1. `UI-001` Season switcher + remove hardcoded year in nav/routes
-2. `BUG-001` Fix odds polling hook dependency warning in round page
-3. `BL-014` Regression tests for scoring and lock-time behavior
-4. `BL-011` Season archive + year-over-year comparison page
-5. `BL-015` Admin audit log
-6. `BL-016` Observability: logs + alerting for job failures
+2. `BL-014` Regression tests for scoring and lock-time behavior
+3. `BL-011` Season archive + year-over-year comparison page
+4. `BL-015` Admin audit log
+5. `BL-016` Observability: logs + alerting for job failures
+6. `UI-005` Skeleton loading states for round/leaderboard/results

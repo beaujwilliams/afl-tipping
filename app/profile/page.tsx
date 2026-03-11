@@ -25,16 +25,7 @@ type LeaderboardRow = {
   user_id: string;
   rank: number;
   total_points: number;
-  correct_tips: number;
-  missed_tips: number;
   accuracy_pct: number;
-  movement: number;
-  behind_leader: number;
-  current_streak: number;
-  avg_winning_odds: number;
-  round_score: number;
-  tips_submitted: number;
-  tips_possible: number;
 };
 
 type LeaderboardApiResponse = {
@@ -55,12 +46,6 @@ function fmtPts(value: number) {
 
 function fmtPct(value: number) {
   return `${Number(value ?? 0).toFixed(2)}%`;
-}
-
-function movementText(value: number) {
-  if (value > 0) return `Up ${value}`;
-  if (value < 0) return `Down ${Math.abs(value)}`;
-  return "No change";
 }
 
 export default function ProfilePage() {
@@ -443,40 +428,6 @@ export default function ProfilePage() {
             <UiCard>
               <div className="ui-kicker">Accuracy</div>
               <div className="ui-value">{fmtPct(myRow.accuracy_pct)}</div>
-            </UiCard>
-            <UiCard>
-              <div className="ui-kicker">Correct Tips</div>
-              <div className="ui-value">{myRow.correct_tips}</div>
-            </UiCard>
-            <UiCard>
-              <div className="ui-kicker">Tips Submitted</div>
-              <div className="ui-value">
-                {myRow.tips_submitted}/{myRow.tips_possible}
-              </div>
-            </UiCard>
-            <UiCard>
-              <div className="ui-kicker">Missed Tips</div>
-              <div className="ui-value">{myRow.missed_tips}</div>
-            </UiCard>
-            <UiCard>
-              <div className="ui-kicker">Gap To Leader</div>
-              <div className="ui-value">{fmtPts(myRow.behind_leader)}</div>
-            </UiCard>
-            <UiCard>
-              <div className="ui-kicker">Last Movement</div>
-              <div className="ui-value">{movementText(myRow.movement)}</div>
-            </UiCard>
-            <UiCard>
-              <div className="ui-kicker">Current Streak</div>
-              <div className="ui-value">{myRow.current_streak}</div>
-            </UiCard>
-            <UiCard>
-              <div className="ui-kicker">Last Round Score</div>
-              <div className="ui-value">{fmtPts(myRow.round_score)}</div>
-            </UiCard>
-            <UiCard>
-              <div className="ui-kicker">Avg Winning Odds</div>
-              <div className="ui-value">{fmtPts(myRow.avg_winning_odds)}</div>
             </UiCard>
           </UiCardGrid>
         ) : null}

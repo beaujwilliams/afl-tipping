@@ -341,13 +341,43 @@ export default function AdminMembersPage() {
     }));
   }
 
-  async function saveMember(userId: string) {
+  async function saveMember(userId: string, patch?: Partial<RowDraft>) {
     if (!sessionToken) return;
-    const draft = draftById[userId];
-    if (!draft) return;
+
+    const member = members.find((m) => m.user_id === userId);
+    if (!member) return;
+
+    const draft = draftById[userId] ?? {
+      display_name: member.display_name ?? "",
+      role: normalizeRole(member.role),
+      payment_status: normalizePaymentStatus(member.payment_status),
+    };
+
+    const hasPatchField =
+      patch?.display_name !== undefined ||
+      patch?.role !== undefined ||
+      patch?.payment_status !== undefined;
+    if (patch && !hasPatchField) return;
 
     setSavingMemberId(userId);
     setMsg("");
+
+    const body: {
+      user_id: string;
+      display_name?: string;
+      role?: MemberRole;
+      payment_status?: PaymentStatus;
+    } = { user_id: userId };
+
+    if (patch) {
+      if (patch.display_name !== undefined) body.display_name = patch.display_name;
+      if (patch.role !== undefined) body.role = patch.role;
+      if (patch.payment_status !== undefined) body.payment_status = patch.payment_status;
+    } else {
+      body.display_name = draft.display_name;
+      body.role = draft.role;
+      body.payment_status = draft.payment_status;
+    }
 
     const res = await fetch("/api/admin/members", {
       method: "PATCH",
@@ -355,12 +385,7 @@ export default function AdminMembersPage() {
         "Content-Type": "application/json",
         Authorization: `Bearer ${sessionToken}`,
       },
-      body: JSON.stringify({
-        user_id: userId,
-        display_name: draft.display_name,
-        role: draft.role,
-        payment_status: draft.payment_status,
-      }),
+      body: JSON.stringify(body),
     });
 
     const json = (await res.json().catch(() => null)) as MembersResponse | null;
@@ -377,9 +402,24 @@ export default function AdminMembersPage() {
         m.user_id === userId
           ? {
               ...m,
-              display_name: draft.display_name.trim() || null,
-              role: draft.role,
-              payment_status: draft.payment_status,
+              display_name:
+                patch?.display_name !== undefined
+                  ? patch.display_name.trim() || null
+                  : patch
+                    ? m.display_name
+                    : draft.display_name.trim() || null,
+              role:
+                patch?.role !== undefined
+                  ? patch.role
+                  : patch
+                    ? m.role
+                    : draft.role,
+              payment_status:
+                patch?.payment_status !== undefined
+                  ? patch.payment_status
+                  : patch
+                    ? m.payment_status
+                    : draft.payment_status,
             }
           : m
       )
@@ -735,6 +775,7 @@ export default function AdminMembersPage() {
 
                     const saving = savingMemberId === m.user_id;
                     const removing = removingMemberId === m.user_id;
+                    const displayNameDirty = draft.display_name.trim() !== (m.display_name ?? "").trim();
 
                     return (
                       <tr key={m.user_id}>
@@ -797,8 +838,13 @@ export default function AdminMembersPage() {
                         </td>
                         <td style={{ padding: 12, borderTop: "1px solid var(--border)" }}>
                           <select
+                            disabled={saving || removing}
                             value={draft.role}
-                            onChange={(e) => setDraftField(m.user_id, { role: e.target.value as MemberRole })}
+                            onChange={(e) => {
+                              const role = e.target.value as MemberRole;
+                              setDraftField(m.user_id, { role });
+                              void saveMember(m.user_id, { role });
+                            }}
                             style={{
                               width: "100%",
                               padding: 9,
@@ -816,10 +862,13 @@ export default function AdminMembersPage() {
                         </td>
                         <td style={{ padding: 12, borderTop: "1px solid var(--border)" }}>
                           <select
+                            disabled={saving || removing}
                             value={draft.payment_status}
-                            onChange={(e) =>
-                              setDraftField(m.user_id, { payment_status: e.target.value as PaymentStatus })
-                            }
+                            onChange={(e) => {
+                              const payment_status = e.target.value as PaymentStatus;
+                              setDraftField(m.user_id, { payment_status });
+                              void saveMember(m.user_id, { payment_status });
+                            }}
                             style={{
                               width: "100%",
                               padding: 9,
@@ -838,8 +887,8 @@ export default function AdminMembersPage() {
                         <td style={{ padding: 12, borderTop: "1px solid var(--border)" }}>
                           <div style={{ display: "flex", gap: 8 }}>
                             <button
-                              disabled={saving || removing}
-                              onClick={() => saveMember(m.user_id)}
+                              disabled={!displayNameDirty || saving || removing}
+                              onClick={() => saveMember(m.user_id, { display_name: draft.display_name })}
                               style={{
                                 padding: "9px 10px",
                                 borderRadius: 10,
@@ -847,11 +896,11 @@ export default function AdminMembersPage() {
                                 background: "var(--card)",
                                 color: "var(--foreground)",
                                 fontWeight: 800,
-                                cursor: saving || removing ? "not-allowed" : "pointer",
-                                opacity: saving || removing ? 0.7 : 1,
+                                cursor: !displayNameDirty || saving || removing ? "not-allowed" : "pointer",
+                                opacity: !displayNameDirty || saving || removing ? 0.7 : 1,
                               }}
                             >
-                              {saving ? "Saving…" : "Save"}
+                              {saving ? "Saving…" : "Save name"}
                             </button>
                             <button
                               disabled={saving || removing}

@@ -321,6 +321,15 @@ export default function AdminPage() {
     });
   }
 
+  function openPaymentReminderConfirm() {
+    setConfirmAction({
+      title: "Send payment reminders now?",
+      body: "This will email all members currently marked as payment pending for this season.",
+      confirmLabel: "Yes, send payment reminders",
+      path: `/api/admin/send-payment-reminders?season=${season}&force=1`,
+    });
+  }
+
   function closeConfirm() {
     if (isRunning) return;
     setConfirmAction(null);
@@ -635,6 +644,20 @@ export default function AdminPage() {
                   Generate Round Recap + Send To Me
                 </button>
               </div>
+            </div>
+
+            <div style={toolCardStyle}>
+              <div style={{ fontWeight: 800 }}>Payment reminders (manual)</div>
+              <div style={summaryStyle}>
+                Send payment reminder emails to members with payment status <b>pending</b>.
+              </div>
+              <button
+                disabled={isRunning}
+                onClick={openPaymentReminderConfirm}
+                style={{ ...btnStyle, ...buttonStateStyle, marginTop: 10 }}
+              >
+                Send Payment Pending Reminders
+              </button>
             </div>
           </div>
         </section>

@@ -53,6 +53,26 @@ type RoundResultsResponse = {
   error?: string;
 };
 
+type RecapRow = {
+  id: number;
+  season: number;
+  round_number: number;
+  recap_type: string;
+  subject: string;
+  narrative_text: string;
+  raw_stats_text: string;
+  generated_at: string;
+  updated_at: string;
+};
+
+type RecapsResponse = {
+  ok?: boolean;
+  recaps?: RecapRow[];
+  error?: string;
+  details?: string;
+  hint?: string;
+};
+
 type RoundSortKey =
   | "rank"
   | "display_name"
@@ -152,6 +172,10 @@ export default function RoundResultsDetailPage() {
   const [players, setPlayers] = useState<PlayerRoundScore[]>([]);
   const [reigningChampionUserId, setReigningChampionUserId] = useState<string | null>(null);
   const [lockTimeUtc, setLockTimeUtc] = useState<string | null>(null);
+  const [isRecapAdmin, setIsRecapAdmin] = useState(false);
+  const [recapLoading, setRecapLoading] = useState(false);
+  const [recapError, setRecapError] = useState("");
+  const [roundRecap, setRoundRecap] = useState<RecapRow | null>(null);
   const [sortBy, setSortBy] = useState<RoundSortKey>("round_score");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const invalidParams = !Number.isFinite(season) || !Number.isFinite(round);
@@ -188,6 +212,10 @@ export default function RoundResultsDetailPage() {
     (async () => {
       try {
         setMsg("Loading round results…");
+        setIsRecapAdmin(false);
+        setRecapLoading(false);
+        setRecapError("");
+        setRoundRecap(null);
         const res = await fetch(
           `/api/round-results?season=${encodeURIComponent(String(season))}&round=${encodeURIComponent(String(round))}`,
           {
@@ -210,9 +238,37 @@ export default function RoundResultsDetailPage() {
             : null
         );
         setLockTimeUtc(json.lock_time_utc ?? null);
+
+        setRecapLoading(true);
+        const recapRes = await fetch(
+          `/api/admin/round-recaps?season=${encodeURIComponent(String(season))}&round=${encodeURIComponent(
+            String(round)
+          )}&limit=1`,
+          {
+            cache: "no-store",
+            headers: { Authorization: `Bearer ${sessionToken}` },
+          }
+        );
+
+        if (recapRes.status !== 401 && recapRes.status !== 403) {
+          setIsRecapAdmin(true);
+          const recapJson = (await recapRes.json().catch(() => null)) as RecapsResponse | null;
+          if (!recapRes.ok) {
+            const parts = [recapJson?.error ?? "Could not load round recap."];
+            if (recapJson?.details) parts.push(recapJson.details);
+            if (recapJson?.hint) parts.push(recapJson.hint);
+            setRecapError(parts.join(" - "));
+          } else {
+            const rows = Array.isArray(recapJson?.recaps) ? recapJson.recaps : [];
+            setRoundRecap(rows[0] ?? null);
+          }
+        }
+
+        setRecapLoading(false);
         setMsg("");
       } catch {
         setMsg("Could not load round results.");
+        setRecapLoading(false);
       }
     })();
   }, [season, round, invalidParams, sessionToken]);
@@ -586,6 +642,103 @@ export default function RoundResultsDetailPage() {
               );
             })}
           </div>
+
+          {isRecapAdmin && (
+            <section
+              style={{
+                marginTop: 14,
+                border: "1px solid var(--border)",
+                borderRadius: 14,
+                padding: 12,
+                background: "var(--card-soft)",
+              }}
+            >
+              <div style={{ fontWeight: 900, fontSize: 16 }}>Admin Round Recap</div>
+
+              {recapLoading && (
+                <div style={{ marginTop: 8, opacity: 0.75, fontSize: 13 }}>
+                  Loading recap…
+                </div>
+              )}
+
+              {!recapLoading && recapError && (
+                <div
+                  style={{
+                    marginTop: 10,
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: "1px solid rgba(220, 38, 38, 0.45)",
+                    background: "rgba(220, 38, 38, 0.10)",
+                    color: "rgb(185, 28, 28)",
+                    fontWeight: 700,
+                    fontSize: 12,
+                  }}
+                >
+                  {recapError}
+                </div>
+              )}
+
+              {!recapLoading && !recapError && !roundRecap && (
+                <div style={{ marginTop: 8, opacity: 0.75, fontSize: 13 }}>
+                  No generated recap found for Round {round}.
+                </div>
+              )}
+
+              {!recapLoading && !recapError && roundRecap && (
+                <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+                  <div style={{ fontSize: 12, opacity: 0.75 }}>
+                    Generated {formatMelbourne(roundRecap.generated_at)}
+                  </div>
+
+                  <section
+                    style={{
+                      border: "1px solid var(--border)",
+                      borderRadius: 12,
+                      padding: 12,
+                      background: "var(--card)",
+                    }}
+                  >
+                    <div style={{ fontWeight: 800, fontSize: 15 }}>Narrative</div>
+                    <pre
+                      style={{
+                        marginTop: 10,
+                        whiteSpace: "pre-wrap",
+                        fontFamily: "inherit",
+                        lineHeight: 1.5,
+                        fontSize: 13,
+                      }}
+                    >
+                      {roundRecap.narrative_text}
+                    </pre>
+                  </section>
+
+                  <details
+                    style={{
+                      border: "1px solid var(--border)",
+                      borderRadius: 12,
+                      padding: 12,
+                      background: "var(--card)",
+                    }}
+                  >
+                    <summary style={{ cursor: "pointer", fontWeight: 800, fontSize: 14 }}>
+                      Raw Stats
+                    </summary>
+                    <pre
+                      style={{
+                        marginTop: 10,
+                        whiteSpace: "pre-wrap",
+                        fontFamily: "inherit",
+                        lineHeight: 1.45,
+                        fontSize: 12,
+                      }}
+                    >
+                      {roundRecap.raw_stats_text}
+                    </pre>
+                  </details>
+                </div>
+              )}
+            </section>
+          )}
         </>
       )}
     </main>

@@ -31,9 +31,9 @@ All existing `BL-*` items from the previous single backlog are preserved in
 
 ## Cross-Backlog Next 6
 
-1. `UI-001` Season switcher + remove hardcoded year in nav/routes
+1. `UI-003` Shared UI tokens/components for cards, buttons, badges, table headers
 2. `BL-014` Regression tests for scoring and lock-time behavior
-3. `BL-011` Season archive + year-over-year comparison page
-4. `BL-015` Admin audit log
-5. `BL-016` Observability: logs + alerting for job failures
-6. `UI-005` Skeleton loading states for round/leaderboard/results
+3. `BL-015` Admin audit log
+4. `BL-016` Observability: logs + alerting for job failures
+5. `UI-005` Skeleton loading states for round/leaderboard/results
+6. `UI-006` Admin IA cleanup into sections (Data Sync, Comms, Members, Scoring)

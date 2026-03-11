@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase-server";
 import { resolveReigningChampion } from "@/lib/reigning-champion";
+import {
+  leaderboardRankComparator,
+  pointsForWinningTip,
+} from "@/lib/scoring-lock-rules";
 
 type RoundRow = {
   id: string;
@@ -107,16 +111,6 @@ function normalizePaymentStatus(status: string | null | undefined) {
 
 function round2(v: number) {
   return Number(v.toFixed(2));
-}
-
-function rankComparator(
-  a: { total_points: number; accuracy_pct: number; correct_tips: number; display_name: string },
-  b: { total_points: number; accuracy_pct: number; correct_tips: number; display_name: string }
-) {
-  if (b.total_points !== a.total_points) return b.total_points - a.total_points;
-  if (b.accuracy_pct !== a.accuracy_pct) return b.accuracy_pct - a.accuracy_pct;
-  if (b.correct_tips !== a.correct_tips) return b.correct_tips - a.correct_tips;
-  return a.display_name.localeCompare(b.display_name, "en", { sensitivity: "base" });
 }
 
 function sumUpTo(roundMap: Record<number, number>, maxRound: number | null) {
@@ -457,8 +451,14 @@ export async function GET(req: Request) {
         stats.tips_by_round[roundNo] = (stats.tips_by_round[roundNo] ?? 0) + 1;
         if (picked !== match.winner_team) continue;
 
-        const points =
-          match.winner_team === match.home_team ? Number(match.home_odds) : Number(match.away_odds);
+        const points = pointsForWinningTip({
+          pickedTeam: picked,
+          winnerTeam: match.winner_team,
+          homeTeam: match.home_team,
+          awayTeam: match.away_team,
+          homeOdds: match.home_odds,
+          awayOdds: match.away_odds,
+        });
 
         stats.correct_tips += 1;
         stats.total_points += points;
@@ -518,7 +518,7 @@ export async function GET(req: Request) {
 
     const currentRanked = [...baseRows]
       .sort((a, b) =>
-        rankComparator(
+        leaderboardRankComparator(
           {
             total_points: a.total_points,
             accuracy_pct: a.accuracy_pct,
@@ -542,7 +542,7 @@ export async function GET(req: Request) {
     if (previousRoundForMovement !== null) {
       [...baseRows]
         .sort((a, b) =>
-          rankComparator(
+          leaderboardRankComparator(
             {
               total_points: a.previous_points,
               accuracy_pct: a.previous_accuracy_pct,

@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "node scripts/build-with-label.mjs",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:regression": "NODE_NO_WARNINGS=1 node --test --experimental-strip-types tests/regression/**/*.test.mts",
+    "test": "npm run test:regression"
   },
   "dependencies": {
     "@supabase/ssr": "^0.8.0",

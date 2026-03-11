@@ -3,6 +3,12 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createClient, createServiceClient } from "@/lib/supabase-server";
 import { resolveCompetitionIdForSeasonRound } from "@/lib/competition-resolver";
 import { getBearer } from "@/lib/admin-auth";
+import {
+  isRoundLocked,
+  normalizePaymentStatus,
+  normalizeRole,
+  shouldBlockTipSubmissionForPayment,
+} from "@/lib/scoring-lock-rules";
 
 type SaveTipBody = {
   season?: number;
@@ -33,8 +39,6 @@ type MatchRow = {
   away_team: string;
 };
 
-type PaymentStatus = "paid" | "pending" | "waived";
-
 function mustEnv(name: string) {
   const value = process.env[name];
   if (!value) throw new Error(`Missing env var: ${name}`);
@@ -45,22 +49,6 @@ function isMissingColumnError(message: string, columnName: string) {
   const m = message.toLowerCase();
   const col = columnName.toLowerCase();
   return m.includes(col) && (m.includes("column") || m.includes("does not exist"));
-}
-
-function normalizeRole(role: string | null | undefined) {
-  const r = String(role ?? "")
-    .trim()
-    .toLowerCase();
-  if (r === "owner" || r === "admin" || r === "member") return r;
-  return "member";
-}
-
-function normalizePaymentStatus(status: string | null | undefined): PaymentStatus {
-  const s = String(status ?? "")
-    .trim()
-    .toLowerCase();
-  if (s === "paid" || s === "pending" || s === "waived") return s;
-  return "pending";
 }
 
 async function getUserFromBearer(req: Request) {
@@ -179,7 +167,13 @@ export async function POST(req: Request) {
         (membershipFallback.data as { role?: string | null }).role ?? null
       );
 
-      if (enforceUnpaidTipLock && role !== "owner" && role !== "admin") {
+      if (
+        shouldBlockTipSubmissionForPayment({
+          enforceUnpaidTipLock,
+          role,
+          paymentStatus: "pending",
+        })
+      ) {
         return NextResponse.json(
           {
             error: "Tip submissions are locked for unpaid members.",
@@ -202,10 +196,11 @@ export async function POST(req: Request) {
       const paymentStatus = normalizePaymentStatus(row.payment_status);
 
       if (
-        enforceUnpaidTipLock &&
-        role !== "owner" &&
-        role !== "admin" &&
-        paymentStatus === "pending"
+        shouldBlockTipSubmissionForPayment({
+          enforceUnpaidTipLock,
+          role,
+          paymentStatus,
+        })
       ) {
         return NextResponse.json(
           {
@@ -232,8 +227,7 @@ export async function POST(req: Request) {
 
     const roundRow = roundQuery.data as RoundRow;
     const lockTimeUtc = roundRow.lock_time_utc ?? null;
-    const lockMs = lockTimeUtc ? new Date(lockTimeUtc).getTime() : NaN;
-    if (!Number.isFinite(lockMs) || Date.now() >= lockMs) {
+    if (isRoundLocked(lockTimeUtc)) {
       return NextResponse.json(
         {
           error: "Round locked — tips cannot be changed.",

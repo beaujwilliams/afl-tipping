@@ -328,3 +328,216 @@ button {
 .ui-table-scroll {
   overflow-x: auto;
 }
+
+/* ===============================
+   Admin UI (Shared Phase)
+================================ */
+
+.ui-admin-page {
+  margin: 40px auto;
+}
+
+.ui-admin-season-row {
+  margin-top: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ui-admin-label {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.ui-admin-label-email {
+  min-width: 66px;
+}
+
+.ui-admin-input-season {
+  width: 120px;
+  max-width: 120px;
+  flex: 0 0 120px;
+}
+
+.ui-admin-input-round {
+  width: 96px;
+  max-width: 96px;
+  flex: 0 0 96px;
+}
+
+.ui-admin-input-email {
+  flex: 1 1 260px;
+  min-width: 220px;
+}
+
+.ui-admin-grid {
+  margin-top: 30px;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+}
+
+.ui-admin-section {
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.ui-admin-section--wide {
+  grid-column: 1 / -1;
+}
+
+.ui-admin-section-title {
+  margin: 0;
+  font-size: 18px;
+}
+
+.ui-admin-summary {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.ui-admin-summary--tight {
+  margin-top: 0;
+}
+
+.ui-admin-stack {
+  margin-top: 12px;
+  display: grid;
+  gap: 12px;
+}
+
+.ui-admin-stack-tight {
+  display: grid;
+  gap: 4px;
+}
+
+.ui-admin-subtitle {
+  font-weight: 800;
+}
+
+.ui-admin-tool {
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.ui-admin-btn {
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 16px;
+}
+
+.ui-admin-btn--full {
+  width: 100%;
+}
+
+.ui-admin-btn--primary {
+  padding: 16px 18px;
+  font-size: 17px;
+  font-weight: 800;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
+  background: var(--foreground);
+  color: var(--background);
+  border-color: var(--foreground);
+}
+
+.ui-admin-btn--alt {
+  background: var(--card-soft);
+  border-color: var(--foreground);
+}
+
+.ui-admin-gap-sm {
+  gap: 8px;
+}
+
+.ui-admin-two-col {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.ui-admin-missing-list {
+  margin-top: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  display: grid;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.ui-admin-missing-item {
+  font-size: 14px;
+  line-height: 1.3;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--card-soft);
+}
+
+.ui-admin-danger-chip {
+  font-size: 11px;
+  font-weight: 800;
+  border-radius: 999px;
+  padding: 2px 8px;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.14);
+  color: rgb(220, 38, 38);
+  white-space: nowrap;
+}
+
+.ui-admin-result {
+  margin-top: 30px;
+  font-size: 13px;
+  overflow-x: auto;
+}
+
+.ui-admin-result-pre {
+  margin-top: 10px;
+}
+
+.ui-admin-running {
+  margin-top: 20px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.ui-admin-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: grid;
+  place-items: center;
+  z-index: 1000;
+  padding: 16px;
+}
+
+.ui-admin-modal {
+  width: 100%;
+  max-width: 520px;
+  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.28);
+}
+
+.ui-admin-modal-title {
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.ui-admin-modal-body {
+  margin-top: 10px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.ui-admin-modal-actions {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}

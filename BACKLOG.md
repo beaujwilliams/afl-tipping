@@ -20,7 +20,6 @@ The backlog is now split into three tracks:
 - Status:
   - `Idea`
   - `Doing`
-  - `Done (YYYY-MM-DD)`
   - `Deferred`
 
 ## Legacy Alignment

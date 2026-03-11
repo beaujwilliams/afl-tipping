@@ -238,21 +238,37 @@ export default function HomePage() {
   const tipsEntered = currentRound?.my_tips ?? 0;
   const tipsLeft = Math.max(tipsPossible - tipsEntered, 0);
 
-  const alerts = useMemo(() => {
-    const out: string[] = [];
+  const dashboardNotice = useMemo(() => {
+    const urgent: string[] = [];
     if (me?.payment_status === "pending") {
-      out.push("Payment is pending. Tipping may be locked until payment is marked paid.");
+      urgent.push("Payment is pending. Tipping may be locked until payment is marked paid.");
     }
     if (currentRound && locked) {
-      out.push(`Round ${currentRound.round_number} is locked.`);
+      urgent.push(`Round ${currentRound.round_number} is locked.`);
     }
     if (currentRound && !locked && tipsLeft > 0) {
-      out.push(`${tipsLeft} tip${tipsLeft === 1 ? "" : "s"} still missing for Round ${currentRound.round_number}.`);
+      urgent.push(
+        `${tipsLeft} tip${tipsLeft === 1 ? "" : "s"} still missing for Round ${currentRound.round_number}.`
+      );
     }
+
+    if (urgent.length > 0) {
+      return {
+        tone: "warning" as const,
+        title: "Urgent",
+        lines: urgent,
+      };
+    }
+
     if (currentRound && !locked && tipsLeft === 0) {
-      out.push(`All tips entered for Round ${currentRound.round_number}.`);
+      return {
+        tone: "success" as const,
+        title: "Up to date",
+        lines: ["You're all up to date on your tips."],
+      };
     }
-    return out;
+
+    return null;
   }, [me?.payment_status, currentRound, locked, tipsLeft]);
 
   return (
@@ -292,13 +308,13 @@ export default function HomePage() {
         </UiCard>
       )}
 
-      {!msg && alerts.length > 0 && (
-        <UiCard tone="warning" style={{ marginTop: 12 }}>
-          <div className="ui-kicker">Urgent</div>
+      {!msg && dashboardNotice && (
+        <UiCard tone={dashboardNotice.tone} style={{ marginTop: 12 }}>
+          <div className="ui-kicker">{dashboardNotice.title}</div>
           <div className="ui-stack" style={{ marginTop: 8, gap: 6 }}>
-            {alerts.map((alert) => (
-              <div key={alert} className="ui-caption">
-                {alert}
+            {dashboardNotice.lines.map((line) => (
+              <div key={line} className="ui-caption">
+                {line}
               </div>
             ))}
           </div>

@@ -1,9 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { UiBadge, UiButton, UiButtonLink, UiCard } from "@/components/ui";
 
 type ConfirmAction = {
   title: string;
@@ -49,8 +48,6 @@ function fmtMelbourneShort(iso: string | null) {
 }
 
 export default function AdminPage() {
-  const router = useRouter();
-
   const [season, setSeason] = useState<number>(2026);
   const [recapRound, setRecapRound] = useState<number>(1);
   const [recapToEmail, setRecapToEmail] = useState<string>("");
@@ -222,63 +219,6 @@ export default function AdminPage() {
     }
   }
 
-  const buttonStateStyle: React.CSSProperties = {
-    opacity: isRunning ? 0.6 : 1,
-    cursor: isRunning ? "not-allowed" : "pointer",
-  };
-
-  const summaryStyle: React.CSSProperties = {
-    fontSize: 13,
-    opacity: 0.75,
-    lineHeight: 1.4,
-    marginTop: 6,
-  };
-
-  const primaryActionStyle: React.CSSProperties = {
-    width: "100%",
-    padding: "16px 18px",
-    borderRadius: 12,
-    fontSize: 17,
-    boxShadow: "0 6px 16px rgba(0, 0, 0, 0.10)",
-  };
-
-  const secondaryActionStyle: React.CSSProperties = {
-    width: "100%",
-    padding: "15px 18px",
-    borderRadius: 12,
-    fontSize: 16,
-  };
-
-  const sectionCardStyle: React.CSSProperties = {
-    padding: 14,
-    borderRadius: 12,
-    border: "1px solid var(--border)",
-    background: "var(--card-soft)",
-  };
-
-  const sectionTitleStyle: React.CSSProperties = {
-    margin: 0,
-    fontSize: 18,
-  };
-
-  const toolCardStyle: React.CSSProperties = {
-    padding: 12,
-    borderRadius: 10,
-    border: "1px solid var(--border)",
-    background: "var(--card)",
-  };
-
-  const dangerBadgeStyle: React.CSSProperties = {
-    fontSize: 11,
-    fontWeight: 800,
-    borderRadius: 999,
-    padding: "2px 8px",
-    border: "1px solid rgba(239,68,68,0.35)",
-    background: "rgba(239,68,68,0.14)",
-    color: "#991b1b",
-    whiteSpace: "nowrap",
-  };
-
   function parseMinRound(value: string) {
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) return 0;
@@ -356,60 +296,39 @@ export default function AdminPage() {
   })();
 
   return (
-    <main style={{ maxWidth: 900, margin: "40px auto", padding: 16 }}>
-      <h1>Admin Panel</h1>
+    <main className="ui-page ui-page--narrow ui-admin-page">
+      <h1 className="ui-title">Admin Panel</h1>
 
-      <div style={{ marginTop: 20 }}>
-        <label style={{ fontWeight: 600 }}>Season:</label>
+      <div className="ui-admin-season-row">
+        <label className="ui-admin-label">Season:</label>
         <input
           type="number"
           value={season}
           onChange={(e) => setSeason(Number(e.target.value))}
-          style={{
-            marginLeft: 10,
-            padding: 8,
-            borderRadius: 8,
-            border: "1px solid var(--border)",
-            width: 120,
-          }}
+          className="ui-input ui-admin-input-season"
         />
       </div>
 
-      <div
-        style={{
-          marginTop: 30,
-          display: "grid",
-          gap: 16,
-          gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
-        }}
-      >
-        <section style={{ ...sectionCardStyle, order: 0, gridColumn: "1 / -1" }}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 10,
-              flexWrap: "wrap",
-            }}
-          >
-            <h2 style={sectionTitleStyle}>Round Command Center</h2>
-            <button
+      <div className="ui-admin-grid">
+        <UiCard soft className="ui-admin-section ui-admin-section--wide" style={{ order: 0 }}>
+          <div className="ui-row-wrap" style={{ justifyContent: "space-between", gap: 10 }}>
+            <h2 className="ui-admin-section-title">Round Command Center</h2>
+            <UiButton
               disabled={isRunning || commandCenterLoading}
               onClick={() => loadRoundCommandCenter(season)}
-              style={{ ...btnStyle, ...buttonStateStyle, padding: "8px 12px" }}
+              className="ui-admin-btn"
             >
               {commandCenterLoading ? "Refreshing…" : "Refresh"}
-            </button>
+            </UiButton>
           </div>
-          <div style={{ ...summaryStyle, marginTop: 8 }}>
+          <div className="ui-admin-summary">
             Quick actions by round: open round, see who is missing tips, and send reminders.
           </div>
 
           {commandCenterMsg ? (
-            <div style={{ marginTop: 12, fontSize: 13, opacity: 0.8 }}>{commandCenterMsg}</div>
+            <div className="ui-admin-summary">{commandCenterMsg}</div>
           ) : (
-            <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+            <div className="ui-admin-stack">
               {currentCommandRound ? (
                 (() => {
                   const round = currentCommandRound;
@@ -419,390 +338,286 @@ export default function AdminPage() {
                   const isOpen = openMissingRoundId === round.round_id;
 
                   return (
-                    <div key={round.round_id} style={toolCardStyle}>
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        gap: 8,
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      <div style={{ display: "grid", gap: 4 }}>
-                        <div style={{ fontWeight: 800 }}>Round {round.round_number}</div>
-                        <div style={{ ...summaryStyle, marginTop: 0 }}>
+                    <UiCard key={round.round_id} className="ui-admin-tool">
+                    <div className="ui-row-wrap" style={{ justifyContent: "space-between", gap: 8 }}>
+                      <div className="ui-admin-stack-tight">
+                        <div className="ui-admin-subtitle">Round {round.round_number}</div>
+                        <div className="ui-admin-summary ui-admin-summary--tight">
                           Locks {fmtMelbourneShort(round.lock_time_utc)} • Tipped {round.tipped_players}/
                           {round.total_players} • Missing {round.missing_count}
                         </div>
                       </div>
-                      <span className={`ui-badge ${isLocked ? "ui-badge--locked" : "ui-badge--open"}`}>
+                      <UiBadge tone={isLocked ? "locked" : "open"}>
                         {isLocked ? "LOCKED" : "OPEN"}
-                      </span>
+                      </UiBadge>
                     </div>
 
-                    <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <Link
+                    <div className="ui-row-wrap ui-admin-gap-sm" style={{ marginTop: 10 }}>
+                      <UiButtonLink
                         href={`/round/${season}/${round.round_number}`}
-                        className="ui-btn ui-btn--pill"
-                        style={{ textDecoration: "none" }}
+                        className="ui-admin-btn"
+                        pill
                       >
                         Open round
-                      </Link>
-                      <button
+                      </UiButtonLink>
+                      <UiButton
                         type="button"
                         onClick={() =>
                           setOpenMissingRoundId((prev) => (prev === round.round_id ? null : round.round_id))
                         }
-                        className="ui-btn ui-btn--pill"
+                        className="ui-admin-btn"
+                        pill
                       >
                         {isOpen ? "Hide missing" : `Who is missing (${round.missing_count})`}
-                      </button>
-                      <button
+                      </UiButton>
+                      <UiButton
                         type="button"
                         disabled={isRunning || round.missing_count === 0}
                         onClick={() => openForceReminderConfirm(round.round_number)}
-                        className="ui-btn ui-btn--pill ui-btn--danger-soft"
+                        className="ui-admin-btn"
+                        tone="dangerSoft"
+                        pill
                       >
                         Send reminder
-                      </button>
+                      </UiButton>
                     </div>
 
                     {isOpen && (
-                      <div
-                        style={{
-                          marginTop: 10,
-                          borderTop: "1px solid var(--border)",
-                          paddingTop: 10,
-                          display: "grid",
-                          gap: 6,
-                          maxHeight: 220,
-                          overflowY: "auto",
-                        }}
-                      >
+                      <div className="ui-admin-missing-list">
                         {missing.length === 0 ? (
-                          <div style={{ fontSize: 13, opacity: 0.75 }}>Everyone has tipped this round.</div>
+                          <div className="ui-admin-summary">Everyone has tipped this round.</div>
                         ) : (
                           missing.map((p) => (
-                            <div
-                              key={p.user_id}
-                              style={{
-                                fontSize: 14,
-                                lineHeight: 1.3,
-                                padding: "6px 8px",
-                                borderRadius: 8,
-                                border: "1px solid var(--border)",
-                                background: "var(--card-soft)",
-                              }}
-                            >
+                            <div key={p.user_id} className="ui-admin-missing-item">
                               {p.display_name?.trim() || "(no display name)"}
                             </div>
                           ))
                         )}
                       </div>
                     )}
-                    </div>
+                    </UiCard>
                   );
                 })()
               ) : (
-                <div style={{ fontSize: 13, opacity: 0.75 }}>No current round available.</div>
+                <div className="ui-admin-summary">No current round available.</div>
               )}
             </div>
           )}
-        </section>
+        </UiCard>
 
-        <section style={{ ...sectionCardStyle, order: 4 }}>
-          <h2 style={sectionTitleStyle}>Data Sync</h2>
-          <div style={{ ...summaryStyle, marginTop: 8 }}>
+        <UiCard soft className="ui-admin-section" style={{ order: 4 }}>
+          <h2 className="ui-admin-section-title">Data Sync</h2>
+          <div className="ui-admin-summary">
             Keep rounds, fixtures and odds snapshots aligned for this season.
           </div>
 
-          <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
-            <div style={toolCardStyle}>
-              <button
+          <div className="ui-admin-stack">
+            <UiCard className="ui-admin-tool">
+              <UiButton
                 disabled={isRunning}
                 onClick={() => run(`/api/admin/sync-fixture?season=${season}`)}
-                style={{ ...btnStyle, ...buttonStateStyle }}
+                className="ui-admin-btn ui-admin-btn--full"
               >
                 Sync Fixture (Squiggle)
-              </button>
-              <div style={summaryStyle}>
+              </UiButton>
+              <div className="ui-admin-summary">
                 Imports or refreshes rounds and matches for this season.
               </div>
-            </div>
+            </UiCard>
 
-            <div style={toolCardStyle}>
-              <button
+            <UiCard className="ui-admin-tool">
+              <UiButton
                 disabled={isRunning}
                 onClick={() => run(`/api/admin/snapshot-odds-all-due?season=${season}`)}
-                style={{ ...btnStyle, ...buttonStateStyle }}
+                className="ui-admin-btn ui-admin-btn--full"
               >
                 Snapshot Next Due Round
-              </button>
-              <div style={summaryStyle}>
+              </UiButton>
+              <div className="ui-admin-summary">
                 Captures odds for the next round only when its snapshot window is due.
               </div>
-            </div>
+            </UiCard>
 
-            <div style={toolCardStyle}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                <div style={{ fontWeight: 700 }}>Force Snapshot (Testing)</div>
-                <span style={dangerBadgeStyle}>Force</span>
+            <UiCard className="ui-admin-tool">
+              <div className="ui-row-wrap" style={{ justifyContent: "space-between", gap: 8 }}>
+                <div className="ui-admin-subtitle">Force Snapshot (Testing)</div>
+                <span className="ui-admin-danger-chip">Force</span>
               </div>
-              <button
+              <UiButton
                 disabled={isRunning}
                 onClick={runForceSnapshotNow}
-                style={{ ...btnStyle, ...buttonStateStyle, marginTop: 8 }}
+                className="ui-admin-btn ui-admin-btn--full"
+                style={{ marginTop: 8 }}
               >
                 Run Force Snapshot
-              </button>
-              <div style={summaryStyle}>
+              </UiButton>
+              <div className="ui-admin-summary">
                 Forces odds capture immediately, even when not due. Use for testing/backfills only.
               </div>
-            </div>
+            </UiCard>
           </div>
-        </section>
+        </UiCard>
 
-        <section style={{ ...sectionCardStyle, order: 2 }}>
-          <h2 style={sectionTitleStyle}>Comms</h2>
-          <div style={{ ...summaryStyle, marginTop: 8 }}>
+        <UiCard soft className="ui-admin-section" style={{ order: 2 }}>
+          <h2 className="ui-admin-section-title">Comms</h2>
+          <div className="ui-admin-summary">
             Send reminder and recap emails.
           </div>
 
-          <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
-            <div style={toolCardStyle}>
-              <div style={{ fontWeight: 800 }}>Tip reminders (automated)</div>
-              <div style={summaryStyle}>
+          <div className="ui-admin-stack">
+            <UiCard className="ui-admin-tool">
+              <div className="ui-admin-subtitle">Tip reminders (automated)</div>
+              <div className="ui-admin-summary">
                 Runs automatically every 30 minutes and only sends in the configured 3-hour pre-lock window.
               </div>
-              <div style={{ ...summaryStyle, marginTop: 10 }}>
+              <div className="ui-admin-summary">
                 Manual override is available in the Round Command Center via <b>Send reminder</b>.
               </div>
-            </div>
+            </UiCard>
 
-            <div style={toolCardStyle}>
-              <div style={{ fontWeight: 800 }}>Payment reminders (manual)</div>
-              <div style={summaryStyle}>
+            <UiCard className="ui-admin-tool">
+              <div className="ui-admin-subtitle">Payment reminders (manual)</div>
+              <div className="ui-admin-summary">
                 Send payment reminder emails to members with payment status <b>pending</b>.
               </div>
-              <button
+              <UiButton
                 disabled={isRunning}
                 onClick={openPaymentReminderConfirm}
-                style={{ ...btnStyle, ...buttonStateStyle, marginTop: 10 }}
+                className="ui-admin-btn ui-admin-btn--full"
+                style={{ marginTop: 10 }}
               >
                 Send Payment Pending Reminders
-              </button>
-            </div>
+              </UiButton>
+            </UiCard>
           </div>
-        </section>
+        </UiCard>
 
-        <section style={{ ...sectionCardStyle, order: 3 }}>
-          <h2 style={sectionTitleStyle}>Members</h2>
-          <div style={{ ...summaryStyle, marginTop: 8 }}>
+        <UiCard soft className="ui-admin-section" style={{ order: 3 }}>
+          <h2 className="ui-admin-section-title">Members</h2>
+          <div className="ui-admin-summary">
             Manage members, payment states, unpaid tip lock and seasonal settings.
           </div>
 
-          <div style={{ marginTop: 12 }}>
-            <button
-              disabled={isRunning}
-              onClick={() => router.push("/admin/members")}
-              style={{
-                ...btnStyle,
-                ...secondaryActionStyle,
-                ...buttonStateStyle,
-                background: "var(--card-soft)",
-                color: "var(--foreground)",
-                border: "1px solid var(--foreground)",
-                fontWeight: 800,
-              }}
-            >
+          <div className="ui-admin-stack">
+            <UiButtonLink href="/admin/members" className="ui-admin-btn ui-admin-btn--full ui-admin-btn--alt">
               Manage Members
-            </button>
+            </UiButtonLink>
           </div>
-        </section>
+        </UiCard>
 
-        <section style={{ ...sectionCardStyle, order: 1 }}>
-          <h2 style={sectionTitleStyle}>Scoring</h2>
-          <div style={{ ...summaryStyle, marginTop: 8 }}>
+        <UiCard soft className="ui-admin-section" style={{ order: 1 }}>
+          <h2 className="ui-admin-section-title">Scoring</h2>
+          <div className="ui-admin-summary">
             Update finished game results and refresh season totals.
           </div>
 
-          <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
-            <button
+          <div className="ui-admin-stack">
+            <UiButton
               disabled={isRunning}
               onClick={runSyncAndRecalc}
-              style={{
-                ...btnStyle,
-                ...primaryActionStyle,
-                ...buttonStateStyle,
-                background: "var(--foreground)",
-                color: "var(--background)",
-                border: "1px solid var(--foreground)",
-                fontWeight: 800,
-              }}
+              className="ui-admin-btn ui-admin-btn--full ui-admin-btn--primary"
             >
               Sync Results + Recalculate Leaderboard
-            </button>
+            </UiButton>
 
-            <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
-              <button
+            <div className="ui-admin-two-col">
+              <UiButton
                 disabled={isRunning}
                 onClick={() => run(`/api/admin/sync-results?season=${season}`)}
-                style={{ ...btnStyle, ...buttonStateStyle }}
+                className="ui-admin-btn ui-admin-btn--full"
               >
                 Sync Results (Only)
-              </button>
+              </UiButton>
 
-              <button
+              <UiButton
                 disabled={isRunning}
                 onClick={() => run(`/api/admin/recalc-leaderboard?season=${season}`)}
-                style={{ ...btnStyle, ...buttonStateStyle }}
+                className="ui-admin-btn ui-admin-btn--full"
               >
                 Recalculate Leaderboard (Only)
-              </button>
+              </UiButton>
             </div>
 
-            <div style={toolCardStyle}>
-              <div style={{ fontWeight: 800 }}>Round recap</div>
-              <div style={summaryStyle}>
+            <UiCard className="ui-admin-tool">
+              <div className="ui-admin-subtitle">Round recap</div>
+              <div className="ui-admin-summary">
                 Generate a round recap now and email it directly to you.
               </div>
-              <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                  <label style={{ fontWeight: 600 }}>Round</label>
+              <div className="ui-admin-stack">
+                <div className="ui-row-wrap ui-admin-gap-sm">
+                  <label className="ui-admin-label">Round</label>
                   <input
                     type="number"
                     min={0}
                     value={recapRound}
                     onChange={(e) => setRecapRound(parseMinRound(e.target.value))}
                     onBlur={() => setRecapRound((prev) => Math.max(0, Math.trunc(prev)))}
-                    style={{
-                      padding: 8,
-                      borderRadius: 8,
-                      border: "1px solid var(--border)",
-                      width: 96,
-                    }}
+                    className="ui-input ui-admin-input-round"
                   />
                 </div>
-                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                  <label style={{ fontWeight: 600, minWidth: 66 }}>Send to</label>
+                <div className="ui-row-wrap ui-admin-gap-sm">
+                  <label className="ui-admin-label ui-admin-label-email">Send to</label>
                   <input
                     type="email"
                     value={recapToEmail}
                     onChange={(e) => setRecapToEmail(e.target.value)}
                     placeholder="you@example.com"
-                    style={{
-                      flex: "1 1 260px",
-                      minWidth: 220,
-                      padding: 8,
-                      borderRadius: 8,
-                      border: "1px solid var(--border)",
-                    }}
+                    className="ui-input ui-admin-input-email"
                   />
                 </div>
-                <button
+                <UiButton
                   disabled={isRunning}
                   onClick={runRecapToMeNow}
-                  style={{ ...btnStyle, ...buttonStateStyle }}
+                  className="ui-admin-btn ui-admin-btn--full"
                 >
                   Generate Round Recap + Send To Me
-                </button>
+                </UiButton>
               </div>
-            </div>
+            </UiCard>
           </div>
-        </section>
+        </UiCard>
       </div>
 
       {result !== null && (
-        <div
-          style={{
-            marginTop: 30,
-            padding: 16,
-            borderRadius: 12,
-            border: "1px solid var(--border)",
-            background: "var(--card-soft)",
-            color: "var(--foreground)",
-            fontSize: 13,
-            overflowX: "auto",
-          }}
-        >
+        <UiCard soft className="ui-admin-result">
           <b>Last Result</b>
-          <pre style={{ marginTop: 10 }}>
+          <pre className="ui-admin-result-pre">
             {JSON.stringify(result, null, 2)}
           </pre>
-        </div>
+        </UiCard>
       )}
 
       {loading && (
-        <div style={{ marginTop: 20, opacity: 0.7 }}>
+        <div className="ui-admin-running">
           Running: {loading}
         </div>
       )}
 
       {confirmAction && (
-        <div
-          onClick={closeConfirm}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0, 0, 0, 0.45)",
-            display: "grid",
-            placeItems: "center",
-            zIndex: 1000,
-            padding: 16,
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: "100%",
-              maxWidth: 520,
-              borderRadius: 14,
-              border: "1px solid var(--border)",
-              background: "var(--card)",
-              color: "var(--foreground)",
-              boxShadow: "0 20px 45px rgba(0,0,0,0.28)",
-              padding: 16,
-            }}
-          >
-            <div style={{ fontSize: 20, fontWeight: 800 }}>{confirmAction.title}</div>
-            <div style={{ marginTop: 10, lineHeight: 1.45, opacity: 0.9 }}>{confirmAction.body}</div>
-            <div style={{ marginTop: 16, display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
-              <button
+        <div onClick={closeConfirm} className="ui-admin-modal-backdrop">
+          <UiCard onClick={(e) => e.stopPropagation()} className="ui-admin-modal">
+            <div className="ui-admin-modal-title">{confirmAction.title}</div>
+            <div className="ui-admin-modal-body">{confirmAction.body}</div>
+            <div className="ui-admin-modal-actions">
+              <UiButton
                 disabled={isRunning}
                 onClick={closeConfirm}
-                style={{ ...btnStyle, ...buttonStateStyle }}
+                className="ui-admin-btn"
               >
                 Cancel
-              </button>
-              <button
+              </UiButton>
+              <UiButton
                 disabled={isRunning}
                 onClick={confirmAndRun}
-                style={{
-                  ...btnStyle,
-                  ...buttonStateStyle,
-                  border: "1px solid rgba(239,68,68,0.55)",
-                  background: "rgba(239,68,68,0.16)",
-                  color: "var(--foreground)",
-                  fontWeight: 800,
-                }}
+                className="ui-admin-btn"
+                tone="dangerSoft"
               >
                 {confirmAction.confirmLabel}
-              </button>
+              </UiButton>
             </div>
-          </div>
+          </UiCard>
         </div>
       )}
     </main>
   );
 }
-
-const btnStyle: React.CSSProperties = {
-  padding: "12px 14px",
-  borderRadius: 10,
-  border: "1px solid var(--border)",
-  background: "var(--card)",
-  color: "var(--foreground)",
-  fontWeight: 600,
-  cursor: "pointer",
-};

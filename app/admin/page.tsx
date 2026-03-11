@@ -581,54 +581,6 @@ export default function AdminPage() {
             </div>
 
             <div style={toolCardStyle}>
-              <div style={{ fontWeight: 800 }}>Round recap</div>
-              <div style={summaryStyle}>
-                Generate a round recap now and email it directly to you.
-              </div>
-              <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                  <label style={{ fontWeight: 600 }}>Round</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={recapRound}
-                    onChange={(e) => setRecapRound(parseMinRound(e.target.value))}
-                    onBlur={() => setRecapRound((prev) => Math.max(0, Math.trunc(prev)))}
-                    style={{
-                      padding: 8,
-                      borderRadius: 8,
-                      border: "1px solid var(--border)",
-                      width: 96,
-                    }}
-                  />
-                </div>
-                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                  <label style={{ fontWeight: 600, minWidth: 66 }}>Send to</label>
-                  <input
-                    type="email"
-                    value={recapToEmail}
-                    onChange={(e) => setRecapToEmail(e.target.value)}
-                    placeholder="you@example.com"
-                    style={{
-                      flex: "1 1 260px",
-                      minWidth: 220,
-                      padding: 8,
-                      borderRadius: 8,
-                      border: "1px solid var(--border)",
-                    }}
-                  />
-                </div>
-                <button
-                  disabled={isRunning}
-                  onClick={runRecapToMeNow}
-                  style={{ ...btnStyle, ...buttonStateStyle }}
-                >
-                  Generate Round Recap + Send To Me
-                </button>
-              </div>
-            </div>
-
-            <div style={toolCardStyle}>
               <div style={{ fontWeight: 800 }}>Payment reminders (manual)</div>
               <div style={summaryStyle}>
                 Send payment reminder emails to members with payment status <b>pending</b>.
@@ -708,6 +660,54 @@ export default function AdminPage() {
               >
                 Recalculate Leaderboard (Only)
               </button>
+            </div>
+
+            <div style={toolCardStyle}>
+              <div style={{ fontWeight: 800 }}>Round recap</div>
+              <div style={summaryStyle}>
+                Generate a round recap now and email it directly to you.
+              </div>
+              <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <label style={{ fontWeight: 600 }}>Round</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={recapRound}
+                    onChange={(e) => setRecapRound(parseMinRound(e.target.value))}
+                    onBlur={() => setRecapRound((prev) => Math.max(0, Math.trunc(prev)))}
+                    style={{
+                      padding: 8,
+                      borderRadius: 8,
+                      border: "1px solid var(--border)",
+                      width: 96,
+                    }}
+                  />
+                </div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <label style={{ fontWeight: 600, minWidth: 66 }}>Send to</label>
+                  <input
+                    type="email"
+                    value={recapToEmail}
+                    onChange={(e) => setRecapToEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    style={{
+                      flex: "1 1 260px",
+                      minWidth: 220,
+                      padding: 8,
+                      borderRadius: 8,
+                      border: "1px solid var(--border)",
+                    }}
+                  />
+                </div>
+                <button
+                  disabled={isRunning}
+                  onClick={runRecapToMeNow}
+                  style={{ ...btnStyle, ...buttonStateStyle }}
+                >
+                  Generate Round Recap + Send To Me
+                </button>
+              </div>
             </div>
           </div>
         </section>

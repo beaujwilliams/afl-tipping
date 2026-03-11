@@ -96,6 +96,25 @@ const DEFAULT_SORT_DIR: Record<RoundSortKey, SortDirection> = {
   difference_score: "desc",
 };
 
+const ALL_COLUMNS: RoundSortKey[] = [
+  "rank",
+  "display_name",
+  "round_score",
+  "correct_tips",
+  "accuracy_pct",
+  "avg_correct_odds",
+  "potential_score",
+  "difference_score",
+];
+
+const MOBILE_CORE_COLUMNS: RoundSortKey[] = [
+  "rank",
+  "display_name",
+  "round_score",
+  "correct_tips",
+  "accuracy_pct",
+];
+
 const VENUE_MAP: Record<string, string> = {
   "Sydney Showground": "ENGIE Stadium",
   "Sydney Showground Stadium": "ENGIE Stadium",
@@ -178,6 +197,8 @@ export default function RoundResultsDetailPage() {
   const [roundRecap, setRoundRecap] = useState<RecapRow | null>(null);
   const [sortBy, setSortBy] = useState<RoundSortKey>("round_score");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [isMobile, setIsMobile] = useState(false);
+  const [showMoreMobileStats, setShowMoreMobileStats] = useState(false);
   const invalidParams = !Number.isFinite(season) || !Number.isFinite(round);
 
   useEffect(() => {
@@ -273,6 +294,35 @@ export default function RoundResultsDetailPage() {
     })();
   }, [season, round, invalidParams, sessionToken]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const media = window.matchMedia("(max-width: 640px)");
+    const onChange = () => setIsMobile(media.matches);
+    onChange();
+
+    if (typeof media.addEventListener === "function") {
+      media.addEventListener("change", onChange);
+      return () => media.removeEventListener("change", onChange);
+    }
+
+    media.addListener(onChange);
+    return () => media.removeListener(onChange);
+  }, []);
+
+  const showExtendedStats = !isMobile || showMoreMobileStats;
+
+  const visibleColumns = useMemo(() => {
+    if (showExtendedStats) {
+      return new Set<RoundSortKey>(ALL_COLUMNS);
+    }
+    return new Set<RoundSortKey>(MOBILE_CORE_COLUMNS);
+  }, [showExtendedStats]);
+
+  const activeSortBy: RoundSortKey = visibleColumns.has(sortBy) ? sortBy : "round_score";
+  const activeSortDirection: SortDirection = visibleColumns.has(sortBy) ? sortDirection : "desc";
+  const tableMinWidth = isMobile ? (showMoreMobileStats ? 980 : 780) : 980;
+
   const finishedMatches = useMemo(() => {
     return matches.filter((m) => !!String(m.winner_team ?? "").trim()).length;
   }, [matches]);
@@ -296,26 +346,26 @@ export default function RoundResultsDetailPage() {
 
   const sortedPlayers = useMemo(() => {
     const list = [...players];
-    const dir = sortDirection === "asc" ? 1 : -1;
+    const dir = activeSortDirection === "asc" ? 1 : -1;
 
     list.sort((a, b) => {
       let primaryCmp = 0;
 
-      if (sortBy === "display_name") {
+      if (activeSortBy === "display_name") {
         primaryCmp = a.display_name.localeCompare(b.display_name, "en", { sensitivity: "base" });
-      } else if (sortBy === "rank") {
+      } else if (activeSortBy === "rank") {
         const aRank = roundRankByUserId[a.user_id] ?? Number.MAX_SAFE_INTEGER;
         const bRank = roundRankByUserId[b.user_id] ?? Number.MAX_SAFE_INTEGER;
         primaryCmp = aRank - bRank;
-      } else if (sortBy === "round_score") {
+      } else if (activeSortBy === "round_score") {
         primaryCmp = a.round_score - b.round_score;
-      } else if (sortBy === "correct_tips") {
+      } else if (activeSortBy === "correct_tips") {
         primaryCmp = a.correct_tips - b.correct_tips;
-      } else if (sortBy === "accuracy_pct") {
+      } else if (activeSortBy === "accuracy_pct") {
         primaryCmp = a.accuracy_pct - b.accuracy_pct;
-      } else if (sortBy === "potential_score") {
+      } else if (activeSortBy === "potential_score") {
         primaryCmp = a.potential_score - b.potential_score;
-      } else if (sortBy === "difference_score") {
+      } else if (activeSortBy === "difference_score") {
         primaryCmp = a.difference_score - b.difference_score;
       } else {
         primaryCmp = a.avg_correct_odds - b.avg_correct_odds;
@@ -333,7 +383,7 @@ export default function RoundResultsDetailPage() {
     });
 
     return list;
-  }, [players, roundRankByUserId, sortBy, sortDirection]);
+  }, [players, roundRankByUserId, activeSortBy, activeSortDirection]);
 
   function onSort(nextKey: RoundSortKey) {
     if (sortBy === nextKey) {
@@ -345,8 +395,12 @@ export default function RoundResultsDetailPage() {
   }
 
   function sortMarker(key: RoundSortKey) {
-    if (sortBy !== key) return "↕";
-    return sortDirection === "asc" ? "↑" : "↓";
+    if (activeSortBy !== key) return "↕";
+    return activeSortDirection === "asc" ? "↑" : "↓";
+  }
+
+  function showColumn(key: RoundSortKey) {
+    return visibleColumns.has(key);
   }
 
   return (
@@ -423,102 +477,144 @@ export default function RoundResultsDetailPage() {
               <div style={{ padding: "0 12px 12px", opacity: 0.72, fontSize: 12 }}>No tips found for this round.</div>
             ) : (
               <UiTableScroll>
-                <table style={{ width: "100%", minWidth: 980, borderCollapse: "collapse" }}>
+                {isMobile && (
+                  <div
+                    style={{
+                      padding: "10px 12px",
+                      borderBottom: "1px solid var(--border)",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 10,
+                      background: "var(--card-soft)",
+                    }}
+                  >
+                    <div style={{ fontSize: 12, opacity: 0.75 }}>
+                      {showMoreMobileStats ? "Showing all stats" : "Showing core stats"}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowMoreMobileStats((prev) => !prev)}
+                      className="ui-btn"
+                      style={{ padding: "6px 10px" }}
+                    >
+                      {showMoreMobileStats ? "Show fewer" : "More stats"}
+                    </button>
+                  </div>
+                )}
+
+                <table style={{ width: "100%", minWidth: tableMinWidth, borderCollapse: "collapse" }}>
                   <thead>
                     <tr style={{ background: "var(--card-soft)", textAlign: "left", fontSize: 12 }}>
-                      {(
-                        [
-                          ["Rank", "rank"],
-                          ["Tipster", "display_name"],
-                          [`Round Score (R${round})`, "round_score"],
-                          ["Correct", "correct_tips"],
-                          ["Round Accuracy", "accuracy_pct"],
-                          ["Avg Correct Odds", "avg_correct_odds"],
-                          ["Potential Score", "potential_score"],
-                          ["Difference", "difference_score"],
-                        ] as Array<[string, RoundSortKey]>
-                      ).map(([label, key]) => (
-                        <UiTableHeadCell
-                          key={key}
-                          style={{
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => onSort(key)}
-                            title={`Sort by ${label}`}
+                      {([
+                        ["Rank", "rank"],
+                        ["Tipster", "display_name"],
+                        [`Round Score (R${round})`, "round_score"],
+                        ["Correct", "correct_tips"],
+                        ["Round Accuracy", "accuracy_pct"],
+                        ["Avg Correct Odds", "avg_correct_odds"],
+                        ["Potential Score", "potential_score"],
+                        ["Difference", "difference_score"],
+                      ] as Array<[string, RoundSortKey]>)
+                        .filter(([, key]) => showColumn(key))
+                        .map(([label, key]) => (
+                          <UiTableHeadCell
+                            key={key}
                             style={{
-                              appearance: "none",
-                              background: "transparent",
-                              border: "none",
-                              color: "inherit",
-                              cursor: "pointer",
-                              font: "inherit",
-                              fontWeight: sortBy === key ? 800 : 600,
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 6,
-                              padding: 0,
+                              whiteSpace: "nowrap",
                             }}
                           >
-                            <span>{label}</span>
-                            <span style={{ opacity: sortBy === key ? 1 : 0.45, fontSize: 11 }}>
-                              {sortMarker(key)}
-                            </span>
-                          </button>
-                        </UiTableHeadCell>
-                      ))}
+                            <button
+                              type="button"
+                              onClick={() => onSort(key)}
+                              title={`Sort by ${label}`}
+                              style={{
+                                appearance: "none",
+                                background: "transparent",
+                                border: "none",
+                                color: "inherit",
+                                cursor: "pointer",
+                                font: "inherit",
+                                fontWeight: activeSortBy === key ? 800 : 600,
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 6,
+                                padding: 0,
+                              }}
+                            >
+                              <span>{label}</span>
+                              <span style={{ opacity: activeSortBy === key ? 1 : 0.45, fontSize: 11 }}>
+                                {sortMarker(key)}
+                              </span>
+                            </button>
+                          </UiTableHeadCell>
+                        ))}
                     </tr>
                   </thead>
                   <tbody>
                     {sortedPlayers.map((p) => (
                       <tr key={p.user_id}>
-                        <td style={{ padding: "12px", borderTop: "1px solid var(--border)", fontWeight: 900 }}>
-                          #{roundRankByUserId[p.user_id] ?? "-"}
-                        </td>
-                        <td
-                          style={{ padding: "12px", borderTop: "1px solid var(--border)", fontWeight: 700 }}
-                          title={
-                            p.payment_status === "pending"
-                              ? `${p.display_name} (unpaid)`
-                              : p.display_name
-                          }
-                        >
-                          <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                            <ChampionCrown isChampion={p.user_id === reigningChampionUserId} />
-                            <UnpaidTag paymentStatus={p.payment_status ?? null} />
-                            <span
-                              style={{
-                                minWidth: 0,
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                                display: "block",
-                              }}
-                            >
-                              {p.display_name}
+                        {showColumn("rank") && (
+                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)", fontWeight: 900 }}>
+                            #{roundRankByUserId[p.user_id] ?? "-"}
+                          </td>
+                        )}
+                        {showColumn("display_name") && (
+                          <td
+                            style={{ padding: "12px", borderTop: "1px solid var(--border)", fontWeight: 700 }}
+                            title={
+                              p.payment_status === "pending"
+                                ? `${p.display_name} (unpaid)`
+                                : p.display_name
+                            }
+                          >
+                            <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                              <ChampionCrown isChampion={p.user_id === reigningChampionUserId} />
+                              <UnpaidTag paymentStatus={p.payment_status ?? null} compact={isMobile} />
+                              <span
+                                style={{
+                                  minWidth: 0,
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                  display: "block",
+                                }}
+                              >
+                                {p.display_name}
+                              </span>
                             </span>
-                          </span>
-                        </td>
-                        <td style={{ padding: "12px", borderTop: "1px solid var(--border)", fontWeight: 800 }}>
-                          {fmtPts(p.round_score)}
-                        </td>
-                        <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
-                          {p.correct_tips}
-                        </td>
-                        <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
-                          {fmtPct(p.accuracy_pct)}
-                        </td>
-                        <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
-                          {fmtPts(p.avg_correct_odds)}
-                        </td>
-                        <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
-                          {fmtPts(p.potential_score)}
-                        </td>
-                        <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
-                          {fmtPts(p.difference_score)}
-                        </td>
+                          </td>
+                        )}
+                        {showColumn("round_score") && (
+                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)", fontWeight: 800 }}>
+                            {fmtPts(p.round_score)}
+                          </td>
+                        )}
+                        {showColumn("correct_tips") && (
+                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
+                            {p.correct_tips}
+                          </td>
+                        )}
+                        {showColumn("accuracy_pct") && (
+                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
+                            {fmtPct(p.accuracy_pct)}
+                          </td>
+                        )}
+                        {showColumn("avg_correct_odds") && (
+                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
+                            {fmtPts(p.avg_correct_odds)}
+                          </td>
+                        )}
+                        {showColumn("potential_score") && (
+                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
+                            {fmtPts(p.potential_score)}
+                          </td>
+                        )}
+                        {showColumn("difference_score") && (
+                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
+                            {fmtPts(p.difference_score)}
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>

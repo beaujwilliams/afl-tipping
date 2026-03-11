@@ -1,13 +1,11 @@
 # Feature Backlog
 
-Last updated: 2026-03-10
+Last updated: 2026-03-11
 
 ## Prioritized Features
 
 | ID | Priority | Status | Feature | Why it helps | Effort | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| BL-008 | P1 | Idea | Personal stats page per user (best round, upset wins, streak history, missed rounds) | Increases retention and competitiveness | M | Next candidate |
-| BL-009 | P1 | Idea | Weekly recap module (biggest upset, most popular pick, perfect round) | Shareable content and stronger community feel | M | Next candidate |
 | BL-011 | P1 | Idea | Season archive selector and year-over-year comparison page | Keeps site useful across seasons | M | Next candidate |
 | BL-014 | P2 | Idea | Automated regression tests for scoring logic and lock-time behavior | Prevents subtle scoring errors | M | Should be pulled earlier due scoring sensitivity |
 | BL-015 | P2 | Idea | Add audit log for admin actions (sync, snapshot, recalc, member changes) | Better traceability when results look wrong | M | Ops visibility |
@@ -31,4 +29,5 @@ Last updated: 2026-03-10
 | BL-007 | P2 | Done (2026-03-09) | One-click admin reminders from round screen for users still missing tips | Faster operations on lock day | S |
 | BL-010 | P1 | Done (2026-03-09) | Add tie-breaker policy + UI for final ladder ties | Prevents disputes at season end | S |
 | BL-019 | P1 | Done (2026-03-09) | Add username capture during sign-up (validation + uniqueness) | Ensures clean display names from day one | S |
-
+| BL-008 | P1 | Done (2026-03-11) | Personal stats page per user (best round, upset wins, streak history, missed rounds) | Added in-profile season stats and self-serve profile management | M |
+| BL-009 | P1 | Done (2026-03-11) | Weekly recap module (biggest upset, most popular pick, perfect round) | Automated recap generation + admin recap history + narrative/raw stats review | M |

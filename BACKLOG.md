@@ -1,6 +1,6 @@
 # AFL Tipping Backlog
 
-Last updated: 2026-03-10
+Last updated: 2026-03-11
 
 The backlog is now split into three tracks:
 
@@ -35,7 +35,6 @@ All existing `BL-*` items from the previous single backlog are preserved in
 1. `UI-001` Season switcher + remove hardcoded year in nav/routes
 2. `BUG-001` Fix odds polling hook dependency warning in round page
 3. `BL-014` Regression tests for scoring and lock-time behavior
-4. `BL-008` Personal stats page
-5. `UI-004` Mobile compact mode for leaderboard/results tables
-6. `BL-015` Admin audit log
-
+4. `BL-011` Season archive + year-over-year comparison page
+5. `BL-015` Admin audit log
+6. `BL-016` Observability: logs + alerting for job failures

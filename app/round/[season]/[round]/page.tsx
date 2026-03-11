@@ -260,6 +260,29 @@ export default function RoundPage() {
     return matches.filter((m) => !!tipsByMatchId[m.id]).length;
   }, [matches, tipsByMatchId]);
 
+  const potentialScore = useMemo(() => {
+    if (!matches.length) return 0;
+    let total = 0;
+
+    for (const m of matches) {
+      const picked = tipsByMatchId[m.id];
+      if (!picked) continue;
+
+      const odds = oddsByMatchId[m.id];
+      if (!odds) continue;
+
+      let pickedOdds = 0;
+      if (picked === m.home_team) pickedOdds = Number(odds.home_odds ?? 0);
+      else if (picked === m.away_team) pickedOdds = Number(odds.away_odds ?? 0);
+
+      if (Number.isFinite(pickedOdds) && pickedOdds > 0) {
+        total += pickedOdds;
+      }
+    }
+
+    return total;
+  }, [matches, tipsByMatchId, oddsByMatchId]);
+
   const oddsHaveCount = useMemo(() => {
     if (!matches.length) return 0;
     return matches.filter((m) => !!oddsByMatchId[m.id]).length;
@@ -978,7 +1001,10 @@ export default function RoundPage() {
           >
             <div>
               <div style={{ fontWeight: 700 }}>
-                Your tips: {tippedCount} / {matches.length}
+                Your tips: {tippedCount} / {matches.length}{" "}
+                <span style={{ fontWeight: 600, opacity: 0.85 }}>
+                  (Potential score: {potentialScore.toFixed(2)})
+                </span>
               </div>
               <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
                 Tip all matches before the lock time.

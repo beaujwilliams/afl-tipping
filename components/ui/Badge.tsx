@@ -1,7 +1,7 @@
 import type { HTMLAttributes, ReactNode } from "react";
 import { cx } from "./cx";
 
-type BadgeTone = "neutral" | "open" | "locked";
+type BadgeTone = "neutral" | "open" | "locked" | "success" | "warning" | "info" | "danger";
 
 type UiBadgeProps = HTMLAttributes<HTMLSpanElement> & {
   children: ReactNode;
@@ -11,6 +11,10 @@ type UiBadgeProps = HTMLAttributes<HTMLSpanElement> & {
 function toneClass(tone: BadgeTone) {
   if (tone === "open") return "ui-badge--open";
   if (tone === "locked") return "ui-badge--locked";
+  if (tone === "success") return "ui-badge--success";
+  if (tone === "warning") return "ui-badge--warning";
+  if (tone === "info") return "ui-badge--info";
+  if (tone === "danger") return "ui-badge--danger";
   return "";
 }
 

@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { UnpaidTag } from "@/components/UnpaidTag";
 import { ChampionCrown } from "@/components/ChampionCrown";
 import { waitForSession } from "@/lib/session-client";
+import { UiButtonLink, UiCard } from "@/components/ui";
 
 type RoundRow = {
   id: string;
@@ -292,23 +293,13 @@ export default function SeasonRoundsPage() {
         <div className="ui-caption">All times shown in Melbourne</div>
       </div>
 
-      {msg && <p style={{ marginTop: 14 }} className="ui-caption">{msg}</p>}
+      {msg && <p className="ui-caption ui-mt-4">{msg}</p>}
 
-      {!msg && !hasRows && <div style={{ marginTop: 16 }} className="ui-caption">No tip rounds found.</div>}
+      {!msg && !hasRows && <div className="ui-caption ui-mt-4">No tip rounds found.</div>}
 
       {!msg && hasRows && currentRound && (
-        <div
-          className="ui-card ui-card-soft"
-          style={{
-            marginTop: 16,
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 12,
-            flexWrap: "wrap",
-          }}
-        >
-          <div style={{ display: "grid", gap: 6 }}>
+        <UiCard soft className="ui-row-between ui-mt-4">
+          <div className="ui-grid" style={{ gap: 6 }}>
             <div className="ui-title--section">Current round: Round {currentRound.round_number}</div>
             <div className="ui-meta">
               {currentRoundLocked
@@ -323,25 +314,18 @@ export default function SeasonRoundsPage() {
             </div>
           </div>
 
-          <Link
+          <UiButtonLink
             href={`/round/${season}/${currentRound.round_number}`}
-            className="ui-btn"
             style={{ padding: "10px 14px" }}
           >
             {currentRoundLocked ? "View round" : "Continue tipping"}
-          </Link>
-        </div>
+          </UiButtonLink>
+        </UiCard>
       )}
 
       {!msg && hasRows && (
-        <div style={{ marginTop: 22 }}>
-          <div
-            style={{
-              borderTop: "1px solid var(--border)",
-              paddingTop: 12,
-              marginBottom: 12,
-            }}
-          >
+        <div className="ui-mt-5">
+          <div className="ui-divider-top" style={{ marginBottom: 12 }}>
             <div style={{ opacity: 0.62, fontSize: 11, letterSpacing: 0.6, textTransform: "uppercase" }}>
               {season} Season
             </div>
@@ -350,7 +334,7 @@ export default function SeasonRoundsPage() {
             </div>
           </div>
 
-          <div style={{ display: "grid", gap: 12 }}>
+          <div className="ui-grid">
           {rows.map((r) => {
             const lock = melbourneMs(r.lock_time_utc);
             const locked = lock ? nowMs >= lock : false;

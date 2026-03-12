@@ -1,12 +1,19 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { UnpaidTag } from "@/components/UnpaidTag";
 import { ChampionCrown } from "@/components/ChampionCrown";
 import { waitForSession } from "@/lib/session-client";
-import { UiTableHeadCell, UiTableScroll, UiTableShell } from "@/components/ui";
+import {
+  UiButtonLink,
+  UiCard,
+  UiCardGrid,
+  UiTableCell,
+  UiTableHeadCell,
+  UiTableScroll,
+  UiTableShell,
+} from "@/components/ui";
 
 type MatchResultRow = {
   id: string;
@@ -404,75 +411,48 @@ export default function RoundResultsDetailPage() {
   }
 
   return (
-    <main style={{ maxWidth: 900, margin: "24px auto", padding: 12 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+    <main className="ui-page ui-page--narrow">
+      <div className="ui-row-between-start">
         <div>
-          <h1 style={{ margin: 0, fontSize: 30, letterSpacing: -0.4 }}>
+          <h1 className="ui-title--section" style={{ margin: 0, fontSize: 30, letterSpacing: -0.4 }}>
             Round {round} Results
           </h1>
-          <div style={{ marginTop: 6, opacity: 0.75, fontSize: 12 }}>
+          <div className="ui-caption ui-mt-2">
             Season {season} • {lockTimeUtc ? `Locked ${formatMelbourne(lockTimeUtc)}` : "Lock time unavailable"}
           </div>
         </div>
 
-        <Link
+        <UiButtonLink
           href={`/results/${season}`}
-          style={{
-            alignSelf: "flex-start",
-            fontSize: 13,
-            fontWeight: 800,
-            border: "1px solid var(--border)",
-            borderRadius: 10,
-            padding: "8px 10px",
-            textDecoration: "none",
-          }}
+          style={{ alignSelf: "flex-start" }}
         >
           Back to rounds
-        </Link>
+        </UiButtonLink>
       </div>
 
-      {invalidParams && <div style={{ marginTop: 14, opacity: 0.82 }}>Invalid season/round.</div>}
-      {!invalidParams && msg && <div style={{ marginTop: 14, opacity: 0.82 }}>{msg}</div>}
+      {invalidParams && <div className="ui-caption ui-mt-4">Invalid season/round.</div>}
+      {!invalidParams && msg && <div className="ui-caption ui-mt-4">{msg}</div>}
 
       {!invalidParams && !msg && (
         <>
-          <div
-            style={{
-              marginTop: 14,
-              display: "grid",
-              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-              gap: 10,
-            }}
-          >
-            <div
-              style={{
-                border: "1px solid var(--border)",
-                borderRadius: 12,
-                padding: 10,
-                background: "var(--card-soft)",
-              }}
-            >
-              <div style={{ fontSize: 11, opacity: 0.72 }}>Matches finished</div>
+          <UiCardGrid columns={2} className="ui-mt-4" style={{ gap: 10 }}>
+            <UiCard soft>
+              <div className="ui-kicker">Matches finished</div>
               <div style={{ marginTop: 5, fontSize: 22, fontWeight: 900 }}>
                 {finishedMatches}/{matches.length}
               </div>
-            </div>
+            </UiCard>
 
-            <div
-              style={{
-                border: "1px solid var(--border)",
-                borderRadius: 12,
-                padding: 10,
-                background: "var(--card-soft)",
-              }}
-            >
-              <div style={{ fontSize: 11, opacity: 0.72 }}>Total tips</div>
+            <UiCard soft>
+              <div className="ui-kicker">Total tips</div>
               <div style={{ marginTop: 5, fontSize: 22, fontWeight: 900 }}>{tipsPlaced}</div>
-            </div>
-          </div>
+            </UiCard>
+          </UiCardGrid>
 
-          <UiTableShell style={{ marginTop: 12 }}>
-            <div style={{ padding: "12px 12px 8px", fontWeight: 900, fontSize: 15 }}>Round leaderboard</div>
+          <UiTableShell className="ui-mt-3">
+            <div className="ui-title--section" style={{ padding: "12px 12px 8px", fontSize: 15 }}>
+              Round leaderboard
+            </div>
             {players.length === 0 ? (
               <div style={{ padding: "0 12px 12px", opacity: 0.72, fontSize: 12 }}>No tips found for this round.</div>
             ) : (
@@ -503,9 +483,9 @@ export default function RoundResultsDetailPage() {
                   </div>
                 )}
 
-                <table style={{ width: "100%", minWidth: tableMinWidth, borderCollapse: "collapse" }}>
+                <table className="ui-table" style={{ minWidth: tableMinWidth }}>
                   <thead>
-                    <tr style={{ background: "var(--card-soft)", textAlign: "left", fontSize: 12 }}>
+                    <tr className="ui-table-head-row">
                       {([
                         ["Rank", "rank"],
                         ["Tipster", "display_name"],
@@ -555,13 +535,13 @@ export default function RoundResultsDetailPage() {
                     {sortedPlayers.map((p) => (
                       <tr key={p.user_id}>
                         {showColumn("rank") && (
-                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)", fontWeight: 900 }}>
+                          <UiTableCell style={{ fontWeight: 900 }}>
                             #{roundRankByUserId[p.user_id] ?? "-"}
-                          </td>
+                          </UiTableCell>
                         )}
                         {showColumn("display_name") && (
-                          <td
-                            style={{ padding: "12px", borderTop: "1px solid var(--border)", fontWeight: 700 }}
+                          <UiTableCell
+                            style={{ fontWeight: 700 }}
                             title={
                               p.payment_status === "pending"
                                 ? `${p.display_name} (unpaid)`
@@ -583,37 +563,37 @@ export default function RoundResultsDetailPage() {
                                 {p.display_name}
                               </span>
                             </span>
-                          </td>
+                          </UiTableCell>
                         )}
                         {showColumn("round_score") && (
-                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)", fontWeight: 800 }}>
+                          <UiTableCell style={{ fontWeight: 800 }}>
                             {fmtPts(p.round_score)}
-                          </td>
+                          </UiTableCell>
                         )}
                         {showColumn("correct_tips") && (
-                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
+                          <UiTableCell>
                             {p.correct_tips}
-                          </td>
+                          </UiTableCell>
                         )}
                         {showColumn("accuracy_pct") && (
-                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
+                          <UiTableCell>
                             {fmtPct(p.accuracy_pct)}
-                          </td>
+                          </UiTableCell>
                         )}
                         {showColumn("avg_correct_odds") && (
-                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
+                          <UiTableCell>
                             {fmtPts(p.avg_correct_odds)}
-                          </td>
+                          </UiTableCell>
                         )}
                         {showColumn("potential_score") && (
-                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
+                          <UiTableCell>
                             {fmtPts(p.potential_score)}
-                          </td>
+                          </UiTableCell>
                         )}
                         {showColumn("difference_score") && (
-                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
+                          <UiTableCell>
                             {fmtPts(p.difference_score)}
-                          </td>
+                          </UiTableCell>
                         )}
                       </tr>
                     ))}
@@ -623,26 +603,18 @@ export default function RoundResultsDetailPage() {
             )}
           </UiTableShell>
 
-          <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
+          <div className="ui-grid ui-mt-4">
             {matches.map((m) => {
               const winner = String(m.winner_team ?? "").trim();
               const finished = !!winner;
 
               return (
-                <article
-                  key={m.id}
-                  style={{
-                    border: "1px solid var(--border)",
-                    borderRadius: 14,
-                    padding: 12,
-                    background: "var(--card)",
-                  }}
-                >
-                  <div style={{ fontSize: 11, opacity: 0.72 }}>
+                <UiCard key={m.id}>
+                  <div className="ui-kicker" style={{ fontSize: 11 }}>
                     {formatMelbourne(m.commence_time_utc)} • {normalizeVenue(m.venue)}
                   </div>
 
-                  <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", gap: 10 }}>
+                  <div className="ui-row-between ui-mt-2">
                     <div style={{ fontWeight: 900, fontSize: 16, lineHeight: 1.2 }}>
                       {m.home_team} vs {m.away_team}
                     </div>
@@ -661,12 +633,12 @@ export default function RoundResultsDetailPage() {
                     </div>
                   </div>
 
-                  <div style={{ marginTop: 10 }}>
+                  <div className="ui-mt-3">
                     <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
                       Tipping percentages ({m.total_tips} tips)
                     </div>
 
-                    <div style={{ display: "grid", gap: 8 }}>
+                    <div className="ui-grid" style={{ gap: 8 }}>
                       <div>
                         <div
                           style={{
@@ -734,21 +706,13 @@ export default function RoundResultsDetailPage() {
                       </div>
                     </div>
                   </div>
-                </article>
+                </UiCard>
               );
             })}
           </div>
 
           {isRecapAdmin && (
-            <section
-              style={{
-                marginTop: 14,
-                border: "1px solid var(--border)",
-                borderRadius: 14,
-                padding: 12,
-                background: "var(--card-soft)",
-              }}
-            >
+            <UiCard soft className="ui-mt-4">
               <div style={{ fontWeight: 900, fontSize: 16 }}>Admin Round Recap</div>
 
               {recapLoading && (
@@ -833,7 +797,7 @@ export default function RoundResultsDetailPage() {
                   </details>
                 </div>
               )}
-            </section>
+            </UiCard>
           )}
         </>
       )}

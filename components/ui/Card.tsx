@@ -44,7 +44,14 @@ type UiCardGridProps = {
 };
 
 export function UiCardGrid({ children, columns = 3, className, style }: UiCardGridProps) {
-  const columnClass = columns === 3 ? "ui-card-grid--3" : "";
+  const columnClass =
+    columns === 2
+      ? "ui-card-grid--2"
+      : columns === 4
+      ? "ui-card-grid--4"
+      : columns === 3
+      ? "ui-card-grid--3"
+      : "";
   return (
     <div className={cx("ui-card-grid", columnClass, className)} style={style}>
       {children}

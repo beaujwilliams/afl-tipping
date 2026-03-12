@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { waitForSession } from "@/lib/session-client";
+import { UiBadge, UiCard, UiSectionHeader } from "@/components/ui";
 
 type RoundRow = {
   id: string;
@@ -152,39 +153,41 @@ export default function SeasonResultsPage() {
   }, [rows, nowMs]);
   const hiddenCount = rows.length - visibleRows.length;
 
+  function roundStatusTone(total: number, finished: number, locked: boolean) {
+    if (total > 0 && finished === total) return "success" as const;
+    if (locked) return "warning" as const;
+    return "info" as const;
+  }
+
+  function roundStatusLabel(total: number, finished: number, locked: boolean) {
+    if (total > 0 && finished === total) return "COMPLETE";
+    if (locked) return "IN PROGRESS";
+    return "NOT STARTED";
+  }
+
   return (
-    <main style={{ maxWidth: 900, margin: "26px auto", padding: 16 }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "baseline",
-          justifyContent: "space-between",
-          gap: 12,
-          flexWrap: "wrap",
-        }}
-      >
-        <h1 style={{ margin: 0, fontSize: 36, letterSpacing: -0.4 }}>
-          Round Results • {season}
-        </h1>
-        <div style={{ opacity: 0.7, fontSize: 12 }}>All times shown in Melbourne</div>
-      </div>
+    <main className="ui-page ui-page--narrow">
+      <UiSectionHeader
+        title={`Round Results • ${season}`}
+        subtitle="All times shown in Melbourne"
+      />
 
-      {msg && <p style={{ marginTop: 14, opacity: 0.8 }}>{msg}</p>}
+      {msg && <p className="ui-caption ui-mt-4">{msg}</p>}
 
-      {!msg && !hasRows && <div style={{ marginTop: 16, opacity: 0.75 }}>No rounds found.</div>}
+      {!msg && !hasRows && <div className="ui-caption ui-mt-4">No rounds found.</div>}
       {!msg && hasRows && visibleRows.length === 0 && (
-        <div style={{ marginTop: 16, opacity: 0.75 }}>
+        <div className="ui-caption ui-mt-4">
           No round results are visible yet. Results appear once each round locks.
         </div>
       )}
       {!msg && hiddenCount > 0 && visibleRows.length > 0 && (
-        <div style={{ marginTop: 12, opacity: 0.7, fontSize: 12 }}>
+        <div className="ui-caption ui-mt-3">
           {hiddenCount} future round{hiddenCount === 1 ? "" : "s"} hidden until lock time.
         </div>
       )}
 
       {!msg && visibleRows.length > 0 && (
-        <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
+        <div className="ui-grid ui-mt-4">
           {visibleRows.map((r) => {
             const lock = melbourneMs(r.lock_time_utc);
             const locked = lock ? nowMs >= lock : false;
@@ -194,22 +197,10 @@ export default function SeasonResultsPage() {
               <Link
                 key={r.id}
                 href={`/results/${season}/${r.round_number}`}
-                style={{
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  borderRadius: 18,
-                  padding: "14px 14px",
-                  textDecoration: "none",
-                  color: "var(--foreground)",
-                  background: "rgba(255,255,255,0.04)",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: 12,
-                  minHeight: 68,
-                  WebkitTapHighlightColor: "transparent",
-                }}
+                style={{ WebkitTapHighlightColor: "transparent" }}
               >
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <UiCard soft className="ui-row-between" style={{ minHeight: 68, padding: "14px 14px" }}>
+                <div className="ui-grid" style={{ gap: 6 }}>
                   <div style={{ fontWeight: 950, fontSize: 18, letterSpacing: -0.2 }}>
                     Round {r.round_number}
                   </div>
@@ -223,34 +214,10 @@ export default function SeasonResultsPage() {
                   </div>
                 </div>
 
-                <div
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 900,
-                    padding: "8px 10px",
-                    borderRadius: 999,
-                    border: "1px solid rgba(255,255,255,0.16)",
-                    background:
-                      stats.total > 0 && stats.finished === stats.total
-                        ? "rgba(34,197,94,0.12)"
-                        : locked
-                          ? "rgba(245,158,11,0.12)"
-                          : "rgba(59,130,246,0.12)",
-                    color:
-                      stats.total > 0 && stats.finished === stats.total
-                        ? "rgb(34,197,94)"
-                        : locked
-                          ? "rgb(245,158,11)"
-                          : "rgb(59,130,246)",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {stats.total > 0 && stats.finished === stats.total
-                    ? "COMPLETE"
-                    : locked
-                      ? "IN PROGRESS"
-                      : "NOT STARTED"}
-                </div>
+                <UiBadge tone={roundStatusTone(stats.total, stats.finished, locked)}>
+                  {roundStatusLabel(stats.total, stats.finished, locked)}
+                </UiBadge>
+                </UiCard>
               </Link>
             );
           })}

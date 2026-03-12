@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { UnpaidTag } from "@/components/UnpaidTag";
 import { ChampionCrown } from "@/components/ChampionCrown";
-import { UiTableHeadCell, UiTableScroll, UiTableShell } from "@/components/ui";
+import { UiTableCell, UiTableHeadCell, UiTableScroll, UiTableShell } from "@/components/ui";
 
 type LeaderboardRow = {
   user_id: string;
@@ -332,11 +332,11 @@ export default function LeaderboardPage() {
     <main className="ui-page ui-page--wide">
       <h1 className="ui-title">Leaderboard • {season}</h1>
 
-      {msg && <p style={{ marginTop: 16 }} className="ui-caption">{msg}</p>}
+      {msg && <p className="ui-caption ui-mt-4">{msg}</p>}
 
       {!msg && (
         <>
-          <UiTableShell style={{ marginTop: 12 }}>
+          <UiTableShell className="ui-mt-3">
             {rows.length === 0 ? (
               <div style={{ padding: 16 }} className="ui-caption">No leaderboard data yet.</div>
             ) : (
@@ -367,9 +367,9 @@ export default function LeaderboardPage() {
                   </div>
                 )}
 
-                <table style={{ width: "100%", minWidth: tableMinWidth, borderCollapse: "collapse" }}>
+                <table className="ui-table" style={{ minWidth: tableMinWidth }}>
                   <thead>
-                    <tr style={{ background: "var(--card-soft)", textAlign: "left", fontSize: 12 }}>
+                    <tr className="ui-table-head-row">
                       {showColumn("rank") && sortableHeader("Rank", "rank", 1)}
                       {showColumn("display_name") && sortableHeader("Tipster", "display_name", 2)}
                       {showColumn("total_points") && sortableHeader("Total Pts", "total_points")}
@@ -391,22 +391,18 @@ export default function LeaderboardPage() {
                     {sortedRows.map((r) => (
                       <tr key={r.user_id}>
                         {showColumn("rank") && (
-                          <td
+                          <UiTableCell
                             style={{
-                              padding: "12px",
-                              borderTop: "1px solid var(--border)",
                               fontWeight: 900,
                               ...stickyColumnStyle(1, false),
                             }}
                           >
                             #{r.rank}
-                          </td>
+                          </UiTableCell>
                         )}
                         {showColumn("display_name") && (
-                          <td
+                          <UiTableCell
                             style={{
-                              padding: "12px",
-                              borderTop: "1px solid var(--border)",
                               fontWeight: 700,
                               ...stickyColumnStyle(2, false),
                             }}
@@ -431,60 +427,58 @@ export default function LeaderboardPage() {
                                 {r.display_name}
                               </span>
                             </span>
-                          </td>
+                          </UiTableCell>
                         )}
                         {showColumn("total_points") && (
-                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)", fontWeight: 800 }}>
+                          <UiTableCell style={{ fontWeight: 800 }}>
                             {fmtPts(r.total_points)}
-                          </td>
+                          </UiTableCell>
                         )}
                         {showColumn("behind_leader") && (
-                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
+                          <UiTableCell>
                             {r.behind_leader <= 0 ? "-" : fmtPts(r.behind_leader)}
-                          </td>
+                          </UiTableCell>
                         )}
                         {showColumn("correct_tips") && (
-                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
+                          <UiTableCell>
                             {r.correct_tips}
-                          </td>
+                          </UiTableCell>
                         )}
                         {showColumn("movement") && (
-                          <td
+                          <UiTableCell
                             style={{
-                              padding: "12px",
-                              borderTop: "1px solid var(--border)",
                               color: movementColor(r.movement),
                               fontWeight: 800,
                             }}
                             title={r.previous_rank ? `Previously #${r.previous_rank}` : "No previous round baseline"}
                           >
                             {movementText(r.movement)}
-                          </td>
+                          </UiTableCell>
                         )}
                         {showColumn("accuracy_pct") && (
-                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
+                          <UiTableCell>
                             {fmtPct(r.accuracy_pct)}
-                          </td>
+                          </UiTableCell>
                         )}
                         {showColumn("round_score") && (
-                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)", fontWeight: 700 }}>
+                          <UiTableCell style={{ fontWeight: 700 }}>
                             {fmtPts(r.round_score)}
-                          </td>
+                          </UiTableCell>
                         )}
                         {showColumn("current_streak") && (
-                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
+                          <UiTableCell>
                             {r.current_streak}
-                          </td>
+                          </UiTableCell>
                         )}
                         {showColumn("avg_winning_odds") && (
-                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
+                          <UiTableCell>
                             {fmtPts(r.avg_winning_odds)}
-                          </td>
+                          </UiTableCell>
                         )}
                         {showColumn("tips_submitted") && (
-                          <td style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
+                          <UiTableCell>
                             {r.tips_submitted}/{r.tips_possible}
-                          </td>
+                          </UiTableCell>
                         )}
                       </tr>
                     ))}

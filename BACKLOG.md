@@ -1,6 +1,6 @@
 # AFL Tipping Backlog
 
-Last updated: 2026-03-11
+Last updated: 2026-03-12
 
 The backlog is now split into three tracks:
 
@@ -31,9 +31,9 @@ All existing `BL-*` items from the previous single backlog are preserved in
 
 ## Cross-Backlog Next 6
 
-1. `UI-003` Shared UI tokens/components for cards, buttons, badges, table headers
-2. `BL-014` Regression tests for scoring and lock-time behavior
-3. `BL-015` Admin audit log
-4. `BL-016` Observability: logs + alerting for job failures
-5. `UI-005` Skeleton loading states for round/leaderboard/results
-6. `UI-006` Admin IA cleanup into sections (Data Sync, Comms, Members, Scoring)
+1. `BL-014` Regression tests for scoring and lock-time behavior
+2. `BL-015` Admin audit log
+3. `BL-016` Observability: logs + alerting for job failures
+4. `UI-005` Skeleton loading states for round/leaderboard/results
+5. `UI-006` Admin IA cleanup into sections (Data Sync, Comms, Members, Scoring)
+6. `UI-007` Standardized toast/status feedback for saves, syncs, reminders

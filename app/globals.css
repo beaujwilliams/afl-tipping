@@ -180,6 +180,58 @@ button {
   flex-wrap: wrap;
 }
 
+.ui-row-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.ui-row-between-start {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.ui-grid {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.ui-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.ui-mt-1 {
+  margin-top: var(--space-1);
+}
+
+.ui-mt-2 {
+  margin-top: var(--space-2);
+}
+
+.ui-mt-3 {
+  margin-top: var(--space-3);
+}
+
+.ui-mt-4 {
+  margin-top: var(--space-4);
+}
+
+.ui-mt-5 {
+  margin-top: var(--space-5);
+}
+
+.ui-divider-top {
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-3);
+}
+
 .ui-card {
   background: var(--card);
   border: 1px solid var(--border);
@@ -198,6 +250,20 @@ button {
 
 .ui-card-grid--3 {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.ui-card-grid--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ui-card-grid--4 {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+@media (max-width: 640px) {
+  .ui-card-grid--2 {
+    grid-template-columns: 1fr;
+  }
 }
 
 .ui-kicker {
@@ -318,6 +384,30 @@ button {
   border-color: rgba(239, 68, 68, 0.35);
 }
 
+.ui-badge--success {
+  background: rgba(34, 197, 94, 0.14);
+  color: rgb(22, 163, 74);
+  border-color: rgba(34, 197, 94, 0.35);
+}
+
+.ui-badge--warning {
+  background: rgba(245, 158, 11, 0.16);
+  color: rgb(180, 83, 9);
+  border-color: rgba(245, 158, 11, 0.4);
+}
+
+.ui-badge--info {
+  background: rgba(59, 130, 246, 0.14);
+  color: rgb(37, 99, 235);
+  border-color: rgba(59, 130, 246, 0.36);
+}
+
+.ui-badge--danger {
+  background: rgba(239, 68, 68, 0.14);
+  color: rgb(220, 38, 38);
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
 .ui-table-shell {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -327,6 +417,17 @@ button {
 
 .ui-table-scroll {
   overflow-x: auto;
+}
+
+.ui-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ui-table-head-row {
+  background: var(--card-soft);
+  text-align: left;
+  font-size: var(--text-sm);
 }
 
 /* ===============================

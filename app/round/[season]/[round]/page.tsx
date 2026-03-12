@@ -900,12 +900,7 @@ export default function RoundPage() {
       </h1>
 
       {roundRow && (
-        <div
-          className="ui-card-grid ui-card-grid--3"
-          style={{
-            marginTop: 12,
-          }}
-        >
+        <div className="ui-card-grid ui-card-grid--3 ui-mt-3">
           <div className="ui-card ui-tone-success">
             <div className="ui-kicker">Tips close</div>
             <div className="ui-value">
@@ -937,7 +932,7 @@ export default function RoundPage() {
                 : null}
             </div>
             {!!matches.length && (
-              <div className="ui-caption" style={{ marginTop: 4 }}>
+              <div className="ui-caption ui-mt-1">
                 Loaded for {oddsHaveCount}/{matches.length} matches
               </div>
             )}
@@ -953,10 +948,7 @@ export default function RoundPage() {
       )}
 
       {showSnapshotMissedAlert && (
-        <div
-          className="ui-card ui-tone-danger"
-          style={{ marginTop: 12 }}
-        >
+        <div className="ui-card ui-tone-danger ui-mt-3">
           <div style={{ fontWeight: 900, color: "crimson" }}>
             ⚠️ Scoring odds are still missing for this locked round.
           </div>
@@ -967,17 +959,12 @@ export default function RoundPage() {
         </div>
       )}
 
-      {!!matches.length && oddsInfo.startsWith("Odds not loaded:") && (
-        <div style={{ marginTop: 8 }} className="ui-caption">{oddsInfo}</div>
-      )}
+      {!!matches.length && oddsInfo.startsWith("Odds not loaded:") && <div className="ui-caption ui-mt-2">{oddsInfo}</div>}
 
       {showRefreshHint && (
-        <div
-          className="ui-card ui-tone-info"
-          style={{ marginTop: 12 }}
-        >
+        <div className="ui-card ui-tone-info ui-mt-3">
           <div style={{ fontWeight: 800 }}>Still waiting on odds.</div>
-          <div style={{ marginTop: 6 }} className="ui-caption">
+          <div className="ui-caption ui-mt-2">
             We’ll stop auto-checking to save requests. Refresh this page to check again.
           </div>
           <button
@@ -990,24 +977,11 @@ export default function RoundPage() {
         </div>
       )}
 
-      {msg && <p style={{ marginTop: 16 }} className="ui-caption">{msg}</p>}
+      {msg && <p className="ui-caption ui-mt-4">{msg}</p>}
 
       {!!matches.length && (
-        <div
-          className="ui-card ui-card-soft"
-          style={{
-            marginTop: 18,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "flex-start",
-              gap: 12,
-              flexWrap: "wrap",
-            }}
-          >
+        <div className="ui-card ui-card-soft ui-mt-5">
+          <div className="ui-row-between-start">
             <div>
               <div style={{ fontWeight: 700 }}>
                 Your tips: {tippedCount} / {matches.length}{" "}
@@ -1029,7 +1003,7 @@ export default function RoundPage() {
             )}
           </div>
 
-          <div style={{ marginTop: 12, display: "grid", gap: 6 }}>
+          <div className="ui-grid ui-mt-3" style={{ gap: 6 }}>
             {matches.map((m) => {
               const picked = tipsByMatchId[m.id] ?? null;
               return (
@@ -1056,10 +1030,7 @@ export default function RoundPage() {
       )}
 
       {paymentLocked && !isLocked && (
-        <div
-          className="ui-card ui-tone-danger"
-          style={{ marginTop: 12 }}
-        >
+        <div className="ui-card ui-tone-danger ui-mt-3">
           <div style={{ fontWeight: 900, color: "crimson" }}>
             Tipping is locked until payment is marked paid or waived.
           </div>
@@ -1071,36 +1042,27 @@ export default function RoundPage() {
 
       {/* ✅ NEW: Everyone’s tips section (only after lock) */}
       {isLocked && (
-        <div
-          className="ui-card ui-card-soft"
-          style={{
-            marginTop: 16,
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+        <div className="ui-card ui-card-soft ui-mt-4">
+          <div className="ui-row-between" style={{ gap: 10 }}>
             <div style={{ fontWeight: 900, fontSize: 16 }}>Everyone’s tips</div>
             <div className="ui-caption">
               Sorted by potential total
             </div>
           </div>
 
-          {lockedTipsMsg && (
-            <div style={{ marginTop: 10 }} className="ui-caption">
-              {lockedTipsMsg}
-            </div>
-          )}
+          {lockedTipsMsg && <div className="ui-caption ui-mt-3">{lockedTipsMsg}</div>}
 
           {lockedTips === null ? (
-            <div style={{ marginTop: 10 }} className="ui-caption">
+            <div className="ui-caption ui-mt-3">
               Loading everyone’s tips…
             </div>
           ) : lockedTips.length === 0 ? (
-            <div style={{ marginTop: 10 }} className="ui-caption">
+            <div className="ui-caption ui-mt-3">
               No tips found (or tips table not available yet).
             </div>
           ) : (
             <>
-              <div className="ui-row-wrap" style={{ marginTop: 12, alignItems: "center", gap: 10 }}>
+              <div className="ui-row-wrap ui-mt-3" style={{ alignItems: "center", gap: 10 }}>
                 <input
                   value={lockedTipsSearch}
                   onChange={(e) => setLockedTipsSearch(e.target.value)}

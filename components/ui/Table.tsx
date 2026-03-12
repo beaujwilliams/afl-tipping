@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode, ThHTMLAttributes } from "react";
+import type { CSSProperties, ReactNode, TdHTMLAttributes, ThHTMLAttributes } from "react";
 import { cx } from "./cx";
 
 type UiTableShellProps = {
@@ -41,5 +41,20 @@ export function UiTableHeadCell({ className, style, children, ...rest }: UiTable
     <th className={className} style={{ ...baseHeadCellStyle, ...style }} {...rest}>
       {children}
     </th>
+  );
+}
+
+type UiTableCellProps = TdHTMLAttributes<HTMLTableCellElement>;
+
+const baseCellStyle: CSSProperties = {
+  padding: "12px",
+  borderTop: "1px solid var(--border)",
+};
+
+export function UiTableCell({ className, style, children, ...rest }: UiTableCellProps) {
+  return (
+    <td className={className} style={{ ...baseCellStyle, ...style }} {...rest}>
+      {children}
+    </td>
   );
 }

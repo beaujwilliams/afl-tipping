@@ -279,14 +279,14 @@ export default function HomePage() {
       </div>
 
       {msg && (
-        <p style={{ marginTop: 14 }} className="ui-caption">
+        <p className="ui-caption ui-mt-4">
           {msg}
         </p>
       )}
 
       {!msg && currentRound && (
-        <UiCard soft style={{ marginTop: 16 }}>
-          <div className="ui-row-wrap" style={{ justifyContent: "space-between" }}>
+        <UiCard soft className="ui-mt-4">
+          <div className="ui-row-between">
             <div className="ui-kicker">Continue tipping</div>
             <UiBadge tone={locked ? "locked" : "open"}>{locked ? "Locked" : "Open"}</UiBadge>
           </div>
@@ -309,7 +309,7 @@ export default function HomePage() {
       )}
 
       {!msg && dashboardNotice && (
-        <UiCard tone={dashboardNotice.tone} style={{ marginTop: 12 }}>
+        <UiCard tone={dashboardNotice.tone} className="ui-mt-3">
           <div className="ui-kicker">{dashboardNotice.title}</div>
           <div className="ui-stack" style={{ marginTop: 8, gap: 6 }}>
             {dashboardNotice.lines.map((line) => (
@@ -322,7 +322,7 @@ export default function HomePage() {
       )}
 
       {!msg && (
-        <UiCard soft style={{ marginTop: 12 }}>
+        <UiCard soft className="ui-mt-3">
           <div className="ui-kicker">My season snapshot</div>
           <UiCardGrid style={{ marginTop: 10 }}>
             <UiCard>
@@ -347,7 +347,7 @@ export default function HomePage() {
               </div>
             </UiCard>
           </UiCardGrid>
-          <div className="ui-meta" style={{ marginTop: 10 }}>
+          <div className="ui-meta ui-mt-3">
             Movement: <b>{me ? movementText(me.movement) : "-"}</b>
           </div>
         </UiCard>

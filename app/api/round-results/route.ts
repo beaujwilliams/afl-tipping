@@ -133,6 +133,9 @@ export async function GET(req: Request) {
 
     const matchList = (matches ?? []) as MatchRow[];
     const matchIds = matchList.map((m) => String(m.id));
+    const completedGamesInRound = matchList.reduce((acc, m) => {
+      return acc + (String(m.winner_team ?? "").trim() ? 1 : 0);
+    }, 0);
 
     if (!matchIds.length) {
       return NextResponse.json({
@@ -339,7 +342,9 @@ export async function GET(req: Request) {
 
     const players = Object.values(playersById)
       .map((p) => {
-        const accuracyPct = p.total_tips > 0 ? (p.correct_tips / p.total_tips) * 100 : 0;
+        const accuracyBase = completedGamesInRound > 0 ? completedGamesInRound : 0;
+        const accuracyCorrect = accuracyBase > 0 ? Math.min(p.correct_tips, accuracyBase) : 0;
+        const accuracyPct = accuracyBase > 0 ? (accuracyCorrect / accuracyBase) * 100 : 0;
         const avgCorrectOdds = p.correct_tips > 0 ? p.correct_odds_sum / p.correct_tips : 0;
         const differenceScore = p.potential_score - p.round_score;
         return {

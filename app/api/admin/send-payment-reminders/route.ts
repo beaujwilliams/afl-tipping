@@ -10,7 +10,7 @@ const REMINDER_TYPE = "season_payment_pending_v1";
 const DEFAULT_PAYMENT_INSTRUCTIONS =
   "Season entry is $30. Please send payment to +61 423 190 713.";
 const RESEND_RATE_LIMIT_RETRY_ATTEMPTS = 3;
-const MIN_SEND_SPACING_MS = 600;
+const MIN_SEND_SPACING_MS = 1100;
 
 type MembershipRow = {
   user_id: string;

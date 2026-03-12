@@ -9,7 +9,7 @@ const DEFAULT_REMINDER_HOURS = 3;
 const DEFAULT_WINDOW_MINUTES = 30;
 const REMINDER_TYPE = "missing_tips_3h";
 const RESEND_RATE_LIMIT_RETRY_ATTEMPTS = 3;
-const MIN_SEND_SPACING_MS = 600;
+const MIN_SEND_SPACING_MS = 1100;
 
 type RoundRow = {
   id: string;

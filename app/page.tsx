@@ -79,6 +79,18 @@ function movementText(movement: number) {
   return "No change";
 }
 
+function movementTone(movement: number | null | undefined) {
+  if ((movement ?? 0) > 0) return "success" as const;
+  if ((movement ?? 0) < 0) return "danger" as const;
+  return "default" as const;
+}
+
+function movementColor(movement: number | null | undefined) {
+  if ((movement ?? 0) > 0) return "rgb(22, 163, 74)";
+  if ((movement ?? 0) < 0) return "rgb(220, 38, 38)";
+  return undefined;
+}
+
 function getLastChatSeenMs() {
   if (typeof window === "undefined") return 0;
   const v = window.localStorage.getItem("chat_last_seen_ms");
@@ -393,10 +405,13 @@ export default function HomePage() {
                 @mentions <b>{unreadMentions}</b>
               </div>
             </UiCard>
+            <UiCard tone={movementTone(me?.movement)}>
+              <div className="ui-kicker">Movement</div>
+              <div className="ui-value" style={{ color: movementColor(me?.movement) }}>
+                {me ? movementText(me.movement) : "-"}
+              </div>
+            </UiCard>
           </UiCardGrid>
-          <div className="ui-meta ui-mt-3">
-            Movement: <b>{me ? movementText(me.movement) : "-"}</b>
-          </div>
         </UiCard>
       )}
 

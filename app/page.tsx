@@ -301,7 +301,7 @@ export default function HomePage() {
         lines: [
           `Round ${currentRound.round_number} is locked.`,
           nextOpenRound
-            ? `Round ${nextOpenRound.round_number} tips are now due.`
+            ? `Round ${nextOpenRound.round_number} tips are due by ${fmtMelbourneShort(nextOpenRound.lock_time_utc)}.`
             : "The next round tips are now due.",
         ],
       };

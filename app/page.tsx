@@ -252,20 +252,33 @@ export default function HomePage() {
     return nextOpen ?? sorted[sorted.length - 1];
   }, [rounds, nowMs]);
 
+  const nextOpenRound = useMemo(() => {
+    const sorted = [...rounds].sort((a, b) => a.round_number - b.round_number);
+    return (
+      sorted.find((r) => {
+        const lock = melbourneMs(r.lock_time_utc);
+        return lock !== null && nowMs < lock;
+      }) ?? null
+    );
+  }, [rounds, nowMs]);
+
   const lockMs = melbourneMs(currentRound?.lock_time_utc ?? null);
   const locked = lockMs ? nowMs >= lockMs : false;
   const lockCountdown = lockMs && !locked ? msToCountdown(lockMs - nowMs) : null;
   const tipsPossible = currentRound?.total_matches ?? 0;
   const tipsEntered = currentRound?.my_tips ?? 0;
   const tipsLeft = Math.max(tipsPossible - tipsEntered, 0);
+  const currentRoundComplete =
+    !!currentRound &&
+    (Boolean(currentRound.round_complete) ||
+      (Number(currentRound.total_matches ?? 0) > 0 &&
+        Number(currentRound.completed_matches ?? 0) >= Number(currentRound.total_matches ?? 0)));
+  const lockedRoundStillLive = !!currentRound && locked && !currentRoundComplete;
 
   const dashboardNotice = useMemo(() => {
     const urgent: string[] = [];
     if (me?.payment_status === "pending") {
       urgent.push("Payment is pending. Tipping may be locked until payment is marked paid.");
-    }
-    if (currentRound && locked) {
-      urgent.push(`Round ${currentRound.round_number} is locked.`);
     }
     if (currentRound && !locked && tipsLeft > 0) {
       urgent.push(
@@ -281,6 +294,19 @@ export default function HomePage() {
       };
     }
 
+    if (currentRound && lockedRoundStillLive) {
+      return {
+        tone: "info" as const,
+        title: "Round update",
+        lines: [
+          `Round ${currentRound.round_number} is locked.`,
+          nextOpenRound
+            ? `Round ${nextOpenRound.round_number} tips are now due.`
+            : "The next round tips are now due.",
+        ],
+      };
+    }
+
     if (currentRound && !locked && tipsLeft === 0) {
       return {
         tone: "success" as const,
@@ -290,7 +316,7 @@ export default function HomePage() {
     }
 
     return null;
-  }, [me?.payment_status, currentRound, locked, tipsLeft]);
+  }, [me?.payment_status, currentRound, locked, lockedRoundStillLive, nextOpenRound, tipsLeft]);
 
   return (
     <main className="ui-page ui-page--content">

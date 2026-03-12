@@ -12,6 +12,8 @@ type RoundStatusRow = {
   round_number: number;
   lock_time_utc: string | null;
   total_matches: number;
+  completed_matches: number;
+  round_complete: boolean;
   my_tips: number;
 };
 
@@ -223,7 +225,26 @@ export default function HomePage() {
 
   const currentRound = useMemo(() => {
     if (!rounds.length) return null;
+
+    const isRoundComplete = (r: RoundStatusRow) =>
+      Boolean(r.round_complete) ||
+      (Number(r.total_matches ?? 0) > 0 &&
+        Number(r.completed_matches ?? 0) >= Number(r.total_matches ?? 0));
+
     const sorted = [...rounds].sort((a, b) => a.round_number - b.round_number);
+
+    // Keep the most recently started unfinished round as "current".
+    const inProgress = [...sorted].reverse().find((r) => {
+      const lock = melbourneMs(r.lock_time_utc);
+      return (
+        lock !== null &&
+        nowMs >= lock &&
+        Number(r.total_matches ?? 0) > 0 &&
+        !isRoundComplete(r)
+      );
+    });
+    if (inProgress) return inProgress;
+
     const nextOpen = sorted.find((r) => {
       const lock = melbourneMs(r.lock_time_utc);
       return lock !== null && nowMs < lock;

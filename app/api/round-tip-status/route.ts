@@ -23,6 +23,7 @@ type ProfileRow = {
 type MatchRow = {
   id: string;
   round_id: string;
+  winner_team: string | null;
 };
 
 type TipRow = {
@@ -157,11 +158,12 @@ export async function GET(req: Request) {
     const matchIds: string[] = [];
     const matchToRound = new Map<string, string>();
     const totalMatchesByRound = new Map<string, number>();
+    const completedMatchesByRound = new Map<string, number>();
 
     if (roundIds.length) {
       const { data: matches, error: mErr } = await supabase
         .from("matches")
-        .select("id, round_id")
+        .select("id, round_id, winner_team")
         .in("round_id", roundIds);
 
       if (mErr) {
@@ -174,6 +176,9 @@ export async function GET(req: Request) {
         matchIds.push(mid);
         matchToRound.set(mid, rid);
         totalMatchesByRound.set(rid, (totalMatchesByRound.get(rid) ?? 0) + 1);
+        if (String(m.winner_team ?? "").trim()) {
+          completedMatchesByRound.set(rid, (completedMatchesByRound.get(rid) ?? 0) + 1);
+        }
       });
     }
 
@@ -211,6 +216,8 @@ export async function GET(req: Request) {
     // build response
     const out = roundList.map((r) => {
       const totalMatches = totalMatchesByRound.get(r.id) ?? 0;
+      const completedMatches = completedMatchesByRound.get(r.id) ?? 0;
+      const roundComplete = totalMatches > 0 && completedMatches >= totalMatches;
       const tipsByUser = tipCountByRoundUser.get(r.id) ?? new Map<string, number>();
       const hasCompletedTips = (uid: string) =>
         totalMatches > 0 && (tipsByUser.get(uid) ?? 0) >= totalMatches;
@@ -271,6 +278,8 @@ export async function GET(req: Request) {
         round_number: r.round_number,
         lock_time_utc: r.lock_time_utc,
         total_matches: totalMatches,
+        completed_matches: completedMatches,
+        round_complete: roundComplete,
         my_tips: myTips,
         total_players: memberIds.length,
         tipped_players: tippedCount,

@@ -26,6 +26,8 @@ type TipStatusRound = {
   round_number: number;
   lock_time_utc: string | null;
   total_matches: number;
+  completed_matches: number;
+  round_complete: boolean;
   my_tips: number;
   total_players: number;
   tipped_players: number;
@@ -271,12 +273,29 @@ export default function SeasonRoundsPage() {
   const currentRound = useMemo(() => {
     if (!rows.length) return null;
     const sorted = [...rows].sort((a, b) => a.round_number - b.round_number);
+
+    const inProgress = [...sorted].reverse().find((r) => {
+      const lock = melbourneMs(r.lock_time_utc);
+      const s = statusByRoundId[r.id];
+      if (lock === null || nowMs < lock || !s) return false;
+
+      const totalMatches = Number(s.total_matches ?? 0);
+      if (totalMatches <= 0) return false;
+
+      const roundComplete =
+        Boolean(s.round_complete) ||
+        Number(s.completed_matches ?? 0) >= totalMatches;
+
+      return !roundComplete;
+    });
+    if (inProgress) return inProgress;
+
     const nextOpen = sorted.find((r) => {
       const lock = melbourneMs(r.lock_time_utc);
       return lock !== null && nowMs < lock;
     });
     return nextOpen ?? sorted[sorted.length - 1];
-  }, [rows, nowMs]);
+  }, [rows, nowMs, statusByRoundId]);
 
   const currentRoundStatus = currentRound ? statusByRoundId[currentRound.id] : null;
   const currentRoundLockMs = currentRound ? melbourneMs(currentRound.lock_time_utc) : null;

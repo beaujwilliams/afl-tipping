@@ -352,6 +352,11 @@ button {
   background: rgba(239, 68, 68, 0.14);
 }
 
+.ui-btn--active-neutral {
+  background: var(--card-soft);
+  border-color: var(--border);
+}
+
 .ui-input {
   flex: 1 1 240px;
   min-width: 180px;
@@ -428,6 +433,28 @@ button {
   background: var(--card-soft);
   text-align: left;
   font-size: var(--text-sm);
+}
+
+.ui-table--compact th,
+.ui-table--compact td {
+  padding: 8px 9px;
+  font-size: 12px;
+}
+
+.ui-table--compact td {
+  line-height: 1.25;
+}
+
+.ui-stat-presets {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ui-stat-presets .ui-btn {
+  padding: 6px 10px;
+  font-size: 11px;
 }
 
 /* ===============================

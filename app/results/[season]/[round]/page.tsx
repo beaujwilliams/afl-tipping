@@ -91,6 +91,7 @@ type RoundSortKey =
   | "difference_score";
 
 type SortDirection = "asc" | "desc";
+type MobileRoundPreset = "core" | "value" | "all";
 
 const DEFAULT_SORT_DIR: Record<RoundSortKey, SortDirection> = {
   rank: "asc",
@@ -120,6 +121,14 @@ const MOBILE_CORE_COLUMNS: RoundSortKey[] = [
   "round_score",
   "correct_tips",
   "accuracy_pct",
+];
+
+const MOBILE_VALUE_COLUMNS: RoundSortKey[] = [
+  "rank",
+  "display_name",
+  "avg_correct_odds",
+  "potential_score",
+  "difference_score",
 ];
 
 const VENUE_MAP: Record<string, string> = {
@@ -205,7 +214,7 @@ export default function RoundResultsDetailPage() {
   const [sortBy, setSortBy] = useState<RoundSortKey>("round_score");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [isMobile, setIsMobile] = useState(false);
-  const [showMoreMobileStats, setShowMoreMobileStats] = useState(false);
+  const [mobilePreset, setMobilePreset] = useState<MobileRoundPreset>("core");
   const invalidParams = !Number.isFinite(season) || !Number.isFinite(round);
 
   useEffect(() => {
@@ -317,18 +326,29 @@ export default function RoundResultsDetailPage() {
     return () => media.removeListener(onChange);
   }, []);
 
-  const showExtendedStats = !isMobile || showMoreMobileStats;
-
   const visibleColumns = useMemo(() => {
-    if (showExtendedStats) {
+    if (!isMobile || mobilePreset === "all") {
       return new Set<RoundSortKey>(ALL_COLUMNS);
     }
+    if (mobilePreset === "value") return new Set<RoundSortKey>(MOBILE_VALUE_COLUMNS);
     return new Set<RoundSortKey>(MOBILE_CORE_COLUMNS);
-  }, [showExtendedStats]);
+  }, [isMobile, mobilePreset]);
 
-  const activeSortBy: RoundSortKey = visibleColumns.has(sortBy) ? sortBy : "round_score";
-  const activeSortDirection: SortDirection = visibleColumns.has(sortBy) ? sortDirection : "desc";
-  const tableMinWidth = isMobile ? (showMoreMobileStats ? 980 : 780) : 980;
+  const fallbackSortBy: RoundSortKey = visibleColumns.has("round_score")
+    ? "round_score"
+    : visibleColumns.has("potential_score")
+      ? "potential_score"
+      : "rank";
+
+  const activeSortBy: RoundSortKey = visibleColumns.has(sortBy) ? sortBy : fallbackSortBy;
+  const activeSortDirection: SortDirection = visibleColumns.has(sortBy)
+    ? sortDirection
+    : DEFAULT_SORT_DIR[fallbackSortBy];
+  const tableMinWidth = isMobile
+    ? mobilePreset === "all"
+      ? 980
+      : 700
+    : 980;
 
   const finishedMatches = useMemo(() => {
     return matches.filter((m) => !!String(m.winner_team ?? "").trim()).length;
@@ -462,28 +482,39 @@ export default function RoundResultsDetailPage() {
                     style={{
                       padding: "10px 12px",
                       borderBottom: "1px solid var(--border)",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      gap: 10,
+                      display: "grid",
+                      gap: 8,
                       background: "var(--card-soft)",
                     }}
                   >
-                    <div style={{ fontSize: 12, opacity: 0.75 }}>
-                      {showMoreMobileStats ? "Showing all stats" : "Showing core stats"}
+                    <div className="ui-caption">Stat preset</div>
+                    <div className="ui-stat-presets">
+                      <button
+                        type="button"
+                        onClick={() => setMobilePreset("core")}
+                        className={`ui-btn ui-btn--pill ${mobilePreset === "core" ? "ui-btn--active-neutral" : ""}`}
+                      >
+                        Core
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMobilePreset("value")}
+                        className={`ui-btn ui-btn--pill ${mobilePreset === "value" ? "ui-btn--active-neutral" : ""}`}
+                      >
+                        Value
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMobilePreset("all")}
+                        className={`ui-btn ui-btn--pill ${mobilePreset === "all" ? "ui-btn--active-neutral" : ""}`}
+                      >
+                        All
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowMoreMobileStats((prev) => !prev)}
-                      className="ui-btn"
-                      style={{ padding: "6px 10px" }}
-                    >
-                      {showMoreMobileStats ? "Show fewer" : "More stats"}
-                    </button>
                   </div>
                 )}
 
-                <table className="ui-table" style={{ minWidth: tableMinWidth }}>
+                <table className={`ui-table ${isMobile ? "ui-table--compact" : ""}`} style={{ minWidth: tableMinWidth }}>
                   <thead>
                     <tr className="ui-table-head-row">
                       {([

@@ -53,6 +53,7 @@ type SortKey =
 
 type SortDirection = "asc" | "desc";
 type NumericSortKey = Exclude<SortKey, "display_name">;
+type MobileLeaderboardPreset = "core" | "scoring" | "form";
 
 const DEFAULT_SORT_DIR: Record<SortKey, SortDirection> = {
   rank: "asc",
@@ -90,6 +91,24 @@ const MOBILE_CORE_COLUMNS: SortKey[] = [
   "behind_leader",
   "correct_tips",
   "movement",
+];
+
+const MOBILE_SCORING_COLUMNS: SortKey[] = [
+  "rank",
+  "display_name",
+  "total_points",
+  "round_score",
+  "accuracy_pct",
+  "avg_winning_odds",
+];
+
+const MOBILE_FORM_COLUMNS: SortKey[] = [
+  "rank",
+  "display_name",
+  "movement",
+  "current_streak",
+  "behind_leader",
+  "tips_submitted",
 ];
 
 function fmtPts(n: number) {
@@ -137,7 +156,7 @@ export default function LeaderboardPage() {
   const [sortBy, setSortBy] = useState<SortKey>("total_points");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [isMobile, setIsMobile] = useState(false);
-  const [showMoreMobileStats, setShowMoreMobileStats] = useState(false);
+  const [mobilePreset, setMobilePreset] = useState<MobileLeaderboardPreset>("core");
 
   function applyLeaderboardData(json: LeaderboardResponse) {
     setRows(Array.isArray(json.rows) ? json.rows : []);
@@ -214,21 +233,35 @@ export default function LeaderboardPage() {
     return () => media.removeListener(onChange);
   }, []);
 
-  const showExtendedStats = !isMobile || showMoreMobileStats;
-
   const visibleColumns = useMemo(() => {
-    if (showExtendedStats) {
+    if (!isMobile) {
       return new Set<SortKey>(ALL_COLUMNS);
     }
+    if (mobilePreset === "scoring") return new Set<SortKey>(MOBILE_SCORING_COLUMNS);
+    if (mobilePreset === "form") return new Set<SortKey>(MOBILE_FORM_COLUMNS);
     return new Set<SortKey>(MOBILE_CORE_COLUMNS);
-  }, [showExtendedStats]);
+  }, [isMobile, mobilePreset]);
 
-  const activeSortBy: SortKey = visibleColumns.has(sortBy) ? sortBy : "total_points";
-  const activeSortDirection: SortDirection = visibleColumns.has(sortBy) ? sortDirection : "desc";
+  const fallbackSortBy: SortKey = visibleColumns.has("total_points")
+    ? "total_points"
+    : visibleColumns.has("round_score")
+      ? "round_score"
+      : visibleColumns.has("movement")
+        ? "movement"
+        : "rank";
 
-  const rankColWidth = isMobile ? 56 : 72;
-  const tipsterColWidth = isMobile ? 138 : 190;
-  const tableMinWidth = isMobile ? (showMoreMobileStats ? 930 : 760) : 1120;
+  const activeSortBy: SortKey = visibleColumns.has(sortBy) ? sortBy : fallbackSortBy;
+  const activeSortDirection: SortDirection = visibleColumns.has(sortBy)
+    ? sortDirection
+    : DEFAULT_SORT_DIR[fallbackSortBy];
+
+  const rankColWidth = isMobile ? 52 : 72;
+  const tipsterColWidth = isMobile ? 124 : 190;
+  const tableMinWidth = isMobile
+    ? mobilePreset === "core"
+      ? 700
+      : 760
+    : 1120;
 
   function stickyColumnStyle(col: 1 | 2, isHeader: boolean) {
     return {
@@ -346,28 +379,39 @@ export default function LeaderboardPage() {
                     style={{
                       padding: "10px 12px",
                       borderBottom: "1px solid var(--border)",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      gap: 10,
+                      display: "grid",
+                      gap: 8,
                       background: "var(--card-soft)",
                     }}
                   >
-                    <div className="ui-caption">
-                      {showMoreMobileStats ? "Showing all stats" : "Showing always-on stats"}
+                    <div className="ui-caption">Stat preset</div>
+                    <div className="ui-stat-presets">
+                      <button
+                        type="button"
+                        onClick={() => setMobilePreset("core")}
+                        className={`ui-btn ui-btn--pill ${mobilePreset === "core" ? "ui-btn--active-neutral" : ""}`}
+                      >
+                        Core
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMobilePreset("scoring")}
+                        className={`ui-btn ui-btn--pill ${mobilePreset === "scoring" ? "ui-btn--active-neutral" : ""}`}
+                      >
+                        Scoring
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMobilePreset("form")}
+                        className={`ui-btn ui-btn--pill ${mobilePreset === "form" ? "ui-btn--active-neutral" : ""}`}
+                      >
+                        Form
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowMoreMobileStats((prev) => !prev)}
-                      className="ui-btn"
-                      style={{ padding: "6px 10px" }}
-                    >
-                      {showMoreMobileStats ? "Show fewer" : "More stats"}
-                    </button>
                   </div>
                 )}
 
-                <table className="ui-table" style={{ minWidth: tableMinWidth }}>
+                <table className={`ui-table ${isMobile ? "ui-table--compact" : ""}`} style={{ minWidth: tableMinWidth }}>
                   <thead>
                     <tr className="ui-table-head-row">
                       {showColumn("rank") && sortableHeader("Rank", "rank", 1)}

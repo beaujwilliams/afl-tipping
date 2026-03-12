@@ -560,6 +560,13 @@ button {
   font-size: 16px;
 }
 
+.ui-admin-btn--wrap {
+  white-space: normal;
+  line-height: 1.2;
+  min-height: 52px;
+  text-align: center;
+}
+
 .ui-admin-btn--full {
   width: 100%;
 }
@@ -586,7 +593,7 @@ button {
 .ui-admin-two-col {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
 .ui-admin-missing-list {

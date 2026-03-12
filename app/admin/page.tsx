@@ -524,7 +524,7 @@ export default function AdminPage() {
               <UiButton
                 disabled={isRunning}
                 onClick={() => run(`/api/admin/sync-results?season=${season}`)}
-                className="ui-admin-btn ui-admin-btn--full"
+                className="ui-admin-btn ui-admin-btn--full ui-admin-btn--wrap"
               >
                 Sync Results (Only)
               </UiButton>
@@ -532,7 +532,7 @@ export default function AdminPage() {
               <UiButton
                 disabled={isRunning}
                 onClick={() => run(`/api/admin/recalc-leaderboard?season=${season}`)}
-                className="ui-admin-btn ui-admin-btn--full"
+                className="ui-admin-btn ui-admin-btn--full ui-admin-btn--wrap"
               >
                 Recalculate Leaderboard (Only)
               </UiButton>

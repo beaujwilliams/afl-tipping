@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase-server";
-import { requireAdminOrCron } from "@/lib/admin-auth";
+import {
+  requireAdminOrCron,
+  resolveCompetitionIdForAdminRequest,
+} from "@/lib/admin-auth";
 const DEFAULT_SEASON = 2026;
 const DEFAULT_REMINDER_HOURS = 3;
 const DEFAULT_WINDOW_MINUTES = 30;
@@ -305,20 +308,19 @@ export async function GET(req: Request) {
       );
     }
 
-    const { data: comp, error: cErr } = await supabase
-      .from("competitions")
-      .select("id")
-      .limit(1)
-      .single();
+    const competitionId =
+      gate.mode === "bearer"
+        ? gate.competitionId
+        : await resolveCompetitionIdForAdminRequest(req, supabase);
 
-    if (cErr || !comp?.id) {
+    if (!competitionId) {
       return NextResponse.json({ error: "No competition found" }, { status: 404 });
     }
 
     let roundsQuery = supabase
       .from("rounds")
       .select("id, round_number, lock_time_utc")
-      .eq("competition_id", comp.id)
+      .eq("competition_id", competitionId)
       .eq("season", season)
       .order("round_number", { ascending: true });
 
@@ -422,7 +424,7 @@ export async function GET(req: Request) {
       const { data: memberships, error: memErr } = await supabase
         .from("memberships")
         .select("user_id")
-        .eq("competition_id", comp.id);
+        .eq("competition_id", competitionId);
 
       if (memErr) {
         roundErrors.push({
@@ -456,7 +458,7 @@ export async function GET(req: Request) {
       const { data: tips, error: tErr } = await supabase
         .from("tips")
         .select("user_id")
-        .eq("competition_id", comp.id)
+        .eq("competition_id", competitionId)
         .in("match_id", matchIds);
 
       if (tErr) {
@@ -492,7 +494,7 @@ export async function GET(req: Request) {
       const { data: existing, error: exErr } = await supabase
         .from("prelock_reminder_emails")
         .select("user_id")
-        .eq("competition_id", comp.id)
+        .eq("competition_id", competitionId)
         .eq("round_id", r.id)
         .eq("reminder_type", REMINDER_TYPE)
         .in("user_id", missingMemberIds)
@@ -609,7 +611,7 @@ export async function GET(req: Request) {
           const { error: insErr } = await supabase
             .from("prelock_reminder_emails")
             .insert({
-              competition_id: comp.id,
+              competition_id: competitionId,
               round_id: r.id,
               season,
               round_number: r.round_number,

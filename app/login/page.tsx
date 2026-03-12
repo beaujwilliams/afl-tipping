@@ -6,6 +6,7 @@ import { supabaseBrowser } from "@/lib/supabase-browser";
 import { UiButton, UiButtonLink } from "@/components/ui";
 
 export default function LoginPage() {
+  const postLoginHref = "/";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
@@ -23,20 +24,20 @@ export default function LoginPage() {
     async function goIfLoggedIn() {
       const { data } = await supabaseBrowser.auth.getSession();
       if (!mounted) return;
-      if (data.session) window.location.href = "/round/2026";
+      if (data.session) window.location.href = postLoginHref;
     }
 
     goIfLoggedIn();
 
     const { data: sub } = supabaseBrowser.auth.onAuthStateChange((_event, session) => {
-      if (session) window.location.href = "/round/2026";
+      if (session) window.location.href = postLoginHref;
     });
 
     return () => {
       mounted = false;
       sub.subscription.unsubscribe();
     };
-  }, []);
+  }, [postLoginHref]);
 
   async function signIn(e: React.FormEvent) {
     e.preventDefault();
@@ -57,7 +58,7 @@ export default function LoginPage() {
       return;
     }
 
-    window.location.href = "/round/2026";
+    window.location.href = postLoginHref;
   }
 
   return (

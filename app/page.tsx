@@ -79,12 +79,6 @@ function movementText(movement: number) {
   return "No change";
 }
 
-function movementTone(movement: number | null | undefined) {
-  if ((movement ?? 0) > 0) return "success" as const;
-  if ((movement ?? 0) < 0) return "danger" as const;
-  return "default" as const;
-}
-
 function movementColor(movement: number | null | undefined) {
   if ((movement ?? 0) > 0) return "rgb(22, 163, 74)";
   if ((movement ?? 0) < 0) return "rgb(220, 38, 38)";
@@ -405,7 +399,7 @@ export default function HomePage() {
                 @mentions <b>{unreadMentions}</b>
               </div>
             </UiCard>
-            <UiCard tone={movementTone(me?.movement)}>
+            <UiCard>
               <div className="ui-kicker">Movement</div>
               <div className="ui-value" style={{ color: movementColor(me?.movement) }}>
                 {me ? movementText(me.movement) : "-"}

@@ -1006,15 +1006,44 @@ export default function RoundPage() {
           <div className="ui-grid ui-mt-3" style={{ gap: 6 }}>
             {matches.map((m) => {
               const picked = tipsByMatchId[m.id] ?? null;
+              const winner = String(m.winner_team ?? "").trim();
+              const resultLabel =
+                picked && winner ? (picked === winner ? "Correct" : "Incorrect") : null;
+              const resultClassName =
+                picked && winner
+                  ? picked === winner
+                    ? "ui-badge ui-badge--success"
+                    : "ui-badge ui-badge--danger"
+                  : "";
+
               return (
-                <div key={m.id} style={{ fontSize: 13, opacity: 0.9 }}>
-                  {m.home_team} vs {m.away_team} —{" "}
-                  {picked ? (
-                    <span>
-                      tipped <b>{picked}</b>
+                <div
+                  key={m.id}
+                  style={{
+                    fontSize: 13,
+                    opacity: 0.9,
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    flexWrap: "wrap",
+                    alignItems: "center",
+                  }}
+                >
+                  <div>
+                    {m.home_team} vs {m.away_team} —{" "}
+                    {picked ? (
+                      <span>
+                        tipped <b>{picked}</b>
+                      </span>
+                    ) : (
+                      <span style={{ opacity: 0.6 }}>Not tipped</span>
+                    )}
+                  </div>
+
+                  {resultLabel && (
+                    <span className={resultClassName}>
+                      {resultLabel}
                     </span>
-                  ) : (
-                    <span style={{ opacity: 0.6 }}>Not tipped</span>
                   )}
                 </div>
               );
@@ -1040,7 +1069,103 @@ export default function RoundPage() {
         </div>
       )}
 
-      {/* ✅ NEW: Everyone’s tips section (only after lock) */}
+      <div style={{ marginTop: 20 }}>
+        {matches.map((g) => {
+          const picked = tipsByMatchId[g.id] ?? null;
+          const saving = savingMatchId === g.id;
+
+          const odds = oddsByMatchId[g.id];
+          const homeOdds = odds ? odds.home_odds : null;
+          const awayOdds = odds ? odds.away_odds : null;
+
+          // ✅ tip breakdown counts (only shown when locked)
+          const breakdown = tipBreakdownByMatch[g.id] ?? {};
+          const homeTips = breakdown[g.home_team] ?? 0;
+          const awayTips = breakdown[g.away_team] ?? 0;
+
+          return (
+            <div
+              key={g.id}
+              className="ui-card"
+              style={{
+                marginBottom: 16,
+                opacity: isLocked ? 0.98 : 1,
+              }}
+            >
+              <div style={{ fontSize: 14, opacity: 0.8 }}>
+                {formatMelbourne(g.commence_time_utc)} • {normalizeVenue(g.venue)}
+              </div>
+
+              <div style={{ display: "flex", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
+                <button
+                  disabled={isLocked || saving || paymentLocked}
+                  onClick={() => saveTip(g.id, g.home_team)}
+                  style={tipOptionButtonStyle(
+                    picked === g.home_team,
+                    isLocked || saving || paymentLocked,
+                  )}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                    <span>{g.home_team}</span>
+                    <span style={{ opacity: 0.85 }}>{fmtOdds(homeOdds)}</span>
+                  </div>
+                </button>
+
+                <button
+                  disabled={isLocked || saving || paymentLocked}
+                  onClick={() => saveTip(g.id, g.away_team)}
+                  style={tipOptionButtonStyle(
+                    picked === g.away_team,
+                    isLocked || saving || paymentLocked,
+                  )}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                    <span>{g.away_team}</span>
+                    <span style={{ opacity: 0.85 }}>{fmtOdds(awayOdds)}</span>
+                  </div>
+                </button>
+              </div>
+
+              {/* ✅ show tip breakdown once locked */}
+              {isLocked && (
+                <div style={{ marginTop: 10, fontSize: 12, opacity: 0.85 }}>
+                  Tip breakdown: <b>{g.home_team}</b> {homeTips} • <b>{g.away_team}</b> {awayTips}
+                </div>
+              )}
+
+              {saving && (
+                <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>Saving…</div>
+              )}
+
+              {!saving && !isLocked && picked && (
+                <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
+                  Saved: <b>{picked}</b>
+                </div>
+              )}
+
+              {!isLocked && paymentLocked && (
+                <div style={{ marginTop: 8, fontSize: 12, color: "crimson" }}>
+                  Payment pending — tipping disabled.
+                </div>
+              )}
+
+              {isLocked && (
+                <div style={{ marginTop: 8, fontSize: 12, color: "crimson" }}>
+                  Round locked — tips cannot be changed.
+                </div>
+              )}
+
+              {!odds && (
+                <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
+                  Odds not captured for this match yet.
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Everyone’s tips sits after the match list so members see their own picks first. */}
       {isLocked && (
         <div className="ui-card ui-card-soft ui-mt-4">
           <div className="ui-row-between" style={{ gap: 10 }}>
@@ -1157,7 +1282,7 @@ export default function RoundPage() {
                               flexWrap: "wrap",
                             }}
                           >
-                          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", fontWeight: 900 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", fontWeight: 900 }}>
                               <span style={{ opacity: 0.78, minWidth: 22 }}>#{p.row_rank}</span>
                               <ChampionCrown isChampion={p.user_id === reigningChampionUserId} />
                               <span>{p.display_name?.trim() ? p.display_name : "(no display name)"}</span>
@@ -1206,7 +1331,7 @@ export default function RoundPage() {
                                       paddingTop: 6,
                                     }}
                                   >
-                              <div style={{ opacity: 0.9, display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                    <div style={{ opacity: 0.9, display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                                       <span>{matchTitleById[m.id] ?? `${m.home_team} vs ${m.away_team}`}</span>
                                     </div>
                                     <div style={{ fontWeight: 800, textAlign: "right" }}>
@@ -1233,102 +1358,6 @@ export default function RoundPage() {
           )}
         </div>
       )}
-
-      <div style={{ marginTop: 20 }}>
-        {matches.map((g) => {
-          const picked = tipsByMatchId[g.id] ?? null;
-          const saving = savingMatchId === g.id;
-
-          const odds = oddsByMatchId[g.id];
-          const homeOdds = odds ? odds.home_odds : null;
-          const awayOdds = odds ? odds.away_odds : null;
-
-          // ✅ tip breakdown counts (only shown when locked)
-          const breakdown = tipBreakdownByMatch[g.id] ?? {};
-          const homeTips = breakdown[g.home_team] ?? 0;
-          const awayTips = breakdown[g.away_team] ?? 0;
-
-          return (
-            <div
-              key={g.id}
-              className="ui-card"
-              style={{
-                marginBottom: 16,
-                opacity: isLocked ? 0.98 : 1,
-              }}
-            >
-              <div style={{ fontSize: 14, opacity: 0.8 }}>
-                {formatMelbourne(g.commence_time_utc)} • {normalizeVenue(g.venue)}
-              </div>
-
-              <div style={{ display: "flex", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
-                <button
-                  disabled={isLocked || saving || paymentLocked}
-                  onClick={() => saveTip(g.id, g.home_team)}
-                  style={tipOptionButtonStyle(
-                    picked === g.home_team,
-                    isLocked || saving || paymentLocked,
-                  )}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                    <span>{g.home_team}</span>
-                    <span style={{ opacity: 0.85 }}>{fmtOdds(homeOdds)}</span>
-                  </div>
-                </button>
-
-                <button
-                  disabled={isLocked || saving || paymentLocked}
-                  onClick={() => saveTip(g.id, g.away_team)}
-                  style={tipOptionButtonStyle(
-                    picked === g.away_team,
-                    isLocked || saving || paymentLocked,
-                  )}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                    <span>{g.away_team}</span>
-                    <span style={{ opacity: 0.85 }}>{fmtOdds(awayOdds)}</span>
-                  </div>
-                </button>
-              </div>
-
-              {/* ✅ show tip breakdown once locked */}
-              {isLocked && (
-                <div style={{ marginTop: 10, fontSize: 12, opacity: 0.85 }}>
-                  Tip breakdown: <b>{g.home_team}</b> {homeTips} • <b>{g.away_team}</b> {awayTips}
-                </div>
-              )}
-
-              {saving && (
-                <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>Saving…</div>
-              )}
-
-              {!saving && !isLocked && picked && (
-                <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
-                  Saved: <b>{picked}</b>
-                </div>
-              )}
-
-              {!isLocked && paymentLocked && (
-                <div style={{ marginTop: 8, fontSize: 12, color: "crimson" }}>
-                  Payment pending — tipping disabled.
-                </div>
-              )}
-
-              {isLocked && (
-                <div style={{ marginTop: 8, fontSize: 12, color: "crimson" }}>
-                  Round locked — tips cannot be changed.
-                </div>
-              )}
-
-              {!odds && (
-                <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
-                  Odds not captured for this match yet.
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
     </main>
   );
 }

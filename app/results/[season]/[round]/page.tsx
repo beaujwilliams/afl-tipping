@@ -91,7 +91,6 @@ type RoundSortKey =
   | "difference_score";
 
 type SortDirection = "asc" | "desc";
-type MobileRoundPreset = "core" | "value" | "all";
 type MyTipStatus = "correct" | "incorrect" | "pending" | "missed";
 
 type MyTipSummaryRow = {
@@ -111,33 +110,6 @@ const DEFAULT_SORT_DIR: Record<RoundSortKey, SortDirection> = {
   potential_score: "desc",
   difference_score: "desc",
 };
-
-const ALL_COLUMNS: RoundSortKey[] = [
-  "rank",
-  "display_name",
-  "round_score",
-  "correct_tips",
-  "accuracy_pct",
-  "avg_correct_odds",
-  "potential_score",
-  "difference_score",
-];
-
-const MOBILE_CORE_COLUMNS: RoundSortKey[] = [
-  "rank",
-  "display_name",
-  "round_score",
-  "correct_tips",
-  "accuracy_pct",
-];
-
-const MOBILE_VALUE_COLUMNS: RoundSortKey[] = [
-  "rank",
-  "display_name",
-  "avg_correct_odds",
-  "potential_score",
-  "difference_score",
-];
 
 const VENUE_MAP: Record<string, string> = {
   "Sydney Showground": "ENGIE Stadium",
@@ -236,7 +208,6 @@ export default function RoundResultsDetailPage() {
   const [sortBy, setSortBy] = useState<RoundSortKey>("round_score");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [isMobile, setIsMobile] = useState(false);
-  const [mobilePreset, setMobilePreset] = useState<MobileRoundPreset>("core");
   const invalidParams = !Number.isFinite(season) || !Number.isFinite(round);
 
   useEffect(() => {
@@ -349,29 +320,29 @@ export default function RoundResultsDetailPage() {
     return () => media.removeListener(onChange);
   }, []);
 
-  const visibleColumns = useMemo(() => {
-    if (!isMobile || mobilePreset === "all") {
-      return new Set<RoundSortKey>(ALL_COLUMNS);
-    }
-    if (mobilePreset === "value") return new Set<RoundSortKey>(MOBILE_VALUE_COLUMNS);
-    return new Set<RoundSortKey>(MOBILE_CORE_COLUMNS);
-  }, [isMobile, mobilePreset]);
+  const activeSortBy: RoundSortKey = sortBy;
+  const activeSortDirection: SortDirection = sortDirection;
+  const rankColWidth = isMobile ? 56 : 68;
+  const tipsterColWidth = isMobile ? 148 : 188;
+  const tableMinWidth = isMobile ? 760 : 900;
 
-  const fallbackSortBy: RoundSortKey = visibleColumns.has("round_score")
-    ? "round_score"
-    : visibleColumns.has("potential_score")
-      ? "potential_score"
-      : "rank";
-
-  const activeSortBy: RoundSortKey = visibleColumns.has(sortBy) ? sortBy : fallbackSortBy;
-  const activeSortDirection: SortDirection = visibleColumns.has(sortBy)
-    ? sortDirection
-    : DEFAULT_SORT_DIR[fallbackSortBy];
-  const tableMinWidth = isMobile
-    ? mobilePreset === "all"
-      ? 980
-      : 700
-    : 980;
+  function stickyColumnStyle(col: 1 | 2, isHeader: boolean) {
+    return {
+      position: "sticky" as const,
+      left: col === 1 ? 0 : rankColWidth,
+      zIndex: isHeader ? (col === 1 ? 20 : 19) : col === 1 ? 10 : 9,
+      background: "var(--card)",
+      width: col === 1 ? rankColWidth : tipsterColWidth,
+      minWidth: col === 1 ? rankColWidth : tipsterColWidth,
+      maxWidth: col === 1 ? rankColWidth : tipsterColWidth,
+      backgroundClip: "padding-box",
+      overflow: "hidden",
+      boxShadow:
+        col === 2
+          ? "3px 0 0 var(--card), 4px 0 0 var(--border)"
+          : "1px 0 0 var(--border)",
+    };
+  }
 
   const finishedMatches = useMemo(() => {
     return matches.filter((m) => !!String(m.winner_team ?? "").trim()).length;
@@ -485,12 +456,8 @@ export default function RoundResultsDetailPage() {
   }
 
   function sortMarker(key: RoundSortKey) {
-    if (activeSortBy !== key) return "↕";
+    if (activeSortBy !== key) return "↑↓";
     return activeSortDirection === "asc" ? "↑" : "↓";
-  }
-
-  function showColumn(key: RoundSortKey) {
-    return visibleColumns.has(key);
   }
 
   return (
@@ -665,61 +632,31 @@ export default function RoundResultsDetailPage() {
               <div style={{ padding: "0 12px 12px", opacity: 0.72, fontSize: 12 }}>No tips found for this round.</div>
             ) : (
               <UiTableScroll>
-                {isMobile && (
-                  <div
-                    style={{
-                      padding: "10px 12px",
-                      borderBottom: "1px solid var(--border)",
-                      display: "grid",
-                      gap: 8,
-                      background: "var(--card-soft)",
-                    }}
-                  >
-                    <div className="ui-caption">Stat preset</div>
-                    <div className="ui-stat-presets">
-                      <button
-                        type="button"
-                        onClick={() => setMobilePreset("core")}
-                        className={`ui-btn ui-btn--pill ${mobilePreset === "core" ? "ui-btn--active-neutral" : ""}`}
-                      >
-                        Core
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setMobilePreset("value")}
-                        className={`ui-btn ui-btn--pill ${mobilePreset === "value" ? "ui-btn--active-neutral" : ""}`}
-                      >
-                        Value
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setMobilePreset("all")}
-                        className={`ui-btn ui-btn--pill ${mobilePreset === "all" ? "ui-btn--active-neutral" : ""}`}
-                      >
-                        All
-                      </button>
-                    </div>
-                  </div>
-                )}
-
                 <table className={`ui-table ${isMobile ? "ui-table--compact" : ""}`} style={{ minWidth: tableMinWidth }}>
                   <thead>
                     <tr className="ui-table-head-row">
                       {([
-                        ["Rank", "rank"],
-                        ["Tipster", "display_name"],
-                        [`Round Score (R${round})`, "round_score"],
-                        ["Correct", "correct_tips"],
-                        ["Round Accuracy", "accuracy_pct"],
-                        ["Avg Correct Odds", "avg_correct_odds"],
-                        ["Potential Score", "potential_score"],
-                        ["Difference", "difference_score"],
-                      ] as Array<[string, RoundSortKey]>)
-                        .filter(([, key]) => showColumn(key))
-                        .map(([label, key]) => (
+                        ["Rank", "rank", 1, undefined],
+                        ["Tipster", "display_name", 2, undefined],
+                        [`R${round}`, "round_score", undefined, 84],
+                        ["Correct", "correct_tips", undefined, 72],
+                        ["Accuracy", "accuracy_pct", undefined, 88],
+                        ["Avg Odds", "avg_correct_odds", undefined, 88],
+                        ["Potential", "potential_score", undefined, 94],
+                        ["Diff", "difference_score", undefined, 78],
+                      ] as Array<[string, RoundSortKey, 1 | 2 | undefined, number | undefined]>).map(
+                        ([label, key, stickyCol, width]) => (
                           <UiTableHeadCell
                             key={key}
                             style={{
+                              ...(stickyCol ? stickyColumnStyle(stickyCol, true) : {}),
+                              ...(width
+                                ? {
+                                    width,
+                                    minWidth: width,
+                                    maxWidth: width,
+                                  }
+                                : {}),
                               whiteSpace: "nowrap",
                             }}
                           >
@@ -747,73 +684,58 @@ export default function RoundResultsDetailPage() {
                               </span>
                             </button>
                           </UiTableHeadCell>
-                        ))}
+                        )
+                      )}
                     </tr>
                   </thead>
                   <tbody>
                     {sortedPlayers.map((p) => (
                       <tr key={p.user_id}>
-                        {showColumn("rank") && (
-                          <UiTableCell style={{ fontWeight: 900 }}>
-                            #{roundRankByUserId[p.user_id] ?? "-"}
-                          </UiTableCell>
-                        )}
-                        {showColumn("display_name") && (
-                          <UiTableCell
-                            style={{ fontWeight: 700 }}
-                            title={
-                              p.payment_status === "pending"
-                                ? `${p.display_name} (unpaid)`
-                                : p.display_name
-                            }
-                          >
-                            <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                              <ChampionCrown isChampion={p.user_id === reigningChampionUserId} />
-                              <UnpaidTag paymentStatus={p.payment_status ?? null} compact={isMobile} />
-                              <span
-                                style={{
-                                  minWidth: 0,
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                  whiteSpace: "nowrap",
-                                  display: "block",
-                                }}
-                              >
-                                {p.display_name}
-                              </span>
+                        <UiTableCell style={{ fontWeight: 900, ...stickyColumnStyle(1, false) }}>
+                          #{roundRankByUserId[p.user_id] ?? "-"}
+                        </UiTableCell>
+                        <UiTableCell
+                          style={{ fontWeight: 700, ...stickyColumnStyle(2, false) }}
+                          title={
+                            p.payment_status === "pending"
+                              ? `${p.display_name} (unpaid)`
+                              : p.display_name
+                          }
+                        >
+                          <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                            <UnpaidTag paymentStatus={p.payment_status ?? null} compact={isMobile} />
+                            <span
+                              style={{
+                                minWidth: 0,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                                display: "block",
+                              }}
+                            >
+                              {p.display_name}
                             </span>
-                          </UiTableCell>
-                        )}
-                        {showColumn("round_score") && (
-                          <UiTableCell style={{ fontWeight: 800 }}>
-                            {fmtPts(p.round_score)}
-                          </UiTableCell>
-                        )}
-                        {showColumn("correct_tips") && (
-                          <UiTableCell>
-                            {p.correct_tips}
-                          </UiTableCell>
-                        )}
-                        {showColumn("accuracy_pct") && (
-                          <UiTableCell>
-                            {fmtPct(p.accuracy_pct)}
-                          </UiTableCell>
-                        )}
-                        {showColumn("avg_correct_odds") && (
-                          <UiTableCell>
-                            {fmtPts(p.avg_correct_odds)}
-                          </UiTableCell>
-                        )}
-                        {showColumn("potential_score") && (
-                          <UiTableCell>
-                            {fmtPts(p.potential_score)}
-                          </UiTableCell>
-                        )}
-                        {showColumn("difference_score") && (
-                          <UiTableCell>
-                            {fmtPts(p.difference_score)}
-                          </UiTableCell>
-                        )}
+                            <ChampionCrown isChampion={p.user_id === reigningChampionUserId} />
+                          </span>
+                        </UiTableCell>
+                        <UiTableCell style={{ fontWeight: 800, width: 84, minWidth: 84 }}>
+                          {fmtPts(p.round_score)}
+                        </UiTableCell>
+                        <UiTableCell style={{ width: 72, minWidth: 72 }}>
+                          {p.correct_tips}
+                        </UiTableCell>
+                        <UiTableCell style={{ width: 88, minWidth: 88 }}>
+                          {fmtPct(p.accuracy_pct)}
+                        </UiTableCell>
+                        <UiTableCell style={{ width: 88, minWidth: 88 }}>
+                          {fmtPts(p.avg_correct_odds)}
+                        </UiTableCell>
+                        <UiTableCell style={{ width: 94, minWidth: 94 }}>
+                          {fmtPts(p.potential_score)}
+                        </UiTableCell>
+                        <UiTableCell style={{ width: 78, minWidth: 78 }}>
+                          {fmtPts(p.difference_score)}
+                        </UiTableCell>
                       </tr>
                     ))}
                   </tbody>

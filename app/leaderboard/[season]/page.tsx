@@ -43,8 +43,6 @@ type SortKey =
   | "total_points"
   | "correct_tips"
   | "accuracy_pct"
-  | "tips_submitted"
-  | "missed_tips"
   | "round_score"
   | "movement"
   | "behind_leader"
@@ -53,7 +51,6 @@ type SortKey =
 
 type SortDirection = "asc" | "desc";
 type NumericSortKey = Exclude<SortKey, "display_name">;
-type MobileLeaderboardPreset = "core" | "scoring" | "form";
 
 const DEFAULT_SORT_DIR: Record<SortKey, SortDirection> = {
   rank: "asc",
@@ -61,55 +58,12 @@ const DEFAULT_SORT_DIR: Record<SortKey, SortDirection> = {
   total_points: "desc",
   correct_tips: "desc",
   accuracy_pct: "desc",
-  tips_submitted: "desc",
-  missed_tips: "asc",
   round_score: "desc",
   movement: "desc",
   behind_leader: "asc",
   current_streak: "desc",
   avg_winning_odds: "desc",
 };
-
-const ALL_COLUMNS: SortKey[] = [
-  "rank",
-  "display_name",
-  "total_points",
-  "behind_leader",
-  "correct_tips",
-  "movement",
-  "accuracy_pct",
-  "round_score",
-  "current_streak",
-  "avg_winning_odds",
-  "tips_submitted",
-];
-
-const MOBILE_CORE_COLUMNS: SortKey[] = [
-  "rank",
-  "display_name",
-  "total_points",
-  "behind_leader",
-  "correct_tips",
-  "movement",
-];
-
-const MOBILE_SCORING_COLUMNS: SortKey[] = [
-  "rank",
-  "display_name",
-  "total_points",
-  "round_score",
-  "accuracy_pct",
-  "avg_winning_odds",
-];
-
-const MOBILE_FORM_COLUMNS: SortKey[] = [
-  "rank",
-  "display_name",
-  "movement",
-  "current_streak",
-  "behind_leader",
-  "tips_submitted",
-];
 
 function fmtPts(n: number) {
   return Number(n ?? 0).toFixed(2);
@@ -136,8 +90,6 @@ function numericSortValue(row: LeaderboardRow, key: NumericSortKey) {
   if (key === "total_points") return row.total_points;
   if (key === "correct_tips") return row.correct_tips;
   if (key === "accuracy_pct") return row.accuracy_pct;
-  if (key === "tips_submitted") return row.tips_submitted;
-  if (key === "missed_tips") return row.missed_tips;
   if (key === "round_score") return row.round_score;
   if (key === "movement") return row.movement;
   if (key === "behind_leader") return row.behind_leader;
@@ -156,7 +108,6 @@ export default function LeaderboardPage() {
   const [sortBy, setSortBy] = useState<SortKey>("total_points");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [isMobile, setIsMobile] = useState(false);
-  const [mobilePreset, setMobilePreset] = useState<MobileLeaderboardPreset>("core");
 
   function applyLeaderboardData(json: LeaderboardResponse) {
     setRows(Array.isArray(json.rows) ? json.rows : []);
@@ -233,35 +184,12 @@ export default function LeaderboardPage() {
     return () => media.removeListener(onChange);
   }, []);
 
-  const visibleColumns = useMemo(() => {
-    if (!isMobile) {
-      return new Set<SortKey>(ALL_COLUMNS);
-    }
-    if (mobilePreset === "scoring") return new Set<SortKey>(MOBILE_SCORING_COLUMNS);
-    if (mobilePreset === "form") return new Set<SortKey>(MOBILE_FORM_COLUMNS);
-    return new Set<SortKey>(MOBILE_CORE_COLUMNS);
-  }, [isMobile, mobilePreset]);
+  const activeSortBy: SortKey = sortBy;
+  const activeSortDirection: SortDirection = sortDirection;
 
-  const fallbackSortBy: SortKey = visibleColumns.has("total_points")
-    ? "total_points"
-    : visibleColumns.has("round_score")
-      ? "round_score"
-      : visibleColumns.has("movement")
-        ? "movement"
-        : "rank";
-
-  const activeSortBy: SortKey = visibleColumns.has(sortBy) ? sortBy : fallbackSortBy;
-  const activeSortDirection: SortDirection = visibleColumns.has(sortBy)
-    ? sortDirection
-    : DEFAULT_SORT_DIR[fallbackSortBy];
-
-  const rankColWidth = isMobile ? 52 : 72;
-  const tipsterColWidth = isMobile ? 124 : 190;
-  const tableMinWidth = isMobile
-    ? mobilePreset === "core"
-      ? 700
-      : 760
-    : 1120;
+  const rankColWidth = isMobile ? 56 : 68;
+  const tipsterColWidth = isMobile ? 148 : 188;
+  const tableMinWidth = isMobile ? 860 : 1000;
 
   function stickyColumnStyle(col: 1 | 2, isHeader: boolean) {
     return {
@@ -279,10 +207,6 @@ export default function LeaderboardPage() {
           ? "3px 0 0 var(--card), 4px 0 0 var(--border)"
           : "1px 0 0 var(--border)",
     };
-  }
-
-  function showColumn(key: SortKey) {
-    return visibleColumns.has(key);
   }
 
   const sortedRows = useMemo(() => {
@@ -324,15 +248,22 @@ export default function LeaderboardPage() {
   }
 
   function sortMarker(key: SortKey) {
-    if (activeSortBy !== key) return "↕";
+    if (activeSortBy !== key) return "↑↓";
     return activeSortDirection === "asc" ? "↑" : "↓";
   }
 
-  function sortableHeader(label: string, key: SortKey, stickyCol?: 1 | 2) {
+  function sortableHeader(label: string, key: SortKey, stickyCol?: 1 | 2, width?: number) {
     return (
       <UiTableHeadCell
         style={{
           ...(stickyCol ? stickyColumnStyle(stickyCol, true) : {}),
+          ...(width
+            ? {
+                width,
+                minWidth: width,
+                maxWidth: width,
+              }
+            : {}),
         }}
       >
         <button
@@ -355,7 +286,9 @@ export default function LeaderboardPage() {
           title={`Sort by ${label}`}
         >
           <span>{label}</span>
-          <span style={{ opacity: sortBy === key ? 1 : 0.45, fontSize: 11 }}>{sortMarker(key)}</span>
+          <span style={{ opacity: sortBy === key ? 1 : 0.45, fontSize: 11, letterSpacing: -0.3 }}>
+            {sortMarker(key)}
+          </span>
         </button>
       </UiTableHeadCell>
     );
@@ -374,156 +307,96 @@ export default function LeaderboardPage() {
               <div style={{ padding: 16 }} className="ui-caption">No leaderboard data yet.</div>
             ) : (
               <UiTableScroll>
-                {isMobile && (
-                  <div
-                    style={{
-                      padding: "10px 12px",
-                      borderBottom: "1px solid var(--border)",
-                      display: "grid",
-                      gap: 8,
-                      background: "var(--card-soft)",
-                    }}
-                  >
-                    <div className="ui-caption">Stat preset</div>
-                    <div className="ui-stat-presets">
-                      <button
-                        type="button"
-                        onClick={() => setMobilePreset("core")}
-                        className={`ui-btn ui-btn--pill ${mobilePreset === "core" ? "ui-btn--active-neutral" : ""}`}
-                      >
-                        Core
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setMobilePreset("scoring")}
-                        className={`ui-btn ui-btn--pill ${mobilePreset === "scoring" ? "ui-btn--active-neutral" : ""}`}
-                      >
-                        Scoring
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setMobilePreset("form")}
-                        className={`ui-btn ui-btn--pill ${mobilePreset === "form" ? "ui-btn--active-neutral" : ""}`}
-                      >
-                        Form
-                      </button>
-                    </div>
-                  </div>
-                )}
-
                 <table className={`ui-table ${isMobile ? "ui-table--compact" : ""}`} style={{ minWidth: tableMinWidth }}>
                   <thead>
                     <tr className="ui-table-head-row">
-                      {showColumn("rank") && sortableHeader("Rank", "rank", 1)}
-                      {showColumn("display_name") && sortableHeader("Tipster", "display_name", 2)}
-                      {showColumn("total_points") && sortableHeader("Total Pts", "total_points")}
-                      {showColumn("behind_leader") && sortableHeader("Behind", "behind_leader")}
-                      {showColumn("correct_tips") && sortableHeader("Correct", "correct_tips")}
-                      {showColumn("movement") && sortableHeader("Move", "movement")}
-                      {showColumn("accuracy_pct") && sortableHeader("Season Accuracy", "accuracy_pct")}
-                      {showColumn("round_score") &&
-                        sortableHeader(
-                          latestScoredRound === null ? "Round Score" : `Round Score (R${latestScoredRound})`,
-                          "round_score"
-                        )}
-                      {showColumn("current_streak") && sortableHeader("Streak", "current_streak")}
-                      {showColumn("avg_winning_odds") && sortableHeader("Avg Win Odds", "avg_winning_odds")}
-                      {showColumn("tips_submitted") && sortableHeader("Tips (Sub/Poss)", "tips_submitted")}
+                      {sortableHeader("Rank", "rank", 1)}
+                      {sortableHeader("Tipster", "display_name", 2)}
+                      {sortableHeader("Total Pts", "total_points", undefined, 92)}
+                      {sortableHeader("Behind", "behind_leader", undefined, 84)}
+                      {sortableHeader("Correct", "correct_tips", undefined, 72)}
+                      {sortableHeader("Move", "movement", undefined, 74)}
+                      {sortableHeader("Accuracy", "accuracy_pct", undefined, 90)}
+                      {sortableHeader(
+                        latestScoredRound === null ? "Round" : `R${latestScoredRound}`,
+                        "round_score",
+                        undefined,
+                        82
+                      )}
+                      {sortableHeader("Streak", "current_streak", undefined, 68)}
+                      {sortableHeader("Avg Odds", "avg_winning_odds", undefined, 88)}
                     </tr>
                   </thead>
                   <tbody>
                     {sortedRows.map((r) => (
                       <tr key={r.user_id}>
-                        {showColumn("rank") && (
-                          <UiTableCell
-                            style={{
-                              fontWeight: 900,
-                              ...stickyColumnStyle(1, false),
-                            }}
-                          >
-                            #{r.rank}
-                          </UiTableCell>
-                        )}
-                        {showColumn("display_name") && (
-                          <UiTableCell
-                            style={{
-                              fontWeight: 700,
-                              ...stickyColumnStyle(2, false),
-                            }}
-                            title={
-                              r.payment_status === "pending"
-                                ? `${r.display_name} (unpaid)`
-                                : r.display_name
-                            }
-                          >
-                            <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                              <ChampionCrown isChampion={r.user_id === reigningChampionUserId} />
-                              <UnpaidTag paymentStatus={r.payment_status ?? null} compact={isMobile} />
-                              <span
-                                style={{
-                                  minWidth: 0,
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                  whiteSpace: "nowrap",
-                                  display: "block",
-                                }}
-                              >
-                                {r.display_name}
-                              </span>
+                        <UiTableCell
+                          style={{
+                            fontWeight: 900,
+                            ...stickyColumnStyle(1, false),
+                          }}
+                        >
+                          #{r.rank}
+                        </UiTableCell>
+                        <UiTableCell
+                          style={{
+                            fontWeight: 700,
+                            ...stickyColumnStyle(2, false),
+                          }}
+                          title={
+                            r.payment_status === "pending"
+                              ? `${r.display_name} (unpaid)`
+                              : r.display_name
+                          }
+                        >
+                          <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                            <UnpaidTag paymentStatus={r.payment_status ?? null} compact={isMobile} />
+                            <span
+                              style={{
+                                minWidth: 0,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                                display: "block",
+                              }}
+                            >
+                              {r.display_name}
                             </span>
-                          </UiTableCell>
-                        )}
-                        {showColumn("total_points") && (
-                          <UiTableCell style={{ fontWeight: 800 }}>
-                            {fmtPts(r.total_points)}
-                          </UiTableCell>
-                        )}
-                        {showColumn("behind_leader") && (
-                          <UiTableCell>
-                            {r.behind_leader <= 0 ? "-" : fmtPts(r.behind_leader)}
-                          </UiTableCell>
-                        )}
-                        {showColumn("correct_tips") && (
-                          <UiTableCell>
-                            {r.correct_tips}
-                          </UiTableCell>
-                        )}
-                        {showColumn("movement") && (
-                          <UiTableCell
-                            style={{
-                              color: movementColor(r.movement),
-                              fontWeight: 800,
-                            }}
-                            title={r.previous_rank ? `Previously #${r.previous_rank}` : "No previous round baseline"}
-                          >
-                            {movementText(r.movement)}
-                          </UiTableCell>
-                        )}
-                        {showColumn("accuracy_pct") && (
-                          <UiTableCell>
-                            {fmtPct(r.accuracy_pct)}
-                          </UiTableCell>
-                        )}
-                        {showColumn("round_score") && (
-                          <UiTableCell style={{ fontWeight: 700 }}>
-                            {fmtPts(r.round_score)}
-                          </UiTableCell>
-                        )}
-                        {showColumn("current_streak") && (
-                          <UiTableCell>
-                            {r.current_streak}
-                          </UiTableCell>
-                        )}
-                        {showColumn("avg_winning_odds") && (
-                          <UiTableCell>
-                            {fmtPts(r.avg_winning_odds)}
-                          </UiTableCell>
-                        )}
-                        {showColumn("tips_submitted") && (
-                          <UiTableCell>
-                            {r.tips_submitted}/{r.tips_possible}
-                          </UiTableCell>
-                        )}
+                            <ChampionCrown isChampion={r.user_id === reigningChampionUserId} />
+                          </span>
+                        </UiTableCell>
+                        <UiTableCell style={{ fontWeight: 800, width: 92, minWidth: 92 }}>
+                          {fmtPts(r.total_points)}
+                        </UiTableCell>
+                        <UiTableCell style={{ width: 84, minWidth: 84 }}>
+                          {r.behind_leader <= 0 ? "-" : fmtPts(r.behind_leader)}
+                        </UiTableCell>
+                        <UiTableCell style={{ width: 72, minWidth: 72 }}>
+                          {r.correct_tips}
+                        </UiTableCell>
+                        <UiTableCell
+                          style={{
+                            width: 74,
+                            minWidth: 74,
+                            color: movementColor(r.movement),
+                            fontWeight: 800,
+                          }}
+                          title={r.previous_rank ? `Previously #${r.previous_rank}` : "No previous round baseline"}
+                        >
+                          {movementText(r.movement)}
+                        </UiTableCell>
+                        <UiTableCell style={{ width: 90, minWidth: 90 }}>
+                          {fmtPct(r.accuracy_pct)}
+                        </UiTableCell>
+                        <UiTableCell style={{ fontWeight: 700, width: 82, minWidth: 82 }}>
+                          {fmtPts(r.round_score)}
+                        </UiTableCell>
+                        <UiTableCell style={{ width: 68, minWidth: 68 }}>
+                          {r.current_streak}
+                        </UiTableCell>
+                        <UiTableCell style={{ width: 88, minWidth: 88 }}>
+                          {fmtPts(r.avg_winning_odds)}
+                        </UiTableCell>
                       </tr>
                     ))}
                   </tbody>

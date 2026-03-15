@@ -92,6 +92,14 @@ type RoundSortKey =
 
 type SortDirection = "asc" | "desc";
 type MobileRoundPreset = "core" | "value" | "all";
+type MyTipStatus = "correct" | "incorrect" | "pending" | "missed";
+
+type MyTipSummaryRow = {
+  match_id: string;
+  match_label: string;
+  picked: string | null;
+  status: MyTipStatus;
+};
 
 const DEFAULT_SORT_DIR: Record<RoundSortKey, SortDirection> = {
   rank: "asc",
@@ -194,6 +202,19 @@ function fmtPct(n: number) {
 function pctBar(pct: number) {
   const safe = Math.max(0, Math.min(100, Number(pct) || 0));
   return `${safe}%`;
+}
+
+function myTipStatusLabel(status: MyTipStatus) {
+  if (status === "correct") return "Correct";
+  if (status === "incorrect") return "Incorrect";
+  if (status === "missed") return "Missed";
+  return "Pending";
+}
+
+function myTipStatusClassName(status: MyTipStatus) {
+  if (status === "correct") return "ui-badge ui-badge--success";
+  if (status === "incorrect" || status === "missed") return "ui-badge ui-badge--danger";
+  return "ui-badge ui-badge--info";
 }
 
 export default function RoundResultsDetailPage() {
@@ -365,6 +386,41 @@ export default function RoundResultsDetailPage() {
     return players.find((p) => p.user_id === currentUserId) ?? null;
   }, [players, currentUserId]);
 
+  const myTipRows = useMemo<MyTipSummaryRow[]>(() => {
+    return matches.map((m) => {
+      const picked = myRoundRow?.picks?.[m.id] ?? null;
+      const winner = String(m.winner_team ?? "").trim();
+      let status: MyTipStatus = "pending";
+
+      if (winner) {
+        if (!picked) status = "missed";
+        else status = picked === winner ? "correct" : "incorrect";
+      }
+
+      return {
+        match_id: m.id,
+        match_label: `${m.home_team} vs ${m.away_team}`,
+        picked,
+        status,
+      };
+    });
+  }, [matches, myRoundRow]);
+
+  const myCompletedTipRows = useMemo(
+    () => myTipRows.filter((row) => row.status !== "pending"),
+    [myTipRows]
+  );
+
+  const myUpcomingTipRows = useMemo(
+    () => myTipRows.filter((row) => row.status === "pending"),
+    [myTipRows]
+  );
+
+  const myCorrectSoFar = useMemo(
+    () => myTipRows.filter((row) => row.status === "correct").length,
+    [myTipRows]
+  );
+
   const roundRankByUserId = useMemo(() => {
     const ranked = [...players].sort((a, b) => {
       if (b.round_score !== a.round_score) return b.round_score - a.round_score;
@@ -487,29 +543,106 @@ export default function RoundResultsDetailPage() {
                     </span>
                   </div>
                   <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
-                    Correct so far: <b>{myRoundRow?.correct_tips ?? 0}</b> / {finishedMatches}
+                    Correct so far: <b>{myCorrectSoFar}</b> / {finishedMatches}
                   </div>
                 </div>
 
                 <div className="ui-badge ui-badge--locked">LOCKED</div>
               </div>
 
-              <div className="ui-grid ui-mt-3" style={{ gap: 6 }}>
-                {matches.map((m) => {
-                  const picked = myRoundRow?.picks?.[m.id] ?? null;
-                  const winner = String(m.winner_team ?? "").trim();
-                  const resultLabel =
-                    picked && winner ? (picked === winner ? "Correct" : "Incorrect") : null;
-                  const resultClassName =
-                    picked && winner
-                      ? picked === winner
-                        ? "ui-badge ui-badge--success"
-                        : "ui-badge ui-badge--danger"
-                      : "";
+              {isMobile ? (
+                <>
+                  <div className="ui-row-wrap ui-mt-3" style={{ gap: 8 }}>
+                    <span className="ui-badge ui-badge--success" style={{ textTransform: "none" }}>
+                      Correct {myCorrectSoFar}/{finishedMatches}
+                    </span>
+                    <span className="ui-badge ui-badge--info" style={{ textTransform: "none" }}>
+                      Still to play {myUpcomingTipRows.length}
+                    </span>
+                    <span className="ui-badge" style={{ textTransform: "none" }}>
+                      Potential {fmtPts(myRoundRow?.potential_score ?? 0)}
+                    </span>
+                  </div>
 
-                  return (
+                  {!!myCompletedTipRows.length && (
+                    <div style={{ marginTop: 12 }}>
+                      <div className="ui-kicker">Completed ({myCompletedTipRows.length})</div>
+                      <div className="ui-grid ui-mt-2" style={{ gap: 7 }}>
+                        {myCompletedTipRows.map((row) => (
+                          <div
+                            key={`my-tip-completed-${row.match_id}`}
+                            style={{
+                              fontSize: 13,
+                              opacity: 0.95,
+                              display: "flex",
+                              justifyContent: "space-between",
+                              gap: 8,
+                              alignItems: "center",
+                            }}
+                          >
+                            <div style={{ minWidth: 0, lineHeight: 1.35 }}>
+                              {row.match_label} —{" "}
+                              {row.picked ? (
+                                <b>{row.picked}</b>
+                              ) : (
+                                <span style={{ opacity: 0.65 }}>No tip</span>
+                              )}
+                            </div>
+
+                            <span
+                              className={myTipStatusClassName(row.status)}
+                              style={{ minWidth: 84, justifyContent: "center", flexShrink: 0 }}
+                            >
+                              {myTipStatusLabel(row.status)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {!!myUpcomingTipRows.length && (
+                    <div style={{ marginTop: 12 }}>
+                      <div className="ui-kicker">Still to play ({myUpcomingTipRows.length})</div>
+                      <div className="ui-grid ui-mt-2" style={{ gap: 7 }}>
+                        {myUpcomingTipRows.map((row) => (
+                          <div
+                            key={`my-tip-upcoming-${row.match_id}`}
+                            style={{
+                              fontSize: 13,
+                              opacity: 0.95,
+                              display: "flex",
+                              justifyContent: "space-between",
+                              gap: 8,
+                              alignItems: "center",
+                            }}
+                          >
+                            <div style={{ minWidth: 0, lineHeight: 1.35 }}>
+                              {row.match_label} —{" "}
+                              {row.picked ? (
+                                <b>{row.picked}</b>
+                              ) : (
+                                <span style={{ opacity: 0.65 }}>No tip</span>
+                              )}
+                            </div>
+
+                            <span
+                              className={myTipStatusClassName(row.status)}
+                              style={{ minWidth: 84, justifyContent: "center", flexShrink: 0 }}
+                            >
+                              {myTipStatusLabel(row.status)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="ui-grid ui-mt-3" style={{ gap: 6 }}>
+                  {myTipRows.map((row) => (
                     <div
-                      key={`my-tip-${m.id}`}
+                      key={`my-tip-${row.match_id}`}
                       style={{
                         fontSize: 13,
                         opacity: 0.92,
@@ -521,21 +654,25 @@ export default function RoundResultsDetailPage() {
                       }}
                     >
                       <div>
-                        {m.home_team} vs {m.away_team} —{" "}
-                        {picked ? (
+                        {row.match_label} —{" "}
+                        {row.picked ? (
                           <span>
-                            tipped <b>{picked}</b>
+                            tipped <b>{row.picked}</b>
                           </span>
                         ) : (
                           <span style={{ opacity: 0.6 }}>Not tipped</span>
                         )}
                       </div>
 
-                      {resultLabel && <span className={resultClassName}>{resultLabel}</span>}
+                      {row.status !== "pending" && (
+                        <span className={myTipStatusClassName(row.status)}>
+                          {myTipStatusLabel(row.status)}
+                        </span>
+                      )}
                     </div>
-                  );
-                })}
-              </div>
+                  ))}
+                </div>
+              )}
             </UiCard>
           )}
 

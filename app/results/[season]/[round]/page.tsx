@@ -534,33 +534,17 @@ export default function RoundResultsDetailPage() {
 
           {!!matches.length && (
             <UiCard soft className="ui-mt-3">
-              <div className="ui-row-between-start" style={{ gap: 10 }}>
-                <div>
-                  <div style={{ fontWeight: 700 }}>
-                    Correct so far: {myCorrectSoFar} / {matches.length}
-                  </div>
-                  <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
-                    Potential score: <b>{fmtPts(myRoundRow?.potential_score ?? 0)}</b>
-                  </div>
+              <div>
+                <div style={{ fontWeight: 700 }}>
+                  Correct so far: {myCorrectSoFar} / {matches.length}
                 </div>
-
-                <div className="ui-badge ui-badge--locked">LOCKED</div>
+                <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
+                  Potential score: <b>{fmtPts(myRoundRow?.potential_score ?? 0)}</b>
+                </div>
               </div>
 
               {isMobile ? (
                 <>
-                  <div className="ui-row-wrap ui-mt-3" style={{ gap: 8 }}>
-                    <span className="ui-badge ui-badge--success" style={{ textTransform: "none" }}>
-                      Correct {myCorrectSoFar}/{finishedMatches}
-                    </span>
-                    <span className="ui-badge ui-badge--info" style={{ textTransform: "none" }}>
-                      Still to play {myUpcomingTipRows.length}
-                    </span>
-                    <span className="ui-badge" style={{ textTransform: "none" }}>
-                      Potential {fmtPts(myRoundRow?.potential_score ?? 0)}
-                    </span>
-                  </div>
-
                   {!!myCompletedTipRows.length && (
                     <div style={{ marginTop: 12 }}>
                       <div className="ui-kicker">Completed ({myCompletedTipRows.length})</div>

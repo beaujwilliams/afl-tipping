@@ -392,6 +392,39 @@ export default function RoundResultsDetailPage() {
     [myTipRows]
   );
 
+  const pickListsByMatchId = useMemo(() => {
+    const out: Record<string, { home: string[]; away: string[] }> = {};
+
+    matches.forEach((m) => {
+      out[m.id] = { home: [], away: [] };
+    });
+
+    players.forEach((p) => {
+      const displayName = String(p.display_name ?? "").trim() || "(no display name)";
+
+      matches.forEach((m) => {
+        const picked = String(p.picks?.[m.id] ?? "").trim();
+        if (!picked) return;
+
+        if (picked === m.home_team) {
+          out[m.id]?.home.push(displayName);
+          return;
+        }
+
+        if (picked === m.away_team) {
+          out[m.id]?.away.push(displayName);
+        }
+      });
+    });
+
+    Object.values(out).forEach((bucket) => {
+      bucket.home.sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" }));
+      bucket.away.sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" }));
+    });
+
+    return out;
+  }, [matches, players]);
+
   const roundRankByUserId = useMemo(() => {
     const ranked = [...players].sort((a, b) => {
       if (b.round_score !== a.round_score) return b.round_score - a.round_score;
@@ -748,6 +781,7 @@ export default function RoundResultsDetailPage() {
             {matches.map((m) => {
               const winner = String(m.winner_team ?? "").trim();
               const finished = !!winner;
+              const picksForMatch = pickListsByMatchId[m.id] ?? { home: [], away: [] };
 
               return (
                 <UiCard key={m.id}>
@@ -847,6 +881,58 @@ export default function RoundResultsDetailPage() {
                       </div>
                     </div>
                   </div>
+
+                  <details style={{ marginTop: 12 }}>
+                    <summary
+                      style={{
+                        cursor: "pointer",
+                        fontWeight: 800,
+                        fontSize: 12,
+                        color: "var(--muted)",
+                      }}
+                    >
+                      Who tipped which team
+                    </summary>
+
+                    <div
+                      style={{
+                        marginTop: 10,
+                        display: "grid",
+                        gap: 10,
+                        gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                      }}
+                    >
+                      {[
+                        { label: m.home_team, names: picksForMatch.home },
+                        { label: m.away_team, names: picksForMatch.away },
+                      ].map((bucket) => (
+                        <div
+                          key={`${m.id}-${bucket.label}`}
+                          style={{
+                            border: "1px solid var(--border)",
+                            borderRadius: 10,
+                            padding: "8px 10px",
+                            background: "var(--card-soft)",
+                          }}
+                        >
+                          <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
+                            {bucket.label} ({bucket.names.length})
+                          </div>
+                          {bucket.names.length === 0 ? (
+                            <div style={{ fontSize: 12, opacity: 0.7 }}>No one yet</div>
+                          ) : (
+                            <div style={{ display: "grid", gap: 4 }}>
+                              {bucket.names.map((name) => (
+                                <div key={`${m.id}-${bucket.label}-${name}`} style={{ fontSize: 12 }}>
+                                  {name}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </details>
                 </UiCard>
               );
             })}

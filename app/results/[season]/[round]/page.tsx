@@ -203,6 +203,7 @@ export default function RoundResultsDetailPage() {
 
   const [msg, setMsg] = useState<string>("Checking session…");
   const [sessionToken, setSessionToken] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [matches, setMatches] = useState<MatchResultRow[]>([]);
   const [players, setPlayers] = useState<PlayerRoundScore[]>([]);
   const [reigningChampionUserId, setReigningChampionUserId] = useState<string | null>(null);
@@ -230,6 +231,7 @@ export default function RoundResultsDetailPage() {
       }
 
       setSessionToken(session.access_token);
+      setCurrentUserId(session.user.id);
       setMsg("Loading round results…");
     }
 
@@ -358,6 +360,11 @@ export default function RoundResultsDetailPage() {
     return matches.reduce((acc, m) => acc + Number(m.total_tips ?? 0), 0);
   }, [matches]);
 
+  const myRoundRow = useMemo(() => {
+    if (!currentUserId) return null;
+    return players.find((p) => p.user_id === currentUserId) ?? null;
+  }, [players, currentUserId]);
+
   const roundRankByUserId = useMemo(() => {
     const ranked = [...players].sort((a, b) => {
       if (b.round_score !== a.round_score) return b.round_score - a.round_score;
@@ -468,6 +475,69 @@ export default function RoundResultsDetailPage() {
               <div style={{ marginTop: 5, fontSize: 22, fontWeight: 900 }}>{tipsPlaced}</div>
             </UiCard>
           </UiCardGrid>
+
+          {!!matches.length && (
+            <UiCard soft className="ui-mt-3">
+              <div className="ui-row-between-start" style={{ gap: 10 }}>
+                <div>
+                  <div style={{ fontWeight: 700 }}>
+                    Your tips: {myRoundRow?.total_tips ?? 0} / {matches.length}{" "}
+                    <span style={{ fontWeight: 600, opacity: 0.85 }}>
+                      (Potential score: {fmtPts(myRoundRow?.potential_score ?? 0)})
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
+                    Correct so far: <b>{myRoundRow?.correct_tips ?? 0}</b> / {finishedMatches}
+                  </div>
+                </div>
+
+                <div className="ui-badge ui-badge--locked">LOCKED</div>
+              </div>
+
+              <div className="ui-grid ui-mt-3" style={{ gap: 6 }}>
+                {matches.map((m) => {
+                  const picked = myRoundRow?.picks?.[m.id] ?? null;
+                  const winner = String(m.winner_team ?? "").trim();
+                  const resultLabel =
+                    picked && winner ? (picked === winner ? "Correct" : "Incorrect") : null;
+                  const resultClassName =
+                    picked && winner
+                      ? picked === winner
+                        ? "ui-badge ui-badge--success"
+                        : "ui-badge ui-badge--danger"
+                      : "";
+
+                  return (
+                    <div
+                      key={`my-tip-${m.id}`}
+                      style={{
+                        fontSize: 13,
+                        opacity: 0.92,
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 10,
+                        flexWrap: "wrap",
+                        alignItems: "center",
+                      }}
+                    >
+                      <div>
+                        {m.home_team} vs {m.away_team} —{" "}
+                        {picked ? (
+                          <span>
+                            tipped <b>{picked}</b>
+                          </span>
+                        ) : (
+                          <span style={{ opacity: 0.6 }}>Not tipped</span>
+                        )}
+                      </div>
+
+                      {resultLabel && <span className={resultClassName}>{resultLabel}</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            </UiCard>
+          )}
 
           <UiTableShell className="ui-mt-3">
             <div className="ui-title--section" style={{ padding: "12px 12px 8px", fontSize: 15 }}>

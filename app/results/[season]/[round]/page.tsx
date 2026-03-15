@@ -537,13 +537,10 @@ export default function RoundResultsDetailPage() {
               <div className="ui-row-between-start" style={{ gap: 10 }}>
                 <div>
                   <div style={{ fontWeight: 700 }}>
-                    Your tips: {myRoundRow?.total_tips ?? 0} / {matches.length}{" "}
-                    <span style={{ fontWeight: 600, opacity: 0.85 }}>
-                      (Potential score: {fmtPts(myRoundRow?.potential_score ?? 0)})
-                    </span>
+                    Correct so far: {myCorrectSoFar} / {matches.length}
                   </div>
                   <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
-                    Correct so far: <b>{myCorrectSoFar}</b> / {finishedMatches}
+                    Potential score: <b>{fmtPts(myRoundRow?.potential_score ?? 0)}</b>
                   </div>
                 </div>
 

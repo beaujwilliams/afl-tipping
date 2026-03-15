@@ -544,7 +544,7 @@ export default function AdminPage() {
                 Generate a round recap now and email it directly to you.
               </div>
               <div className="ui-admin-stack">
-                <div className="ui-row-wrap ui-admin-gap-sm">
+                <div className="ui-row-wrap ui-admin-gap-sm ui-admin-form-row">
                   <label className="ui-admin-label">Round</label>
                   <input
                     type="number"
@@ -555,7 +555,7 @@ export default function AdminPage() {
                     className="ui-input ui-admin-input-round"
                   />
                 </div>
-                <div className="ui-row-wrap ui-admin-gap-sm">
+                <div className="ui-row-wrap ui-admin-gap-sm ui-admin-form-row">
                   <label className="ui-admin-label ui-admin-label-email">Send to</label>
                   <input
                     type="email"

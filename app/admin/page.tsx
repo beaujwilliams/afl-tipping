@@ -325,6 +325,16 @@ export default function AdminPage() {
             Quick actions by round: open round, see who is missing tips, and send reminders.
           </div>
 
+          <div className="ui-admin-stack">
+            <UiButton
+              disabled={isRunning}
+              onClick={runSyncAndRecalc}
+              className="ui-admin-btn ui-admin-btn--full ui-admin-btn--primary"
+            >
+              Sync Results + Recalculate Leaderboard
+            </UiButton>
+          </div>
+
           {commandCenterMsg ? (
             <div className="ui-admin-summary">{commandCenterMsg}</div>
           ) : (
@@ -458,7 +468,7 @@ export default function AdminPage() {
           </div>
         </UiCard>
 
-        <UiCard soft className="ui-admin-section" style={{ order: 2 }}>
+        <UiCard soft className="ui-admin-section" style={{ order: 3 }}>
           <h2 className="ui-admin-section-title">Comms</h2>
           <div className="ui-admin-summary">
             Send reminder and recap emails.
@@ -492,7 +502,7 @@ export default function AdminPage() {
           </div>
         </UiCard>
 
-        <UiCard soft className="ui-admin-section" style={{ order: 3 }}>
+        <UiCard soft className="ui-admin-section" style={{ order: 2 }}>
           <h2 className="ui-admin-section-title">Members</h2>
           <div className="ui-admin-summary">
             Manage members, payment states, unpaid tip lock and seasonal settings.
@@ -512,14 +522,6 @@ export default function AdminPage() {
           </div>
 
           <div className="ui-admin-stack">
-            <UiButton
-              disabled={isRunning}
-              onClick={runSyncAndRecalc}
-              className="ui-admin-btn ui-admin-btn--full ui-admin-btn--primary"
-            >
-              Sync Results + Recalculate Leaderboard
-            </UiButton>
-
             <div className="ui-admin-two-col">
               <UiButton
                 disabled={isRunning}

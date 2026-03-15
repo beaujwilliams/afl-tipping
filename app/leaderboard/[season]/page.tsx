@@ -102,7 +102,6 @@ export default function LeaderboardPage() {
   const season = Number(params.season);
 
   const [rows, setRows] = useState<LeaderboardRow[]>([]);
-  const [latestScoredRound, setLatestScoredRound] = useState<number | null>(null);
   const [reigningChampionUserId, setReigningChampionUserId] = useState<string | null>(null);
   const [msg, setMsg] = useState("Loading...");
   const [sortBy, setSortBy] = useState<SortKey>("total_points");
@@ -116,7 +115,6 @@ export default function LeaderboardPage() {
         ? json.reigning_champion_user_id
         : null
     );
-    setLatestScoredRound(json.latest_scored_round ?? null);
   }
 
   useEffect(() => {
@@ -311,20 +309,15 @@ export default function LeaderboardPage() {
                   <thead>
                     <tr className="ui-table-head-row">
                       {sortableHeader("Rank", "rank", 1)}
-                      {sortableHeader("Tipster", "display_name", 2)}
+                      {sortableHeader("Name", "display_name", 2)}
                       {sortableHeader("Total Pts", "total_points", undefined, 92)}
                       {sortableHeader("Behind", "behind_leader", undefined, 84)}
-                      {sortableHeader("Correct", "correct_tips", undefined, 72)}
                       {sortableHeader("Move", "movement", undefined, 74)}
                       {sortableHeader("Accuracy", "accuracy_pct", undefined, 90)}
-                      {sortableHeader(
-                        latestScoredRound === null ? "Round" : `R${latestScoredRound}`,
-                        "round_score",
-                        undefined,
-                        82
-                      )}
                       {sortableHeader("Streak", "current_streak", undefined, 68)}
                       {sortableHeader("Avg Odds", "avg_winning_odds", undefined, 88)}
+                      {sortableHeader("Correct", "correct_tips", undefined, 72)}
+                      {sortableHeader("Current Round", "round_score", undefined, 112)}
                     </tr>
                   </thead>
                   <tbody>
@@ -371,9 +364,6 @@ export default function LeaderboardPage() {
                         <UiTableCell style={{ width: 84, minWidth: 84 }}>
                           {r.behind_leader <= 0 ? "-" : fmtPts(r.behind_leader)}
                         </UiTableCell>
-                        <UiTableCell style={{ width: 72, minWidth: 72 }}>
-                          {r.correct_tips}
-                        </UiTableCell>
                         <UiTableCell
                           style={{
                             width: 74,
@@ -388,14 +378,17 @@ export default function LeaderboardPage() {
                         <UiTableCell style={{ width: 90, minWidth: 90 }}>
                           {fmtPct(r.accuracy_pct)}
                         </UiTableCell>
-                        <UiTableCell style={{ fontWeight: 700, width: 82, minWidth: 82 }}>
-                          {fmtPts(r.round_score)}
-                        </UiTableCell>
                         <UiTableCell style={{ width: 68, minWidth: 68 }}>
                           {r.current_streak}
                         </UiTableCell>
                         <UiTableCell style={{ width: 88, minWidth: 88 }}>
                           {fmtPts(r.avg_winning_odds)}
+                        </UiTableCell>
+                        <UiTableCell style={{ width: 72, minWidth: 72 }}>
+                          {r.correct_tips}
+                        </UiTableCell>
+                        <UiTableCell style={{ fontWeight: 700, width: 112, minWidth: 112 }}>
+                          {fmtPts(r.round_score)}
                         </UiTableCell>
                       </tr>
                     ))}

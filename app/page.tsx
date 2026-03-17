@@ -115,6 +115,7 @@ export default function HomePage() {
   const [msg, setMsg] = useState("Loading dashboard...");
   const [token, setToken] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  const [welcomeName, setWelcomeName] = useState("");
   const [rounds, setRounds] = useState<RoundStatusRow[]>([]);
   const [me, setMe] = useState<LeaderboardRow | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -137,6 +138,16 @@ export default function HomePage() {
         window.location.href = "/login";
         return;
       }
+
+      const metadata = (session.user.user_metadata ?? {}) as Record<string, unknown>;
+      const metadataNameCandidates = [metadata.display_name, metadata.full_name, metadata.name]
+        .map((v) => (typeof v === "string" ? v.trim() : ""))
+        .filter((v) => v.length > 0);
+      const emailName = String(session.user.email ?? "")
+        .split("@")[0]
+        ?.trim();
+      const resolvedWelcomeName = metadataNameCandidates[0] || emailName || "";
+      setWelcomeName(resolvedWelcomeName);
 
       setToken(session.access_token);
       setUserId(session.user.id);
@@ -400,7 +411,7 @@ export default function HomePage() {
   return (
     <main className="ui-page ui-page--content">
       <div className="ui-page-header">
-        <h1 className="ui-title">Welcome back</h1>
+        <h1 className="ui-title">{welcomeName ? `Welcome back, ${welcomeName}` : "Welcome back"}</h1>
         <UiBadge>Season {CURRENT_SEASON}</UiBadge>
       </div>
 

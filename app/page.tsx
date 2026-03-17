@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { waitForSession } from "@/lib/session-client";
 import { supabaseBrowser } from "@/lib/supabase-browser";
-import { UiBadge, UiButtonLink, UiCard, UiCardGrid } from "@/components/ui";
+import { UiBadge, UiButtonLink, UiCard, UiCardGrid, UiSectionHeader } from "@/components/ui";
 
 const CURRENT_SEASON = 2026;
 
@@ -36,6 +36,14 @@ type LeaderboardResponse = {
   ok: boolean;
   rows: LeaderboardRow[];
   error?: string;
+};
+
+type DashboardReminder = {
+  id: string;
+  title: string;
+  detail: string;
+  href: string;
+  cta: string;
 };
 
 function melbourneMs(iso: string | null) {
@@ -83,6 +91,10 @@ function movementColor(movement: number | null | undefined) {
   if ((movement ?? 0) > 0) return "rgb(22, 163, 74)";
   if ((movement ?? 0) < 0) return "rgb(220, 38, 38)";
   return undefined;
+}
+
+function pluralize(count: number, single: string, plural: string) {
+  return count === 1 ? single : plural;
 }
 
 function getLastChatSeenMs() {
@@ -270,7 +282,6 @@ export default function HomePage() {
 
   const lockMs = melbourneMs(currentRound?.lock_time_utc ?? null);
   const locked = lockMs ? nowMs >= lockMs : false;
-  const lockCountdown = lockMs && !locked ? msToCountdown(lockMs - nowMs) : null;
   const tipsPossible = currentRound?.total_matches ?? 0;
   const tipsEntered = currentRound?.my_tips ?? 0;
   const tipsLeft = Math.max(tipsPossible - tipsEntered, 0);
@@ -280,6 +291,81 @@ export default function HomePage() {
       (Number(currentRound.total_matches ?? 0) > 0 &&
         Number(currentRound.completed_matches ?? 0) >= Number(currentRound.total_matches ?? 0)));
   const lockedRoundStillLive = !!currentRound && locked && !currentRoundComplete;
+  const liveRoundProgressPct =
+    currentRound && currentRound.total_matches > 0
+      ? Math.max(
+          0,
+          Math.min(
+            100,
+            Math.round((Number(currentRound.completed_matches ?? 0) / Number(currentRound.total_matches ?? 1)) * 100)
+          )
+        )
+      : 0;
+
+  const primaryTipRound = useMemo(() => {
+    if (currentRound && !locked) return currentRound;
+    if (nextOpenRound) return nextOpenRound;
+    return currentRound;
+  }, [currentRound, locked, nextOpenRound]);
+
+  const primaryRoundLockMs = melbourneMs(primaryTipRound?.lock_time_utc ?? null);
+  const primaryRoundLocked = primaryRoundLockMs ? nowMs >= primaryRoundLockMs : false;
+  const primaryRoundCountdown =
+    primaryRoundLockMs && !primaryRoundLocked ? msToCountdown(primaryRoundLockMs - nowMs) : null;
+  const primaryTipsPossible = primaryTipRound?.total_matches ?? 0;
+  const primaryTipsEntered = primaryTipRound?.my_tips ?? 0;
+  const primaryTipsLeft = Math.max(primaryTipsPossible - primaryTipsEntered, 0);
+
+  const reminders = useMemo(() => {
+    const items: DashboardReminder[] = [];
+
+    if (primaryTipRound && !primaryRoundLocked && primaryTipsLeft > 0) {
+      items.push({
+        id: "missing-tips",
+        title: `Finish Round ${primaryTipRound.round_number}`,
+        detail: `${primaryTipsLeft} ${pluralize(primaryTipsLeft, "tip", "tips")} left before ${fmtMelbourneShort(primaryTipRound.lock_time_utc)}.`,
+        href: `/round/${CURRENT_SEASON}/${primaryTipRound.round_number}`,
+        cta: "Finish tipping",
+      });
+    }
+
+    if (me?.payment_status === "pending") {
+      items.push({
+        id: "payment-pending",
+        title: "Payment pending",
+        detail: "Your entry is still marked pending and tipping may be locked until this is updated.",
+        href: "/profile",
+        cta: "View profile",
+      });
+    }
+
+    if (unreadMentions > 0) {
+      items.push({
+        id: "chat-mentions",
+        title: `${unreadMentions} ${pluralize(unreadMentions, "@mention", "@mentions")} waiting`,
+        detail: "Jump back into chat and catch up on messages directed at you.",
+        href: "/chat",
+        cta: "Open chat",
+      });
+    } else if (unreadChat > 0) {
+      items.push({
+        id: "chat-unread",
+        title: `${unreadChat} unread chat ${pluralize(unreadChat, "message", "messages")}`,
+        detail: "There’s new chat activity since you last checked in.",
+        href: "/chat",
+        cta: "Read chat",
+      });
+    }
+
+    return items;
+  }, [
+    me?.payment_status,
+    primaryRoundLocked,
+    primaryTipRound,
+    primaryTipsLeft,
+    unreadChat,
+    unreadMentions,
+  ]);
 
   const dashboardNotice = useMemo(() => {
     const urgent: string[] = [];
@@ -338,33 +424,142 @@ export default function HomePage() {
       )}
 
       {!msg && currentRound && (
-        <UiCard soft className="ui-mt-4">
-          <div className="ui-row-between">
-            <div className="ui-kicker">Continue tipping</div>
-            <UiBadge tone={locked ? "locked" : "open"}>{locked ? "Locked" : "Open"}</UiBadge>
-          </div>
-          <div className="ui-value">Round {currentRound.round_number}</div>
-          <div className="ui-meta">
-            {locked
-              ? `Locked ${fmtMelbourneShort(currentRound.lock_time_utc)}`
-              : `Locks in ${lockCountdown} (${fmtMelbourneShort(currentRound.lock_time_utc)})`}
-          </div>
-          <div className="ui-meta">
-            Tips entered <b>{tipsEntered}/{tipsPossible}</b>
-          </div>
-          <UiButtonLink
-            href={`/round/${CURRENT_SEASON}/${currentRound.round_number}`}
-            style={{ marginTop: 12, padding: "10px 14px" }}
-          >
-            {locked ? "View round" : "Continue tipping"}
-          </UiButtonLink>
-        </UiCard>
+        <div className="dashboard-top-grid ui-mt-4">
+          <UiCard soft className="dashboard-hero">
+            <div className="ui-row-between">
+              <div className="ui-kicker">Action center</div>
+              <UiBadge tone={primaryRoundLocked ? "locked" : "open"}>
+                {primaryRoundLocked ? "Locked" : "Open"}
+              </UiBadge>
+            </div>
+
+            <div className="dashboard-hero-title">
+              {lockedRoundStillLive && nextOpenRound
+                ? `Round ${currentRound.round_number} is live. Round ${nextOpenRound.round_number} is next.`
+                : primaryTipRound
+                ? `Round ${primaryTipRound.round_number} is your next move.`
+                : "No round loaded."}
+            </div>
+
+            {primaryTipRound && (
+              <div className="dashboard-hero-meta">
+                {primaryRoundLocked
+                  ? `Locked ${fmtMelbourneShort(primaryTipRound.lock_time_utc)}`
+                  : `Locks in ${primaryRoundCountdown} (${fmtMelbourneShort(primaryTipRound.lock_time_utc)})`}
+              </div>
+            )}
+
+            <UiCardGrid columns={3} className="dashboard-hero-stats">
+              <UiCard className="dashboard-mini-card">
+                <div className="ui-kicker">Next lock</div>
+                <div className="ui-value">
+                  {primaryRoundLocked ? "Closed" : primaryRoundCountdown ?? "-"}
+                </div>
+                <div className="ui-meta">
+                  {primaryTipRound ? fmtMelbourneShort(primaryTipRound.lock_time_utc) : "No round"}
+                </div>
+              </UiCard>
+              <UiCard className="dashboard-mini-card">
+                <div className="ui-kicker">Unfinished round</div>
+                <div className="ui-value">
+                  {lockedRoundStillLive ? `Round ${currentRound.round_number}` : "None"}
+                </div>
+                <div className="ui-meta">
+                  {lockedRoundStillLive
+                    ? `${currentRound.completed_matches}/${currentRound.total_matches} games complete`
+                    : "No live round right now"}
+                </div>
+              </UiCard>
+              <UiCard className="dashboard-mini-card">
+                <div className="ui-kicker">Tips left</div>
+                <div className="ui-value">{primaryTipsLeft}</div>
+                <div className="ui-meta">
+                  {primaryTipRound
+                    ? `${primaryTipsEntered}/${primaryTipsPossible} entered for Round ${primaryTipRound.round_number}`
+                    : "Nothing due"}
+                </div>
+              </UiCard>
+            </UiCardGrid>
+
+            {lockedRoundStillLive && (
+              <div className="dashboard-live-strip">
+                <div className="ui-row-between">
+                  <div>
+                    <div className="ui-kicker">Round in progress</div>
+                    <div className="ui-meta">
+                      {currentRound.completed_matches}/{currentRound.total_matches} games scored so far
+                    </div>
+                  </div>
+                  <div className="dashboard-live-percent">{liveRoundProgressPct}%</div>
+                </div>
+                <div className="dashboard-progress">
+                  <div
+                    className="dashboard-progress-fill"
+                    style={{ width: `${liveRoundProgressPct}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="dashboard-action-row">
+              {primaryTipRound && (
+                <UiButtonLink
+                  href={`/round/${CURRENT_SEASON}/${primaryTipRound.round_number}`}
+                  className="dashboard-primary-link"
+                >
+                  {primaryRoundLocked ? "View round" : "Continue tipping"}
+                </UiButtonLink>
+              )}
+              {lockedRoundStillLive && (
+                <UiButtonLink href={`/results/${CURRENT_SEASON}/${currentRound.round_number}`}>
+                  Follow live results
+                </UiButtonLink>
+              )}
+              <UiButtonLink href={`/leaderboard/${CURRENT_SEASON}`}>View leaderboard</UiButtonLink>
+            </div>
+          </UiCard>
+
+          <UiCard className="dashboard-attention-card">
+            <UiSectionHeader
+              kicker="Needs attention"
+              title={String(reminders.length)}
+              subtitle={
+                reminders.length === 1
+                  ? "pending reminder"
+                  : `${reminders.length} pending reminders`
+              }
+            />
+
+            {reminders.length > 0 ? (
+              <div className="dashboard-reminder-list ui-mt-3">
+                {reminders.map((item) => (
+                  <div key={item.id} className="dashboard-reminder-item">
+                    <div className="dashboard-reminder-copy">
+                      <div className="dashboard-reminder-title">{item.title}</div>
+                      <div className="ui-caption">{item.detail}</div>
+                    </div>
+                    <UiButtonLink href={item.href} className="dashboard-reminder-cta">
+                      {item.cta}
+                    </UiButtonLink>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="dashboard-attention-empty ui-mt-3">
+                <div className="dashboard-attention-empty-title">You’re clear.</div>
+                <div className="ui-caption">
+                  No missing tips, no payment issue, and nothing urgent waiting in chat.
+                </div>
+              </div>
+            )}
+          </UiCard>
+        </div>
       )}
 
       {!msg && dashboardNotice && (
         <UiCard tone={dashboardNotice.tone} className="ui-mt-3">
           <div className="ui-kicker">{dashboardNotice.title}</div>
-          <div className="ui-stack" style={{ marginTop: 8, gap: 6 }}>
+          <div className="ui-stack ui-mt-2">
             {dashboardNotice.lines.map((line) => (
               <div key={line} className="ui-caption">
                 {line}
@@ -375,38 +570,69 @@ export default function HomePage() {
       )}
 
       {!msg && (
-        <UiCard soft className="ui-mt-3">
-          <div className="ui-kicker">My season snapshot</div>
-          <UiCardGrid style={{ marginTop: 10 }}>
-            <UiCard>
-              <div className="ui-kicker">Rank</div>
-              <div className="ui-value">{me ? `#${me.rank}` : "-"}</div>
-            </UiCard>
-            <UiCard>
-              <div className="ui-kicker">Total points</div>
-              <div className="ui-value">{me ? fmtPts(me.total_points) : "-"}</div>
-            </UiCard>
-            <UiCard>
-              <div className="ui-kicker">Behind leader</div>
-              <div className="ui-value">
-                {me ? (me.behind_leader <= 0 ? "-" : fmtPts(me.behind_leader)) : "-"}
-              </div>
-            </UiCard>
-            <UiCard>
-              <div className="ui-kicker">Unread chat</div>
-              <div className="ui-value">{unreadChat}</div>
-              <div className="ui-meta">
-                @mentions <b>{unreadMentions}</b>
-              </div>
-            </UiCard>
-            <UiCard>
-              <div className="ui-kicker">Movement</div>
-              <div className="ui-value" style={{ color: movementColor(me?.movement) }}>
-                {me ? movementText(me.movement) : "-"}
-              </div>
-            </UiCard>
-          </UiCardGrid>
-        </UiCard>
+        <>
+          <UiCard soft className="ui-mt-3">
+            <UiSectionHeader
+              kicker="Season position"
+              title="Your snapshot"
+              subtitle="The numbers that matter most right now."
+            />
+            <UiCardGrid columns={4} className="ui-mt-3">
+              <UiCard>
+                <div className="ui-kicker">Rank</div>
+                <div className="ui-value">{me ? `#${me.rank}` : "-"}</div>
+              </UiCard>
+              <UiCard>
+                <div className="ui-kicker">Total points</div>
+                <div className="ui-value">{me ? fmtPts(me.total_points) : "-"}</div>
+              </UiCard>
+              <UiCard>
+                <div className="ui-kicker">Gap to leader</div>
+                <div className="ui-value">
+                  {me ? (me.behind_leader <= 0 ? "-" : fmtPts(me.behind_leader)) : "-"}
+                </div>
+              </UiCard>
+              <UiCard>
+                <div className="ui-kicker">Movement</div>
+                <div className="ui-value" style={{ color: movementColor(me?.movement) }}>
+                  {me ? movementText(me.movement) : "-"}
+                </div>
+              </UiCard>
+              <UiCard>
+                <div className="ui-kicker">Unread chat</div>
+                <div className="ui-value">{unreadChat}</div>
+                <div className="ui-meta">
+                  @mentions <b>{unreadMentions}</b>
+                </div>
+              </UiCard>
+              <UiCard>
+                <div className="ui-kicker">Payment</div>
+                <div className="ui-value">
+                  {me?.payment_status ? me.payment_status : "paid"}
+                </div>
+                <div className="ui-meta">
+                  {me?.payment_status === "pending"
+                    ? "Needs admin update"
+                    : "All clear"}
+                </div>
+              </UiCard>
+            </UiCardGrid>
+          </UiCard>
+
+          <UiCard className="ui-mt-3">
+            <UiSectionHeader
+              kicker="Launchpad"
+              title="Jump straight in"
+              subtitle="Fast links to the places you’re most likely to use next."
+            />
+            <UiCardGrid columns={4} className="ui-mt-3">
+              <UiButtonLink href={`/round/${CURRENT_SEASON}`}>Rounds</UiButtonLink>
+              <UiButtonLink href={`/results/${CURRENT_SEASON}`}>Results</UiButtonLink>
+              <UiButtonLink href={`/leaderboard/${CURRENT_SEASON}`}>Leaderboard</UiButtonLink>
+              <UiButtonLink href="/chat">Chat</UiButtonLink>
+            </UiCardGrid>
+          </UiCard>
+        </>
       )}
 
     </main>

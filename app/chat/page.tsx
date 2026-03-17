@@ -53,6 +53,20 @@ type ComposerMentionStatus = {
   displayName: string | null;
 };
 
+type MentionCandidate = {
+  userId: string;
+  displayName: string;
+  username: string | null;
+  insertAlias: string;
+  searchValue: string;
+};
+
+type ActiveMention = {
+  start: number;
+  end: number;
+  query: string;
+};
+
 const REACTIONS = ["👍", "😂", "😭", "❤️", "🔥", "😮"] as const;
 const CURRENT_SEASON = 2026;
 const EDIT_WINDOW_MS = 5 * 60 * 1000;
@@ -142,6 +156,37 @@ function bodyMentionsAnyAlias(text: string, aliases: Set<string>) {
   return found.some((alias) => aliases.has(alias));
 }
 
+function getActiveMention(text: string, cursor: number): ActiveMention | null {
+  const safeCursor = Math.max(0, Math.min(cursor, text.length));
+  const beforeCursor = text.slice(0, safeCursor);
+  const atIndex = beforeCursor.lastIndexOf("@");
+  if (atIndex < 0) return null;
+
+  const charBeforeAt = atIndex > 0 ? beforeCursor[atIndex - 1] : "";
+  if (charBeforeAt && /[a-z0-9_]/i.test(charBeforeAt)) return null;
+
+  const fragment = beforeCursor.slice(atIndex + 1);
+  if (fragment.includes(" ") || fragment.includes("\n") || fragment.includes("\t")) return null;
+  if (/[^a-z0-9_]/i.test(fragment)) return null;
+
+  return {
+    start: atIndex,
+    end: safeCursor,
+    query: fragment.toLowerCase(),
+  };
+}
+
+function mentionCandidateScore(candidate: MentionCandidate, query: string) {
+  const q = query.trim().toLowerCase();
+  if (!q) return 0;
+  const displayLower = candidate.displayName.toLowerCase();
+  if (candidate.insertAlias.startsWith(q)) return 1;
+  if (displayLower.startsWith(q)) return 2;
+  if (candidate.username?.startsWith(q)) return 3;
+  if (candidate.searchValue.includes(q)) return 4;
+  return -1;
+}
+
 export default function ChatPage() {
   const [ready, setReady] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
@@ -154,11 +199,14 @@ export default function ChatPage() {
   const [favoriteTeamByUserId, setFavoriteTeamByUserId] = useState<Record<string, string>>({});
   const [usernameByUserId, setUsernameByUserId] = useState<Record<string, string>>({});
   const [mentionableByAlias, setMentionableByAlias] = useState<Record<string, string>>({});
+  const [mentionCandidates, setMentionCandidates] = useState<MentionCandidate[]>([]);
   const [paymentStatusByUserId, setPaymentStatusByUserId] = useState<Record<string, string | null>>({});
   const [reigningChampionUserId, setReigningChampionUserId] = useState<string | null>(null);
   const [reactions, setReactions] = useState<ReactionRow[]>([]);
 
   const [text, setText] = useState("");
+  const [composerCursor, setComposerCursor] = useState(0);
+  const [mentionSelectionIndex, setMentionSelectionIndex] = useState(0);
   const [replyToMessageId, setReplyToMessageId] = useState<string | null>(null);
 
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
@@ -220,6 +268,28 @@ export default function ChatPage() {
     [composerMentionStatuses]
   );
 
+  const activeMention = useMemo(
+    () => getActiveMention(text, composerCursor),
+    [text, composerCursor]
+  );
+
+  const mentionSuggestions = useMemo(() => {
+    if (!activeMention) return [];
+    const scored = mentionCandidates
+      .map((candidate) => ({
+        candidate,
+        score: mentionCandidateScore(candidate, activeMention.query),
+      }))
+      .filter((item) => item.score >= 0)
+      .sort((a, b) => {
+        if (a.score !== b.score) return a.score - b.score;
+        return a.candidate.displayName.localeCompare(b.candidate.displayName, "en", { sensitivity: "base" });
+      })
+      .slice(0, 8)
+      .map((item) => item.candidate);
+    return scored;
+  }, [activeMention, mentionCandidates]);
+
   const firstUnreadMessageId = useMemo(() => {
     if (!unreadBoundaryMs) return null;
     const first = messages.find((m) => {
@@ -256,6 +326,28 @@ export default function ChatPage() {
     setNewCount(0);
   }
 
+  function applyMentionCandidate(candidate: MentionCandidate) {
+    const active = getActiveMention(text, composerCursor);
+    if (!active) return;
+
+    const before = text.slice(0, active.start);
+    const after = text.slice(active.end);
+    const spacer = after.startsWith(" ") || after.startsWith("\n") || after.length === 0 ? "" : " ";
+    const nextValue = `${before}@${candidate.insertAlias}${spacer}${after}`;
+    const nextCursor = (before + `@${candidate.insertAlias}${spacer}`).length;
+
+    setText(nextValue);
+    setComposerCursor(nextCursor);
+    setMentionSelectionIndex(0);
+
+    requestAnimationFrame(() => {
+      const el = composerRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(nextCursor, nextCursor);
+    });
+  }
+
   function onScroll() {
     const el = scrollerRef.current;
     if (!el) return;
@@ -280,6 +372,7 @@ export default function ChatPage() {
     const memberIds = Array.from(new Set(((memberRows ?? []) as MembershipUserRow[]).map((m) => String(m.user_id))));
     if (!memberIds.length) {
       setMentionableByAlias({});
+      setMentionCandidates([]);
       return;
     }
 
@@ -291,11 +384,17 @@ export default function ChatPage() {
     let directoryRows: ProfileRow[] = [];
     if (profErr) {
       if (!isMissingColumnError(profErr.message, "username")) {
+        setMentionableByAlias({});
+        setMentionCandidates([]);
         return;
       }
 
       const fallback = await supabaseBrowser.from("profiles").select("id, display_name").in("id", memberIds);
-      if (fallback.error) return;
+      if (fallback.error) {
+        setMentionableByAlias({});
+        setMentionCandidates([]);
+        return;
+      }
       directoryRows = ((fallback.data ?? []) as ProfileRow[]).map((p) => ({
         ...p,
         username: null,
@@ -308,6 +407,7 @@ export default function ChatPage() {
     const byAlias: Record<string, string> = {};
     const namesMap: Record<string, string> = {};
     const ambiguousAliases = new Set<string>();
+    const mentionRows: Array<{ userId: string; displayName: string; username: string | null; aliases: string[] }> = [];
 
     function addAlias(alias: string, uid: string) {
       const key = String(alias ?? "")
@@ -330,6 +430,12 @@ export default function ChatPage() {
       const uid = String(p.id);
       const displayName = String(p.display_name ?? "").trim();
       const username = String(p.username ?? "").trim().toLowerCase();
+      const aliases = Array.from(
+        new Set([
+          ...displayNameMentionAliases(displayName),
+          ...(username ? [username] : []),
+        ])
+      );
 
       if (displayName) namesMap[uid] = displayName;
       if (username) {
@@ -337,11 +443,34 @@ export default function ChatPage() {
         addAlias(username, uid);
       }
       for (const alias of displayNameMentionAliases(displayName)) addAlias(alias, uid);
+
+      mentionRows.push({
+        userId: uid,
+        displayName: displayName || (username ? `@${username}` : "Member"),
+        username: username || null,
+        aliases,
+      });
     });
+
+    const candidateList: MentionCandidate[] = mentionRows
+      .map((row) => {
+        const resolvedAlias = row.aliases.find((alias) => byAlias[alias] === row.userId);
+        if (!resolvedAlias) return null;
+        return {
+          userId: row.userId,
+          displayName: row.displayName,
+          username: row.username,
+          insertAlias: resolvedAlias,
+          searchValue: `${row.displayName.toLowerCase()} ${row.aliases.join(" ")} ${row.username ?? ""}`.trim(),
+        };
+      })
+      .filter((row): row is MentionCandidate => !!row)
+      .sort((a, b) => a.displayName.localeCompare(b.displayName, "en", { sensitivity: "base" }));
 
     setNameByUserId((prev) => ({ ...prev, ...namesMap }));
     setUsernameByUserId((prev) => ({ ...prev, ...usernamesMap }));
     setMentionableByAlias(byAlias);
+    setMentionCandidates(candidateList);
   }
 
   async function ensureSession() {
@@ -707,6 +836,10 @@ export default function ChatPage() {
   }, [text]);
 
   useEffect(() => {
+    setMentionSelectionIndex(0);
+  }, [activeMention?.start, activeMention?.query, mentionSuggestions.length]);
+
+  useEffect(() => {
     if (!competitionId) {
       setReigningChampionUserId(null);
       return;
@@ -867,6 +1000,7 @@ export default function ChatPage() {
     }
 
     setText("");
+    setComposerCursor(0);
     setReplyToMessageId(null);
     // if you send, keep the latest messages in view
     setNewCount(0);
@@ -1419,7 +1553,12 @@ export default function ChatPage() {
           <textarea
             ref={composerRef}
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => {
+              setText(e.target.value);
+              setComposerCursor(e.target.selectionStart ?? e.target.value.length);
+            }}
+            onClick={(e) => setComposerCursor(e.currentTarget.selectionStart ?? text.length)}
+            onKeyUp={(e) => setComposerCursor(e.currentTarget.selectionStart ?? text.length)}
             maxLength={CHAT_MAX_CHARS}
             placeholder="Say something… Use @display-name or @username to mention someone"
             style={{
@@ -1436,6 +1575,24 @@ export default function ChatPage() {
               fontSize: 15,
             }}
             onKeyDown={(e) => {
+              if (activeMention && mentionSuggestions.length) {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setMentionSelectionIndex((idx) => Math.min(idx + 1, mentionSuggestions.length - 1));
+                  return;
+                }
+                if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setMentionSelectionIndex((idx) => Math.max(idx - 1, 0));
+                  return;
+                }
+                if ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab") {
+                  e.preventDefault();
+                  const selected = mentionSuggestions[Math.min(mentionSelectionIndex, mentionSuggestions.length - 1)];
+                  if (selected) applyMentionCandidate(selected);
+                  return;
+                }
+              }
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 if (!sending) send();
@@ -1460,6 +1617,44 @@ export default function ChatPage() {
           </button>
         </div>
 
+        {activeMention && mentionSuggestions.length > 0 && (
+          <div
+            style={{
+              border: "1px solid rgba(255,255,255,0.14)",
+              background: "rgba(255,255,255,0.03)",
+              borderRadius: 12,
+              padding: "6px",
+              display: "grid",
+              gap: 4,
+            }}
+          >
+            {mentionSuggestions.map((candidate, idx) => (
+              <button
+                key={candidate.userId}
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => applyMentionCandidate(candidate)}
+                style={{
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: idx === mentionSelectionIndex ? "rgba(59,130,246,0.18)" : "rgba(255,255,255,0.02)",
+                  color: "var(--foreground)",
+                  borderRadius: 10,
+                  padding: "8px 10px",
+                  textAlign: "left",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10,
+                }}
+              >
+                <span style={{ fontWeight: 800 }}>{candidate.displayName}</span>
+                <span style={{ fontSize: 12, opacity: 0.78 }}>@{candidate.insertAlias}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {composerMentionStatuses.length > 0 && (
           <div
             style={{
@@ -1479,7 +1674,7 @@ export default function ChatPage() {
               }}
             >
               {hasInvalidComposerMentions
-                ? "Mention check: some usernames were not found."
+                ? "Mention check: some mentions were not found."
                 : "Mention check: these people will be tagged."}
             </div>
 

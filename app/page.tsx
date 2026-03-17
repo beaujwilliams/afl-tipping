@@ -46,6 +46,13 @@ type DashboardReminder = {
   cta: string;
 };
 
+type ProfileResponse = {
+  ok?: boolean;
+  profile?: {
+    display_name?: string | null;
+  };
+};
+
 function melbourneMs(iso: string | null) {
   if (!iso) return null;
   const ms = new Date(iso).getTime();
@@ -148,6 +155,20 @@ export default function HomePage() {
         ?.trim();
       const resolvedWelcomeName = metadataNameCandidates[0] || emailName || "";
       setWelcomeName(resolvedWelcomeName);
+
+      try {
+        const profileRes = await fetch("/api/profile", {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+          cache: "no-store",
+        });
+        const profileJson = (await profileRes.json().catch(() => null)) as ProfileResponse | null;
+        const profileDisplayName = String(profileJson?.profile?.display_name ?? "").trim();
+        if (profileRes.ok && profileDisplayName) {
+          setWelcomeName(profileDisplayName);
+        }
+      } catch {
+        // Keep fallback welcome name if profile fetch fails.
+      }
 
       setToken(session.access_token);
       setUserId(session.user.id);

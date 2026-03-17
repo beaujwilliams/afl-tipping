@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase-server";
 import { requireAdminOrCron, resolveCompetitionIdForAdminRequest } from "@/lib/admin-auth";
+import { isSameInstant } from "@/lib/snapshot-time";
 
 const SPORT_KEY = "aussierules_afl";
 const REGIONS = "au";
@@ -389,15 +390,15 @@ export async function GET(req: Request) {
     const shouldLockRoundSnapshot = force
       ? updated > 0
       : inserted > 0 || skippedExisting > 0;
+    const existingSnap = roundRow.odds_snapshot_for_time_utc ?? null;
+    const existingSnapMatchesTarget = isSameInstant(existingSnap, snapshotForTimeUtc);
+    const canWriteRoundSnapshot =
+      !existingSnap || existingSnapMatchesTarget || force;
+    let roundSnapshotLocked = existingSnapMatchesTarget;
 
     if (shouldLockRoundSnapshot) {
-      const existingSnap = (roundRow as any)?.odds_snapshot_for_time_utc ?? null;
-
       // Only overwrite round snapshot if empty, same snapshot, or force mode
-      const canWrite =
-        !existingSnap || existingSnap === snapshotForTimeUtc || force;
-
-      if (canWrite) {
+      if (canWriteRoundSnapshot) {
         const { error: rUpErr } = await supabase
           .from("rounds")
           .update({
@@ -415,6 +416,7 @@ export async function GET(req: Request) {
             { status: 500 }
           );
         }
+        roundSnapshotLocked = true;
       }
     }
 
@@ -442,7 +444,7 @@ export async function GET(req: Request) {
       oddsCapturedForRound: force
         ? updated > 0
         : inserted > 0 || skippedExisting > 0,
-      roundSnapshotLocked: shouldLockRoundSnapshot,
+      roundSnapshotLocked,
     });
   } catch (e: any) {
     return NextResponse.json(

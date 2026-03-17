@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase-server";
 import { requireAdminOrCron, resolveCompetitionIdForAdminRequest } from "@/lib/admin-auth";
+import { isSameInstant } from "@/lib/snapshot-time";
 
 // ✅ Must match snapshot-odds/route.ts
 const SNAPSHOT_HOURS_BEFORE_LOCK = 36;
@@ -102,7 +103,7 @@ export async function GET(req: Request) {
     const enriched = (rounds as RoundRow[]).map((r) => {
       const snapshotForTimeUtc = computeSnapshotDueTimeUtc(r.lock_time_utc);
       const due = now >= new Date(snapshotForTimeUtc);
-      const alreadyCaptured = String(r.odds_snapshot_for_time_utc ?? "") === snapshotForTimeUtc;
+      const alreadyCaptured = isSameInstant(r.odds_snapshot_for_time_utc, snapshotForTimeUtc);
       return {
         round_number: r.round_number,
         lock_time_utc: r.lock_time_utc,

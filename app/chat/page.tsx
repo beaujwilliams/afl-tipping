@@ -47,6 +47,12 @@ type ReigningChampionResponse = {
   reigning_champion_user_id?: string | null;
 };
 
+type ComposerMentionStatus = {
+  username: string;
+  valid: boolean;
+  displayName: string | null;
+};
+
 const REACTIONS = ["👍", "😂", "😭", "❤️", "🔥", "😮"] as const;
 const CURRENT_SEASON = 2026;
 const EDIT_WINDOW_MS = 5 * 60 * 1000;
@@ -175,6 +181,24 @@ export default function ChatPage() {
 
   const myUsername = userId ? usernameByUserId[userId] ?? "" : "";
   const myUsernameLower = myUsername.toLowerCase();
+
+  const composerMentionStatuses = useMemo<ComposerMentionStatus[]>(() => {
+    const usernames = extractMentionUsernames(text);
+    return usernames.map((username) => {
+      const mentionedUserId = mentionableByUsername[username] ?? null;
+      const displayName = mentionedUserId ? nameByUserId[mentionedUserId] ?? null : null;
+      return {
+        username,
+        valid: !!mentionedUserId,
+        displayName,
+      };
+    });
+  }, [text, mentionableByUsername, nameByUserId]);
+
+  const hasInvalidComposerMentions = useMemo(
+    () => composerMentionStatuses.some((mention) => !mention.valid),
+    [composerMentionStatuses]
+  );
 
   const firstUnreadMessageId = useMemo(() => {
     if (!unreadBoundaryMs) return null;
@@ -1386,6 +1410,53 @@ export default function ChatPage() {
             {sending ? "…" : "Send"}
           </button>
         </div>
+
+        {composerMentionStatuses.length > 0 && (
+          <div
+            style={{
+              border: "1px solid rgba(255,255,255,0.14)",
+              background: "rgba(255,255,255,0.03)",
+              borderRadius: 12,
+              padding: "8px 10px",
+              display: "grid",
+              gap: 6,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 12,
+                fontWeight: 800,
+                color: hasInvalidComposerMentions ? "rgb(180, 83, 9)" : "rgb(21, 128, 61)",
+              }}
+            >
+              {hasInvalidComposerMentions
+                ? "Mention check: some usernames were not found."
+                : "Mention check: these people will be tagged."}
+            </div>
+
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {composerMentionStatuses.map((mention) => (
+                <span
+                  key={mention.username}
+                  style={{
+                    borderRadius: 999,
+                    padding: "4px 8px",
+                    fontSize: 12,
+                    fontWeight: 800,
+                    border: mention.valid ? "1px solid rgba(34, 197, 94, 0.55)" : "1px solid rgba(245, 158, 11, 0.60)",
+                    background: mention.valid ? "rgba(34, 197, 94, 0.14)" : "rgba(245, 158, 11, 0.14)",
+                    color: mention.valid ? "rgb(21, 128, 61)" : "rgb(180, 83, 9)",
+                    lineHeight: 1.2,
+                  }}
+                >
+                  {mention.valid
+                    ? `@${mention.username} -> ${mention.displayName ?? "Member"}`
+                    : `@${mention.username} not found`}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>

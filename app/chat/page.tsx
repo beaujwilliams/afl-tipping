@@ -152,11 +152,10 @@ export default function ChatPage() {
 
   // --- scroll lock + unread markers + new message button ---
   const scrollerRef = useRef<HTMLDivElement | null>(null);
-  const bottomRef = useRef<HTMLDivElement | null>(null);
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
-  const [atBottom, setAtBottom] = useState(true);
-  const atBottomRef = useRef(true);
+  const [atTop, setAtTop] = useState(true);
+  const atTopRef = useRef(true);
 
   const [newCount, setNewCount] = useState(0);
 
@@ -199,8 +198,10 @@ export default function ChatPage() {
 
   const replyTarget = replyToMessageId ? messageById[replyToMessageId] ?? null : null;
 
-  function scrollToBottom(smooth = true) {
-    bottomRef.current?.scrollIntoView({ behavior: smooth ? "smooth" : "auto" });
+  function scrollToTop(smooth = true) {
+    const el = scrollerRef.current;
+    if (!el) return;
+    el.scrollTo({ top: 0, behavior: smooth ? "smooth" : "auto" });
     setNewCount(0);
   }
 
@@ -216,12 +217,12 @@ export default function ChatPage() {
     if (!el) return;
 
     const threshold = 40; // px
-    const isBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+    const isTop = el.scrollTop < threshold;
 
-    setAtBottom(isBottom);
-    atBottomRef.current = isBottom;
+    setAtTop(isTop);
+    atTopRef.current = isTop;
 
-    if (isBottom) setNewCount(0);
+    if (isTop) setNewCount(0);
   }
 
   async function loadMentionDirectory(compId: string) {
@@ -359,27 +360,27 @@ export default function ChatPage() {
       list = (withReplyAndEdit.data ?? []) as MsgRow[];
     }
 
-    const asc = [...list].reverse();
+    const desc = [...list];
 
-    // new message detection (for "New messages ↓" button)
+    // new message detection (for "New messages ↑" button)
     const prevKnown = knownIdsRef.current;
     let newlySeen = 0;
-    for (const m of asc) {
+    for (const m of desc) {
       if (!prevKnown.has(m.id)) newlySeen += 1;
     }
-    knownIdsRef.current = new Set(asc.map((m) => m.id));
+    knownIdsRef.current = new Set(desc.map((m) => m.id));
 
-    setMessages(asc);
+    setMessages(desc);
 
     // Pull quoted parent messages not already in the latest 50.
     const quotedMap: Record<string, MsgRow> = {};
-    asc.forEach((m) => {
+    desc.forEach((m) => {
       quotedMap[m.id] = m;
     });
 
     const replyIds = Array.from(
       new Set(
-        asc
+        desc
           .map((m) => m.reply_to_message_id)
           .filter((id): id is string => typeof id === "string" && id.length > 0)
       )
@@ -404,7 +405,7 @@ export default function ChatPage() {
     setQuotedById(quotedMap);
 
     // Pull reactions for these messages
-    const msgIds = asc.map((m) => m.id);
+    const msgIds = desc.map((m) => m.id);
     let reactionList: ReactionRow[] = [];
     if (msgIds.length) {
       const { data: rs } = await supabaseBrowser.from("chat_reactions").select("message_id, user_id, emoji").in(
@@ -419,7 +420,7 @@ export default function ChatPage() {
     }
 
     // Pull display names for message authors + reactors + quoted authors.
-    const nameUserIds = new Set<string>(asc.map((m) => m.user_id));
+    const nameUserIds = new Set<string>(desc.map((m) => m.user_id));
     reactionList.forEach((r) => nameUserIds.add(r.user_id));
     Object.values(quotedMap).forEach((m) => nameUserIds.add(m.user_id));
 
@@ -503,7 +504,7 @@ export default function ChatPage() {
 
     if (!initialLoadDoneRef.current) {
       initialLoadDoneRef.current = true;
-      const firstUnreadId = asc.find((m) => {
+      const firstUnreadId = desc.find((m) => {
         const t = new Date(m.created_at).getTime();
         return !Number.isNaN(t) && t > unreadBoundaryMsRef.current;
       })?.id;
@@ -512,19 +513,19 @@ export default function ChatPage() {
         if (firstUnreadId) {
           scrollToMessage(firstUnreadId, false);
         } else {
-          scrollToBottom(false);
+          scrollToTop(false);
         }
       }, 0);
       return;
     }
 
     // Auto-scroll behavior:
-    // - If you're at bottom, scroll to bottom on new messages
-    // - If you're not at bottom, increment the counter and show button
+    // - If you're at top, stay on latest messages
+    // - If you're scrolled down, increment the counter and show button
     if (newlySeen > 0) {
-      if (atBottomRef.current) {
+      if (atTopRef.current) {
         // let the DOM paint first
-        setTimeout(() => scrollToBottom(false), 0);
+        setTimeout(() => scrollToTop(false), 0);
       } else {
         setNewCount((c) => c + newlySeen);
       }
@@ -795,10 +796,10 @@ export default function ChatPage() {
 
     setText("");
     setReplyToMessageId(null);
-    // if you send, assume you want bottom
+    // if you send, keep the latest messages in view
     setNewCount(0);
     scheduleRefresh();
-    setTimeout(() => scrollToBottom(true), 0);
+    setTimeout(() => scrollToTop(true), 0);
   }
 
   async function toggleReaction(messageId: string, emoji: string) {
@@ -1268,21 +1269,19 @@ export default function ChatPage() {
             })}
           </div>
 
-          <div ref={bottomRef} />
-
-          {/* New messages button (only when not at bottom) */}
-          {newCount > 0 && !atBottom && (
+          {/* New messages button (only when not at top) */}
+          {newCount > 0 && !atTop && (
             <div
               style={{
                 position: "sticky",
-                bottom: 10,
+                top: 10,
                 display: "flex",
                 justifyContent: "center",
                 pointerEvents: "none",
               }}
             >
               <button
-                onClick={() => scrollToBottom(true)}
+                onClick={() => scrollToTop(true)}
                 style={{
                   pointerEvents: "auto",
                   border: "1px solid rgba(255,255,255,0.18)",
@@ -1295,7 +1294,7 @@ export default function ChatPage() {
                 }}
                 type="button"
               >
-                New messages ({newCount}) ↓
+                New messages ({newCount}) ↑
               </button>
             </div>
           )}

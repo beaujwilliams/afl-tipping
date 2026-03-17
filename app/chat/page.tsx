@@ -48,7 +48,7 @@ type ReigningChampionResponse = {
 };
 
 type ComposerMentionStatus = {
-  username: string;
+  alias: string;
   valid: boolean;
   displayName: string | null;
 };
@@ -109,24 +109,37 @@ function snippet(text: string, max = 110) {
   return `${clean.slice(0, max - 1)}…`;
 }
 
-function extractMentionUsernames(text: string) {
-  const usernames = new Set<string>();
+function extractMentionAliases(text: string) {
+  const aliases = new Set<string>();
   const regex = /@([a-z0-9_]{2,30})/gi;
   let match: RegExpExecArray | null;
   while ((match = regex.exec(text)) !== null) {
-    usernames.add(match[1].toLowerCase());
+    aliases.add(match[1].toLowerCase());
   }
-  return Array.from(usernames);
+  return Array.from(aliases);
 }
 
-function bodyMentionsUsername(text: string, usernameLower: string) {
-  if (!usernameLower) return false;
-  const regex = /@([a-z0-9_]{2,30})/gi;
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(text)) !== null) {
-    if (match[1].toLowerCase() === usernameLower) return true;
-  }
-  return false;
+function displayNameMentionAliases(displayName: string | null | undefined) {
+  const clean = String(displayName ?? "")
+    .trim()
+    .toLowerCase();
+  if (!clean) return [];
+
+  const parts = clean.split(/\s+/).filter(Boolean);
+  if (!parts.length) return [];
+
+  const aliases = new Set<string>();
+  aliases.add(parts[0]);
+  aliases.add(parts.join("_"));
+  aliases.add(parts.join(""));
+
+  return Array.from(aliases).filter((alias) => alias.length >= 2 && alias.length <= 30);
+}
+
+function bodyMentionsAnyAlias(text: string, aliases: Set<string>) {
+  if (!aliases.size) return false;
+  const found = extractMentionAliases(text);
+  return found.some((alias) => aliases.has(alias));
 }
 
 export default function ChatPage() {
@@ -140,7 +153,7 @@ export default function ChatPage() {
   const [nameByUserId, setNameByUserId] = useState<Record<string, string>>({});
   const [favoriteTeamByUserId, setFavoriteTeamByUserId] = useState<Record<string, string>>({});
   const [usernameByUserId, setUsernameByUserId] = useState<Record<string, string>>({});
-  const [mentionableByUsername, setMentionableByUsername] = useState<Record<string, string>>({});
+  const [mentionableByAlias, setMentionableByAlias] = useState<Record<string, string>>({});
   const [paymentStatusByUserId, setPaymentStatusByUserId] = useState<Record<string, string | null>>({});
   const [reigningChampionUserId, setReigningChampionUserId] = useState<string | null>(null);
   const [reactions, setReactions] = useState<ReactionRow[]>([]);
@@ -181,19 +194,26 @@ export default function ChatPage() {
 
   const myUsername = userId ? usernameByUserId[userId] ?? "" : "";
   const myUsernameLower = myUsername.toLowerCase();
+  const myDisplayName = userId ? nameByUserId[userId] ?? "" : "";
+  const myMentionAliases = useMemo(() => {
+    const aliases = new Set<string>();
+    if (myUsernameLower) aliases.add(myUsernameLower);
+    for (const alias of displayNameMentionAliases(myDisplayName)) aliases.add(alias);
+    return aliases;
+  }, [myUsernameLower, myDisplayName]);
 
   const composerMentionStatuses = useMemo<ComposerMentionStatus[]>(() => {
-    const usernames = extractMentionUsernames(text);
-    return usernames.map((username) => {
-      const mentionedUserId = mentionableByUsername[username] ?? null;
+    const aliases = extractMentionAliases(text);
+    return aliases.map((alias) => {
+      const mentionedUserId = mentionableByAlias[alias] ?? null;
       const displayName = mentionedUserId ? nameByUserId[mentionedUserId] ?? null : null;
       return {
-        username,
+        alias,
         valid: !!mentionedUserId,
         displayName,
       };
     });
-  }, [text, mentionableByUsername, nameByUserId]);
+  }, [text, mentionableByAlias, nameByUserId]);
 
   const hasInvalidComposerMentions = useMemo(
     () => composerMentionStatuses.some((mention) => !mention.valid),
@@ -210,15 +230,15 @@ export default function ChatPage() {
   }, [messages, unreadBoundaryMs]);
 
   const unreadMentionCountInView = useMemo(() => {
-    if (!myUsernameLower || !unreadBoundaryMs) return 0;
+    if (!myMentionAliases.size || !unreadBoundaryMs) return 0;
     let count = 0;
     for (const m of messages) {
       const t = new Date(m.created_at).getTime();
       if (Number.isNaN(t) || t <= unreadBoundaryMs) continue;
-      if (bodyMentionsUsername(m.body, myUsernameLower)) count += 1;
+      if (bodyMentionsAnyAlias(m.body, myMentionAliases)) count += 1;
     }
     return count;
-  }, [messages, myUsernameLower, unreadBoundaryMs]);
+  }, [messages, myMentionAliases, unreadBoundaryMs]);
 
   const replyTarget = replyToMessageId ? messageById[replyToMessageId] ?? null : null;
 
@@ -259,7 +279,7 @@ export default function ChatPage() {
 
     const memberIds = Array.from(new Set(((memberRows ?? []) as MembershipUserRow[]).map((m) => String(m.user_id))));
     if (!memberIds.length) {
-      setMentionableByUsername({});
+      setMentionableByAlias({});
       return;
     }
 
@@ -268,18 +288,45 @@ export default function ChatPage() {
       .select("id, display_name, username")
       .in("id", memberIds);
 
+    let directoryRows: ProfileRow[] = [];
     if (profErr) {
-      if (isMissingColumnError(profErr.message, "username")) {
-        setMentionableByUsername({});
+      if (!isMissingColumnError(profErr.message, "username")) {
+        return;
       }
-      return;
+
+      const fallback = await supabaseBrowser.from("profiles").select("id, display_name").in("id", memberIds);
+      if (fallback.error) return;
+      directoryRows = ((fallback.data ?? []) as ProfileRow[]).map((p) => ({
+        ...p,
+        username: null,
+      }));
+    } else {
+      directoryRows = (profRows ?? []) as ProfileRow[];
     }
 
     const usernamesMap: Record<string, string> = {};
-    const byUsername: Record<string, string> = {};
+    const byAlias: Record<string, string> = {};
     const namesMap: Record<string, string> = {};
+    const ambiguousAliases = new Set<string>();
 
-    ((profRows ?? []) as ProfileRow[]).forEach((p) => {
+    function addAlias(alias: string, uid: string) {
+      const key = String(alias ?? "")
+        .trim()
+        .toLowerCase();
+      if (key.length < 2 || key.length > 30) return;
+      if (ambiguousAliases.has(key)) return;
+      const existing = byAlias[key];
+      if (!existing) {
+        byAlias[key] = uid;
+        return;
+      }
+      if (existing !== uid) {
+        delete byAlias[key];
+        ambiguousAliases.add(key);
+      }
+    }
+
+    directoryRows.forEach((p) => {
       const uid = String(p.id);
       const displayName = String(p.display_name ?? "").trim();
       const username = String(p.username ?? "").trim().toLowerCase();
@@ -287,13 +334,14 @@ export default function ChatPage() {
       if (displayName) namesMap[uid] = displayName;
       if (username) {
         usernamesMap[uid] = username;
-        byUsername[username] = uid;
+        addAlias(username, uid);
       }
+      for (const alias of displayNameMentionAliases(displayName)) addAlias(alias, uid);
     });
 
     setNameByUserId((prev) => ({ ...prev, ...namesMap }));
     setUsernameByUserId((prev) => ({ ...prev, ...usernamesMap }));
-    setMentionableByUsername((prev) => ({ ...prev, ...byUsername }));
+    setMentionableByAlias(byAlias);
   }
 
   async function ensureSession() {
@@ -477,7 +525,6 @@ export default function ChatPage() {
       const nameMap: Record<string, string> = {};
       const teamMap: Record<string, string> = {};
       const usernameMap: Record<string, string> = {};
-      const mentionMap: Record<string, string> = {};
 
       profRows.forEach((p) => {
         const uid = String(p.id);
@@ -488,14 +535,12 @@ export default function ChatPage() {
         if (team) teamMap[uid] = team;
         if (username) {
           usernameMap[uid] = username;
-          mentionMap[username] = uid;
         }
       });
 
       setNameByUserId((prev) => ({ ...prev, ...nameMap }));
       setFavoriteTeamByUserId((prev) => ({ ...prev, ...teamMap }));
       setUsernameByUserId((prev) => ({ ...prev, ...usernameMap }));
-      setMentionableByUsername((prev) => ({ ...prev, ...mentionMap }));
 
       if (competitionId) {
         const paymentMap: Record<string, string | null> = {};
@@ -565,7 +610,7 @@ export default function ChatPage() {
   }
 
   async function syncMentionsForMessage(messageId: string, body: string) {
-    const usernames = extractMentionUsernames(body);
+    const aliases = extractMentionAliases(body);
 
     const { error: clearErr } = await supabaseBrowser
       .from("chat_message_mentions")
@@ -578,22 +623,25 @@ export default function ChatPage() {
       return;
     }
 
-    if (!usernames.length) return;
+    if (!aliases.length) return;
 
-    const targets = Array.from(
-      new Set(
-        usernames
-          .map((u) => ({ username: u, mentioned_user_id: mentionableByUsername[u] }))
-          .filter((v): v is { username: string; mentioned_user_id: string } => typeof v.mentioned_user_id === "string")
-      )
-    );
+    const seen = new Set<string>();
+    const targets = aliases
+      .map((alias) => ({ alias, mentioned_user_id: mentionableByAlias[alias] }))
+      .filter((v): v is { alias: string; mentioned_user_id: string } => typeof v.mentioned_user_id === "string")
+      .filter((v) => {
+        const key = `${v.mentioned_user_id}:${v.alias}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
 
     if (!targets.length) return;
 
     const payload = targets.map((t) => ({
       message_id: messageId,
       mentioned_user_id: t.mentioned_user_id,
-      mentioned_username: t.username,
+      mentioned_username: t.alias,
     }));
 
     const { error: insertErr } = await supabaseBrowser.from("chat_message_mentions").insert(payload);
@@ -617,7 +665,7 @@ export default function ChatPage() {
         parts.push(body.slice(last, idx));
       }
 
-      const isMe = !!myUsernameLower && username === myUsernameLower;
+      const isMe = myMentionAliases.has(username);
       parts.push(
         <span
           key={`${idx}-${full}`}
@@ -970,7 +1018,8 @@ export default function ChatPage() {
           }}
         >
           <div style={{ fontSize: 12, opacity: 0.78 }}>
-            {myUsername ? `Mention people with @username. Your username is @${myUsername}.` : "Mention people with @username."}
+            Mention people with @display-name or @username (for example @Jordan).
+            {myUsername && ` Your username is @${myUsername}.`}
             {unreadMentionCountInView > 0 && (
               <span style={{ marginLeft: 8, color: "rgb(217, 119, 6)", fontWeight: 800 }}>
                 {unreadMentionCountInView} unread mention{unreadMentionCountInView === 1 ? "" : "s"}
@@ -1019,7 +1068,7 @@ export default function ChatPage() {
               const ownerWithinWindow = isOwner && withinEditWindow(m.created_at);
               const canEdit = !!ownerWithinWindow;
               const canDelete = !!isAdmin || !!ownerWithinWindow;
-              const mentionsMe = !!myUsernameLower && bodyMentionsUsername(m.body, myUsernameLower);
+              const mentionsMe = bodyMentionsAnyAlias(m.body, myMentionAliases);
               const replySource =
                 m.reply_to_message_id && typeof m.reply_to_message_id === "string"
                   ? messageById[m.reply_to_message_id] ?? null
@@ -1372,7 +1421,7 @@ export default function ChatPage() {
             value={text}
             onChange={(e) => setText(e.target.value)}
             maxLength={CHAT_MAX_CHARS}
-            placeholder="Say something… Use @username to mention someone"
+            placeholder="Say something… Use @display-name or @username to mention someone"
             style={{
               flex: 1,
               minHeight: 44,
@@ -1437,7 +1486,7 @@ export default function ChatPage() {
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {composerMentionStatuses.map((mention) => (
                 <span
-                  key={mention.username}
+                  key={mention.alias}
                   style={{
                     borderRadius: 999,
                     padding: "4px 8px",
@@ -1450,8 +1499,8 @@ export default function ChatPage() {
                   }}
                 >
                   {mention.valid
-                    ? `@${mention.username} -> ${mention.displayName ?? "Member"}`
-                    : `@${mention.username} not found`}
+                    ? `@${mention.alias} -> ${mention.displayName ?? "Member"}`
+                    : `@${mention.alias} not found`}
                 </span>
               ))}
             </div>

@@ -730,6 +730,10 @@ button {
   align-items: start;
 }
 
+.dashboard-top-grid--single {
+  grid-template-columns: 1fr;
+}
+
 .dashboard-hero {
   padding: 18px;
   overflow: hidden;

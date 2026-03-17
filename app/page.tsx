@@ -367,25 +367,12 @@ export default function HomePage() {
     unreadMentions,
   ]);
 
+  const attentionReminders = useMemo(
+    () => reminders.filter((item) => item.id !== "missing-tips"),
+    [reminders]
+  );
+
   const dashboardNotice = useMemo(() => {
-    const urgent: string[] = [];
-    if (me?.payment_status === "pending") {
-      urgent.push("Payment is pending. Tipping may be locked until payment is marked paid.");
-    }
-    if (currentRound && !locked && tipsLeft > 0) {
-      urgent.push(
-        `${tipsLeft} tip${tipsLeft === 1 ? "" : "s"} still missing for Round ${currentRound.round_number}.`
-      );
-    }
-
-    if (urgent.length > 0) {
-      return {
-        tone: "warning" as const,
-        title: "Urgent",
-        lines: urgent,
-      };
-    }
-
     if (currentRound && lockedRoundStillLive) {
       return {
         tone: "info" as const,
@@ -408,7 +395,7 @@ export default function HomePage() {
     }
 
     return null;
-  }, [me?.payment_status, currentRound, locked, lockedRoundStillLive, nextOpenRound, tipsLeft]);
+  }, [currentRound, locked, lockedRoundStillLive, nextOpenRound, tipsLeft]);
 
   return (
     <main className="ui-page ui-page--content">
@@ -424,7 +411,9 @@ export default function HomePage() {
       )}
 
       {!msg && currentRound && (
-        <div className="dashboard-top-grid ui-mt-4">
+        <div
+          className={`dashboard-top-grid ui-mt-4${attentionReminders.length === 0 ? " dashboard-top-grid--single" : ""}`}
+        >
           <UiCard soft className="dashboard-hero">
             <div className="ui-row-between">
               <div className="ui-kicker">Action center</div>
@@ -435,9 +424,11 @@ export default function HomePage() {
 
             <div className="dashboard-hero-title">
               {lockedRoundStillLive && nextOpenRound
-                ? `Round ${currentRound.round_number} is live. Round ${nextOpenRound.round_number} is next.`
+                ? `Round ${currentRound.round_number} is live. Round ${nextOpenRound.round_number} closes in ${primaryRoundCountdown}.`
+                : primaryTipRound && !primaryRoundLocked
+                ? `Round ${primaryTipRound.round_number} closes in ${primaryRoundCountdown}.`
                 : primaryTipRound
-                ? `Round ${primaryTipRound.round_number} is your next move.`
+                ? `Round ${primaryTipRound.round_number} is locked.`
                 : "No round loaded."}
             </div>
 
@@ -445,7 +436,7 @@ export default function HomePage() {
               <div className="dashboard-hero-meta">
                 {primaryRoundLocked
                   ? `Locked ${fmtMelbourneShort(primaryTipRound.lock_time_utc)}`
-                  : `Locks in ${primaryRoundCountdown} (${fmtMelbourneShort(primaryTipRound.lock_time_utc)})`}
+                  : `${fmtMelbourneShort(primaryTipRound.lock_time_utc)} in Melbourne time`}
               </div>
             )}
 
@@ -471,11 +462,11 @@ export default function HomePage() {
                 </div>
               </UiCard>
               <UiCard className="dashboard-mini-card">
-                <div className="ui-kicker">Tips left</div>
-                <div className="ui-value">{primaryTipsLeft}</div>
+                <div className="ui-kicker">Round progress</div>
+                <div className="ui-value">{primaryTipsEntered}/{primaryTipsPossible || 0}</div>
                 <div className="ui-meta">
                   {primaryTipRound
-                    ? `${primaryTipsEntered}/${primaryTipsPossible} entered for Round ${primaryTipRound.round_number}`
+                    ? `${primaryTipsLeft} ${pluralize(primaryTipsLeft, "tip", "tips")} left for Round ${primaryTipRound.round_number}`
                     : "Nothing due"}
                 </div>
               </UiCard>
@@ -519,20 +510,20 @@ export default function HomePage() {
             </div>
           </UiCard>
 
-          <UiCard className="dashboard-attention-card">
-            <UiSectionHeader
-              kicker="Needs attention"
-              title={String(reminders.length)}
-              subtitle={
-                reminders.length === 1
-                  ? "pending reminder"
-                  : `${reminders.length} pending reminders`
-              }
-            />
+          {attentionReminders.length > 0 && (
+            <UiCard className="dashboard-attention-card">
+              <UiSectionHeader
+                kicker="Needs attention"
+                title={String(attentionReminders.length)}
+                subtitle={
+                  attentionReminders.length === 1
+                    ? "secondary reminder"
+                    : `${attentionReminders.length} secondary reminders`
+                }
+              />
 
-            {reminders.length > 0 ? (
               <div className="dashboard-reminder-list ui-mt-3">
-                {reminders.map((item) => (
+                {attentionReminders.map((item) => (
                   <div key={item.id} className="dashboard-reminder-item">
                     <div className="dashboard-reminder-copy">
                       <div className="dashboard-reminder-title">{item.title}</div>
@@ -544,15 +535,8 @@ export default function HomePage() {
                   </div>
                 ))}
               </div>
-            ) : (
-              <div className="dashboard-attention-empty ui-mt-3">
-                <div className="dashboard-attention-empty-title">You’re clear.</div>
-                <div className="ui-caption">
-                  No missing tips, no payment issue, and nothing urgent waiting in chat.
-                </div>
-              </div>
-            )}
-          </UiCard>
+            </UiCard>
+          )}
         </div>
       )}
 

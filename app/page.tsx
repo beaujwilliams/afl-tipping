@@ -603,19 +603,6 @@ export default function HomePage() {
             </UiCardGrid>
           </UiCard>
 
-          <UiCard className="ui-mt-3">
-            <UiSectionHeader
-              kicker="Launchpad"
-              title="Jump straight in"
-              subtitle="Fast links to the places you’re most likely to use next."
-            />
-            <UiCardGrid columns={4} className="ui-mt-3">
-              <UiButtonLink href={`/round/${CURRENT_SEASON}`}>Rounds</UiButtonLink>
-              <UiButtonLink href={`/results/${CURRENT_SEASON}`}>Results</UiButtonLink>
-              <UiButtonLink href={`/leaderboard/${CURRENT_SEASON}`}>Leaderboard</UiButtonLink>
-              <UiButtonLink href="/chat">Chat</UiButtonLink>
-            </UiCardGrid>
-          </UiCard>
         </>
       )}
 

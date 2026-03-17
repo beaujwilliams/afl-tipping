@@ -745,7 +745,8 @@ button {
   line-height: 1.02;
   letter-spacing: -0.04em;
   font-weight: 900;
-  max-width: 14ch;
+  max-width: none;
+  white-space: nowrap;
 }
 
 .dashboard-hero-meta {
@@ -838,21 +839,14 @@ button {
   width: 100%;
 }
 
-.dashboard-attention-empty {
-  padding: 14px;
-  border-radius: 12px;
-  border: 1px dashed var(--border);
-  background: var(--card-soft);
-}
-
-.dashboard-attention-empty-title {
-  font-size: 18px;
-  font-weight: 900;
-  letter-spacing: -0.03em;
-}
-
 @media (max-width: 880px) {
   .dashboard-top-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .dashboard-hero-title {
+    white-space: normal;
   }
 }

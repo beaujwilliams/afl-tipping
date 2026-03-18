@@ -72,6 +72,21 @@ type ActiveMention = {
   query: string;
 };
 
+type RoundCompetitionRow = {
+  competition_id: string;
+};
+
+type MentionDirectoryApiMember = {
+  user_id: string;
+  display_name: string | null;
+  username: string | null;
+};
+
+type MentionDirectoryApiResponse = {
+  ok?: boolean;
+  members?: MentionDirectoryApiMember[];
+};
+
 const REACTIONS = ["👍", "😂", "😭", "❤️", "🔥", "😮"] as const;
 const CURRENT_SEASON = 2026;
 const EDIT_WINDOW_MS = 5 * 60 * 1000;
@@ -138,19 +153,30 @@ function extractMentionAliases(text: string) {
   return Array.from(aliases);
 }
 
-function displayNameMentionAliases(displayName: string | null | undefined) {
-  const clean = String(displayName ?? "")
-    .trim()
-    .toLowerCase();
-  if (!clean) return [];
+function normalizeMentionAliasToken(value: string | null | undefined) {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (!raw) return "";
+  const ascii = raw.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const normalized = ascii
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .replace(/_+/g, "_");
+  if (!normalized) return "";
+  return normalized.slice(0, 30);
+}
 
-  const parts = clean.split(/\s+/).filter(Boolean);
+function displayNameMentionAliases(displayName: string | null | undefined) {
+  const parts = String(displayName ?? "")
+    .trim()
+    .split(/\s+/)
+    .map((part) => normalizeMentionAliasToken(part))
+    .filter(Boolean);
   if (!parts.length) return [];
 
   const aliases = new Set<string>();
   aliases.add(parts[0]);
-  aliases.add(parts.join("_"));
-  aliases.add(parts.join(""));
+  aliases.add(normalizeMentionAliasToken(parts.join("_")));
+  aliases.add(normalizeMentionAliasToken(parts.join("")));
 
   return Array.from(aliases).filter((alias) => alias.length >= 2 && alias.length <= 30);
 }
@@ -190,6 +216,19 @@ function mentionCandidateScore(candidate: MentionCandidate, query: string) {
   if (candidate.username?.startsWith(q)) return 3;
   if (candidate.searchValue.includes(q)) return 4;
   return -1;
+}
+
+function pickMostFrequentCompetition(rows: RoundCompetitionRow[]) {
+  if (!rows.length) return null;
+  const counts = new Map<string, number>();
+  rows.forEach((row) => {
+    const id = String(row.competition_id);
+    counts.set(id, (counts.get(id) ?? 0) + 1);
+  });
+  return Array.from(counts.entries()).sort((a, b) => {
+    if (b[1] !== a[1]) return b[1] - a[1];
+    return a[0].localeCompare(b[0]);
+  })[0]?.[0] ?? null;
 }
 
 export default function ChatPage() {
@@ -246,14 +285,14 @@ export default function ChatPage() {
   }, [messages, quotedById]);
 
   const myUsername = userId ? usernameByUserId[userId] ?? "" : "";
-  const myUsernameLower = myUsername.toLowerCase();
+  const myUsernameAlias = normalizeMentionAliasToken(myUsername);
   const myDisplayName = userId ? nameByUserId[userId] ?? "" : "";
   const myMentionAliases = useMemo(() => {
     const aliases = new Set<string>();
-    if (myUsernameLower) aliases.add(myUsernameLower);
+    if (myUsernameAlias) aliases.add(myUsernameAlias);
     for (const alias of displayNameMentionAliases(myDisplayName)) aliases.add(alias);
     return aliases;
-  }, [myUsernameLower, myDisplayName]);
+  }, [myUsernameAlias, myDisplayName]);
 
   const composerMentionStatuses = useMemo<ComposerMentionStatus[]>(() => {
     const aliases = extractMentionAliases(text);
@@ -366,46 +405,85 @@ export default function ChatPage() {
     if (isTop) setNewCount(0);
   }
 
-  async function loadMentionDirectory(compId: string) {
-    const { data: memberRows, error: memberErr } = await supabaseBrowser
-      .from("memberships")
-      .select("user_id")
-      .eq("competition_id", compId);
+  async function loadMentionDirectory(accessToken: string, fallbackCompetitionId?: string | null) {
+    let directoryRows: ProfileRow[] = [];
 
-    if (memberErr) return;
+    try {
+      const params = new URLSearchParams({ season: String(CURRENT_SEASON) });
+      const res = await fetch(`/api/chat-mention-directory?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        cache: "no-store",
+      });
 
-    const memberIds = Array.from(new Set(((memberRows ?? []) as MembershipUserRow[]).map((m) => String(m.user_id))));
-    if (!memberIds.length) {
-      setMentionableByAlias({});
-      setMentionCandidates([]);
-      return;
+      const json = (await res.json().catch(() => null)) as MentionDirectoryApiResponse | null;
+      if (res.ok && json?.ok && Array.isArray(json.members)) {
+        directoryRows = json.members.map((m) => ({
+          id: String(m.user_id),
+          display_name: m.display_name ?? null,
+          username: m.username ?? null,
+        }));
+      }
+    } catch {
+      // fall through to client-side fallback below
     }
 
-    const { data: profRows, error: profErr } = await supabaseBrowser
-      .from("profiles")
-      .select("id, display_name, username")
-      .in("id", memberIds);
-
-    let directoryRows: ProfileRow[] = [];
-    if (profErr) {
-      if (!isMissingColumnError(profErr.message, "username")) {
+    // Fallback if API route is temporarily unavailable.
+    if (!directoryRows.length) {
+      const compId = String(fallbackCompetitionId ?? "").trim();
+      if (!compId) {
         setMentionableByAlias({});
         setMentionCandidates([]);
         return;
       }
 
-      const fallback = await supabaseBrowser.from("profiles").select("id, display_name").in("id", memberIds);
-      if (fallback.error) {
+      const { data: memberRows, error: memberErr } = await supabaseBrowser
+        .from("memberships")
+        .select("user_id")
+        .eq("competition_id", compId);
+
+      if (memberErr) {
         setMentionableByAlias({});
         setMentionCandidates([]);
         return;
       }
-      directoryRows = ((fallback.data ?? []) as ProfileRow[]).map((p) => ({
-        ...p,
-        username: null,
-      }));
-    } else {
-      directoryRows = (profRows ?? []) as ProfileRow[];
+
+      const memberIds = Array.from(
+        new Set(((memberRows ?? []) as MembershipUserRow[]).map((m) => String(m.user_id)))
+      );
+      if (!memberIds.length) {
+        setMentionableByAlias({});
+        setMentionCandidates([]);
+        return;
+      }
+
+      const { data: profRows, error: profErr } = await supabaseBrowser
+        .from("profiles")
+        .select("id, display_name, username")
+        .in("id", memberIds);
+
+      if (profErr) {
+        if (!isMissingColumnError(profErr.message, "username")) {
+          setMentionableByAlias({});
+          setMentionCandidates([]);
+          return;
+        }
+
+        const fallback = await supabaseBrowser
+          .from("profiles")
+          .select("id, display_name")
+          .in("id", memberIds);
+        if (fallback.error) {
+          setMentionableByAlias({});
+          setMentionCandidates([]);
+          return;
+        }
+        directoryRows = ((fallback.data ?? []) as ProfileRow[]).map((p) => ({
+          ...p,
+          username: null,
+        }));
+      } else {
+        directoryRows = (profRows ?? []) as ProfileRow[];
+      }
     }
 
     const usernamesMap: Record<string, string> = {};
@@ -435,17 +513,20 @@ export default function ChatPage() {
       const uid = String(p.id);
       const displayName = String(p.display_name ?? "").trim();
       const username = String(p.username ?? "").trim().toLowerCase();
+      const usernameAlias = normalizeMentionAliasToken(username);
       const aliases = Array.from(
         new Set([
           ...displayNameMentionAliases(displayName),
-          ...(username ? [username] : []),
+          ...(usernameAlias ? [usernameAlias] : []),
         ])
       );
 
       if (displayName) namesMap[uid] = displayName;
       if (username) {
         usernamesMap[uid] = username;
-        addAlias(username, uid);
+      }
+      if (usernameAlias) {
+        addAlias(usernameAlias, uid);
       }
       for (const alias of displayNameMentionAliases(displayName)) addAlias(alias, uid);
 
@@ -455,6 +536,35 @@ export default function ChatPage() {
         username: username || null,
         aliases,
       });
+    });
+
+    // Ensure every member has at least one resolvable alias in the picker.
+    const usedAliases = new Set(Object.keys(byAlias));
+    mentionRows.forEach((row) => {
+      const alreadyResolvable = row.aliases.some((alias) => byAlias[alias] === row.userId);
+      if (alreadyResolvable) return;
+
+      const rawBase = row.aliases[0] || row.displayName || row.username || `member_${row.userId.slice(0, 6)}`;
+      let base = normalizeMentionAliasToken(rawBase);
+      if (!base || base.length < 2) {
+        base = normalizeMentionAliasToken(`member_${row.userId.slice(0, 6)}`);
+      }
+      if (!base || base.length < 2) {
+        base = `member_${Math.abs(row.userId.split("").reduce((acc, ch) => acc + ch.charCodeAt(0), 0))}`;
+      }
+
+      let candidate = base.slice(0, 30);
+      let suffix = 2;
+      while (usedAliases.has(candidate)) {
+        const suffixText = `_${suffix}`;
+        const head = base.slice(0, Math.max(2, 30 - suffixText.length)).replace(/_+$/g, "");
+        candidate = `${head || "member"}${suffixText}`;
+        suffix += 1;
+      }
+
+      usedAliases.add(candidate);
+      byAlias[candidate] = row.userId;
+      row.aliases.push(candidate);
     });
 
     const candidateList: MentionCandidate[] = mentionRows
@@ -499,17 +609,40 @@ export default function ChatPage() {
     let resolvedCompId: string | null = null;
     let resolvedRole: string | null = null;
 
-    const { data: myMembership } = await supabaseBrowser
+    const { data: myMembershipRows } = await supabaseBrowser
       .from("memberships")
       .select("competition_id, role")
       .eq("user_id", currentUserId)
-      .limit(1)
-      .maybeSingle();
+      .limit(50);
 
-    const myMembershipRow = (myMembership as MembershipCompetitionRoleRow | null) ?? null;
-    if (myMembershipRow?.competition_id) {
-      resolvedCompId = String(myMembershipRow.competition_id);
-      resolvedRole = myMembershipRow.role ?? null;
+    const memberships = (myMembershipRows as MembershipCompetitionRoleRow[] | null) ?? [];
+    const candidateCompetitionIds = Array.from(
+      new Set(
+        memberships
+          .map((m) => String(m.competition_id ?? "").trim())
+          .filter((id) => id.length > 0)
+      )
+    );
+
+    if (candidateCompetitionIds.length) {
+      const { data: seasonRounds, error: seasonRoundsErr } = await supabaseBrowser
+        .from("rounds")
+        .select("competition_id")
+        .eq("season", CURRENT_SEASON)
+        .in("competition_id", candidateCompetitionIds);
+
+      if (!seasonRoundsErr && seasonRounds?.length) {
+        resolvedCompId = pickMostFrequentCompetition((seasonRounds ?? []) as RoundCompetitionRow[]) ?? null;
+      }
+
+      if (!resolvedCompId) {
+        resolvedCompId = candidateCompetitionIds.sort((a, b) => a.localeCompare(b))[0] ?? null;
+      }
+
+      const selectedMembership = memberships.find(
+        (m) => String(m.competition_id ?? "").trim() === resolvedCompId
+      );
+      resolvedRole = selectedMembership?.role ?? null;
     } else {
       const { data: comp } = await supabaseBrowser
         .from("competitions")
@@ -532,7 +665,7 @@ export default function ChatPage() {
     if (resolvedCompId) {
       setCompetitionId(resolvedCompId);
       setIsAdmin(isAdminRole(resolvedRole));
-      await loadMentionDirectory(resolvedCompId);
+      await loadMentionDirectory(s.session.access_token, resolvedCompId);
     } else {
       setCompetitionId(null);
       setIsAdmin(false);
@@ -683,10 +816,14 @@ export default function ChatPage() {
         const name = (p.display_name ?? "").trim();
         const team = (p.favorite_team ?? "").trim();
         const username = (p.username ?? "").trim().toLowerCase();
+        const usernameAlias = normalizeMentionAliasToken(username);
         if (name) nameMap[uid] = name;
         if (team) teamMap[uid] = team;
         if (username) {
           usernameMap[uid] = username;
+        }
+        if (usernameAlias && !usernameMap[uid]) {
+          usernameMap[uid] = usernameAlias;
         }
       });
 
@@ -720,10 +857,11 @@ export default function ChatPage() {
         const uid = String(p.id);
         const displayName = String(p.display_name ?? "").trim();
         const username = String(p.username ?? "").trim().toLowerCase();
+        const usernameAlias = normalizeMentionAliasToken(username);
         const aliases = Array.from(
           new Set([
             ...displayNameMentionAliases(displayName),
-            ...(username ? [username] : []),
+            ...(usernameAlias ? [usernameAlias] : []),
           ])
         );
         aliases.forEach((alias) => addLocalAlias(alias, uid));

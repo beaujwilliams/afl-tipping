@@ -33,6 +33,11 @@ type MembershipRoleRow = {
   role: string | null;
 };
 
+type MembershipCompetitionRoleRow = {
+  competition_id: string | null;
+  role: string | null;
+};
+
 type MembershipPaymentRow = {
   user_id: string;
   payment_status?: string | null;
@@ -491,30 +496,48 @@ export default function ChatPage() {
     const currentUserId = s.session.user.id;
     setUserId(currentUserId);
 
-    const { data: comp } = await supabaseBrowser
-      .from("competitions")
-      .select("id")
+    let resolvedCompId: string | null = null;
+    let resolvedRole: string | null = null;
+
+    const { data: myMembership } = await supabaseBrowser
+      .from("memberships")
+      .select("competition_id, role")
+      .eq("user_id", currentUserId)
       .limit(1)
-      .single();
+      .maybeSingle();
 
-    if (comp?.id) {
-      const compId = String(comp.id);
-      setCompetitionId(compId);
+    const myMembershipRow = (myMembership as MembershipCompetitionRoleRow | null) ?? null;
+    if (myMembershipRow?.competition_id) {
+      resolvedCompId = String(myMembershipRow.competition_id);
+      resolvedRole = myMembershipRow.role ?? null;
+    } else {
+      const { data: comp } = await supabaseBrowser
+        .from("competitions")
+        .select("id")
+        .limit(1)
+        .single();
 
-      const { data: membership } = await supabaseBrowser
-        .from("memberships")
-        .select("role")
-        .eq("competition_id", comp.id)
-        .eq("user_id", currentUserId)
-        .maybeSingle();
+      if (comp?.id) {
+        resolvedCompId = String(comp.id);
+        const { data: membership } = await supabaseBrowser
+          .from("memberships")
+          .select("role")
+          .eq("competition_id", comp.id)
+          .eq("user_id", currentUserId)
+          .maybeSingle();
+        resolvedRole = (membership as MembershipRoleRow | null)?.role ?? null;
+      }
+    }
 
-      const role = (membership as MembershipRoleRow | null)?.role ?? null;
-      setIsAdmin(isAdminRole(role));
-
-      await loadMentionDirectory(compId);
+    if (resolvedCompId) {
+      setCompetitionId(resolvedCompId);
+      setIsAdmin(isAdminRole(resolvedRole));
+      await loadMentionDirectory(resolvedCompId);
     } else {
       setCompetitionId(null);
       setIsAdmin(false);
+      setMentionableByAlias({});
+      setMentionCandidates([]);
     }
 
     setReady(true);
@@ -670,6 +693,80 @@ export default function ChatPage() {
       setNameByUserId((prev) => ({ ...prev, ...nameMap }));
       setFavoriteTeamByUserId((prev) => ({ ...prev, ...teamMap }));
       setUsernameByUserId((prev) => ({ ...prev, ...usernameMap }));
+
+      // Fallback/merge mention directory from visible chat participants.
+      const localAliasMap: Record<string, string> = {};
+      const ambiguousLocalAliases = new Set<string>();
+      const localMentionRows: Array<{ userId: string; displayName: string; username: string | null; aliases: string[] }> = [];
+
+      function addLocalAlias(alias: string, uid: string) {
+        const key = String(alias ?? "")
+          .trim()
+          .toLowerCase();
+        if (key.length < 2 || key.length > 30) return;
+        if (ambiguousLocalAliases.has(key)) return;
+        const existing = localAliasMap[key];
+        if (!existing) {
+          localAliasMap[key] = uid;
+          return;
+        }
+        if (existing !== uid) {
+          delete localAliasMap[key];
+          ambiguousLocalAliases.add(key);
+        }
+      }
+
+      profRows.forEach((p) => {
+        const uid = String(p.id);
+        const displayName = String(p.display_name ?? "").trim();
+        const username = String(p.username ?? "").trim().toLowerCase();
+        const aliases = Array.from(
+          new Set([
+            ...displayNameMentionAliases(displayName),
+            ...(username ? [username] : []),
+          ])
+        );
+        aliases.forEach((alias) => addLocalAlias(alias, uid));
+        localMentionRows.push({
+          userId: uid,
+          displayName: displayName || (username ? `@${username}` : "Member"),
+          username: username || null,
+          aliases,
+        });
+      });
+
+      const localCandidates: MentionCandidate[] = localMentionRows
+        .map((row) => {
+          const resolvedAlias = row.aliases.find((alias) => localAliasMap[alias] === row.userId);
+          if (!resolvedAlias) return null;
+          return {
+            userId: row.userId,
+            displayName: row.displayName,
+            username: row.username,
+            insertAlias: resolvedAlias,
+            searchValue: `${row.displayName.toLowerCase()} ${row.aliases.join(" ")} ${row.username ?? ""}`.trim(),
+          };
+        })
+        .filter((row): row is MentionCandidate => !!row)
+        .sort((a, b) => a.displayName.localeCompare(b.displayName, "en", { sensitivity: "base" }));
+
+      setMentionableByAlias((prev) => {
+        const next = { ...prev };
+        Object.entries(localAliasMap).forEach(([alias, uid]) => {
+          if (!next[alias]) next[alias] = uid;
+        });
+        return next;
+      });
+
+      setMentionCandidates((prev) => {
+        const byUserId = new Map(prev.map((candidate) => [candidate.userId, candidate]));
+        localCandidates.forEach((candidate) => {
+          if (!byUserId.has(candidate.userId)) byUserId.set(candidate.userId, candidate);
+        });
+        return Array.from(byUserId.values()).sort((a, b) =>
+          a.displayName.localeCompare(b.displayName, "en", { sensitivity: "base" })
+        );
+      });
 
       if (competitionId) {
         const paymentMap: Record<string, string | null> = {};

@@ -9,6 +9,7 @@ import {
   normalizeRole,
   shouldBlockTipSubmissionForPayment,
 } from "@/lib/scoring-lock-rules";
+import { invalidateRoundTipStatusCache } from "@/lib/round-tip-status-data";
 
 type SaveTipBody = {
   season?: number;
@@ -273,6 +274,16 @@ export async function POST(req: Request) {
         { error: "Failed to save tip", details: upsertErr.message },
         { status: 500 }
       );
+    }
+
+    try {
+      await invalidateRoundTipStatusCache({
+        competitionId,
+        season,
+        supabase,
+      });
+    } catch (cacheErr) {
+      console.warn("round tip status cache invalidation failed", cacheErr);
     }
 
     return NextResponse.json({

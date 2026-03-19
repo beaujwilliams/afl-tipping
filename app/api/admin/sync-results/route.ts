@@ -1,21 +1,40 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { requireAdminOrCron } from "@/lib/admin-auth";
+import { createServiceClient } from "@/lib/supabase-server";
+import { invalidateLeaderboardSnapshotCache } from "@/lib/leaderboard-snapshot";
+import { invalidateRoundTipStatusCache } from "@/lib/round-tip-status-data";
 
-function mustEnv(name: string) {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing env var: ${name}`);
-  return v;
-}
+type SquiggleGame = {
+  id?: number | string | null;
+  game?: number | string | null;
+  gameid?: number | string | null;
+  winner?: string | null;
+  winnerteam?: string | null;
+  hscore?: number | string | null;
+  ascore?: number | string | null;
+  hteam?: string | null;
+  ateam?: string | null;
+  error?: unknown;
+  warning?: unknown;
+};
 
-function pickGameId(g: any) {
+type MatchLookupRow = {
+  id: string;
+  winner_team: string | null;
+};
+
+type RoundCompetitionRow = {
+  competition_id: string;
+};
+
+function pickGameId(g: SquiggleGame) {
   const id = g?.id ?? g?.game ?? g?.gameid ?? null;
   if (id === null || id === undefined) return null;
   const n = Number(id);
   return Number.isFinite(n) ? String(n) : null;
 }
 
-function pickWinner(g: any) {
+function pickWinner(g: SquiggleGame) {
   const winner = g?.winner ?? g?.winnerteam ?? null;
   if (winner) return String(winner);
 
@@ -36,10 +55,7 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const season = Number(url.searchParams.get("season") ?? "2026");
 
-    const supabase = createClient(
-      mustEnv("NEXT_PUBLIC_SUPABASE_URL"),
-      mustEnv("SUPABASE_SERVICE_ROLE_KEY")
-    );
+    const supabase = createServiceClient();
 
     const gamesUrl = `https://api.squiggle.com.au/?q=games;year=${season};complete=100;format=json`;
 
@@ -53,7 +69,7 @@ export async function GET(req: Request) {
     });
 
     const body = await resp.json().catch(() => null);
-    const games: any[] = Array.isArray(body?.games) ? body.games : [];
+    const games: SquiggleGame[] = Array.isArray(body?.games) ? (body.games as SquiggleGame[]) : [];
     const rawGamesCount = games.length;
 
     const finals = games; // complete=100 already filters
@@ -124,16 +140,17 @@ export async function GET(req: Request) {
         .maybeSingle();
 
       if (findErr) {
-        updateErrors.push({ gameId, step: "find", message: findErr.message, code: (findErr as any).code });
+        updateErrors.push({ gameId, step: "find", message: findErr.message, code: findErr.code });
         continue;
       }
 
-      if (!matchRow?.id) {
+      const match = (matchRow as MatchLookupRow | null) ?? null;
+      if (!match?.id) {
         skipped.noDbMatch++;
         continue;
       }
 
-      if (String(matchRow.winner_team ?? "") === winner) {
+      if (String(match.winner_team ?? "") === winner) {
         skipped.alreadySet++;
         continue;
       }
@@ -141,14 +158,44 @@ export async function GET(req: Request) {
       const { error: updErr } = await supabase
         .from("matches")
         .update({ winner_team: winner, status: "final" })
-        .eq("id", matchRow.id);
+        .eq("id", match.id);
 
       if (updErr) {
-        updateErrors.push({ gameId, step: "update", message: updErr.message, code: (updErr as any).code });
+        updateErrors.push({ gameId, step: "update", message: updErr.message, code: updErr.code });
         continue;
       }
 
       updated++;
+    }
+
+    if (updated > 0) {
+      const { data: rounds } = await supabase
+        .from("rounds")
+        .select("competition_id")
+        .eq("season", season);
+
+      const competitionIds = Array.from(
+        new Set((rounds ?? []).map((row) => String((row as RoundCompetitionRow).competition_id)))
+      );
+
+      await Promise.all(
+        competitionIds.map(async (competitionId) => {
+          try {
+            await invalidateRoundTipStatusCache({
+              competitionId,
+              season,
+              supabase,
+            });
+            await invalidateLeaderboardSnapshotCache({
+              competitionId,
+              season,
+              supabase,
+            });
+          } catch (cacheErr) {
+            console.warn("cache invalidation failed after sync-results", cacheErr);
+          }
+        })
+      );
     }
 
     return NextResponse.json({
@@ -172,7 +219,10 @@ export async function GET(req: Request) {
       },
       note: "Uses complete=100 so all returned games are treated as finals. Uses matches.squiggle_game_id to find matches.",
     });
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message ?? "Unknown error" }, { status: 500 });
+  } catch (e: unknown) {
+    return NextResponse.json(
+      { ok: false, error: e instanceof Error ? e.message : "Unknown error" },
+      { status: 500 }
+    );
   }
 }

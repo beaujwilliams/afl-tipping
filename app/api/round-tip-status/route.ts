@@ -1,62 +1,19 @@
 import { NextResponse } from "next/server";
-import { createServiceClient } from "@/lib/supabase-server";
-import { getBearer, getUserIdFromBearer, isAdminBearerForCompetition } from "@/lib/admin-auth";
+import {
+  getBearer,
+  getUserIdFromBearer,
+  isAdminBearerForCompetition,
+} from "@/lib/admin-auth";
 import { resolveCompetitionIdForSeason } from "@/lib/competition-resolver";
-import { resolveReigningChampion } from "@/lib/reigning-champion";
-
-type RoundRow = {
-  id: string;
-  round_number: number;
-  lock_time_utc: string | null;
-};
-
-type MembershipRow = {
-  user_id: string;
-  payment_status?: string | null;
-};
-
-type ProfileRow = {
-  id: string;
-  display_name: string | null;
-};
-
-type MatchRow = {
-  id: string;
-  round_id: string;
-  winner_team: string | null;
-};
-
-type TipRow = {
-  user_id: string;
-  match_id: string;
-};
-
-type RoundPlayerStatusRow = {
-  user_id: string;
-  display_name: string | null;
-  payment_status: string | null;
-  tips_entered: number;
-};
-
-function isMissingColumnError(message: string, columnName: string) {
-  const m = message.toLowerCase();
-  const col = columnName.toLowerCase();
-  return m.includes(col) && (m.includes("column") || m.includes("does not exist"));
-}
-
-function normalizePaymentStatus(status: string | null | undefined) {
-  const s = String(status ?? "")
-    .trim()
-    .toLowerCase();
-  if (s === "paid" || s === "pending" || s === "waived") return s;
-  return null;
-}
+import { createServiceClient } from "@/lib/supabase-server";
+import { getRoundTipStatusResponse } from "@/lib/round-tip-status-data";
 
 export async function GET(req: Request) {
   try {
-    // Require a logged-in user (anyone) to prevent public scraping
     const token = getBearer(req);
-    if (!token) return NextResponse.json({ error: "Missing Bearer token" }, { status: 401 });
+    if (!token) {
+      return NextResponse.json({ error: "Missing Bearer token" }, { status: 401 });
+    }
 
     const url = new URL(req.url);
     const season = Number(url.searchParams.get("season") ?? "2026");
@@ -79,224 +36,16 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "No competition found" }, { status: 404 });
     }
 
-    const reigningChampion = await resolveReigningChampion({
+    const admin = await isAdminBearerForCompetition(req, competitionId);
+    const payload = await getRoundTipStatusResponse({
       competitionId,
       season,
+      userId,
+      admin,
       supabase,
     });
-    const admin = await isAdminBearerForCompetition(req, competitionId);
 
-    // rounds for season
-    const { data: rounds, error: rErr } = await supabase
-      .from("rounds")
-      .select("id, round_number, lock_time_utc")
-      .eq("competition_id", competitionId)
-      .eq("season", season)
-      .order("round_number", { ascending: true });
-
-    if (rErr) {
-      return NextResponse.json({ error: "Failed to read rounds", details: rErr.message }, { status: 500 });
-    }
-
-    const roundList = (rounds ?? []) as RoundRow[];
-    const roundIds = roundList.map((r) => r.id);
-
-    // all members in comp
-    let members: MembershipRow[] = [];
-    const withPayment = await supabase
-      .from("memberships")
-      .select("user_id, payment_status")
-      .eq("competition_id", competitionId);
-
-    if (withPayment.error && isMissingColumnError(withPayment.error.message, "payment_status")) {
-      const fallback = await supabase
-        .from("memberships")
-        .select("user_id")
-        .eq("competition_id", competitionId);
-
-      if (fallback.error) {
-        return NextResponse.json(
-          { error: "Failed to read memberships", details: fallback.error.message },
-          { status: 500 }
-        );
-      }
-
-      members = (fallback.data ?? []) as MembershipRow[];
-    } else if (withPayment.error) {
-      return NextResponse.json(
-        { error: "Failed to read memberships", details: withPayment.error.message },
-        { status: 500 }
-      );
-    } else {
-      members = (withPayment.data ?? []) as MembershipRow[];
-    }
-
-    const memberIds = members.map((m) => m.user_id);
-    const memberSet = new Set(memberIds);
-    const paymentStatusByUserId = new Map<string, string | null>();
-    members.forEach((m) => {
-      paymentStatusByUserId.set(
-        String(m.user_id),
-        normalizePaymentStatus(m.payment_status ?? null)
-      );
-    });
-
-    // profiles (for display names)
-    const profileMap = new Map<string, string | null>();
-    if (memberIds.length) {
-      const { data: profs } = await supabase
-        .from("profiles")
-        .select("id, display_name")
-        .in("id", memberIds);
-
-      (profs as ProfileRow[] | null)?.forEach((p) => {
-        profileMap.set(String(p.id), (p.display_name ?? null) ? String(p.display_name) : null);
-      });
-    }
-
-    // matches in all rounds
-    const matchIds: string[] = [];
-    const matchToRound = new Map<string, string>();
-    const totalMatchesByRound = new Map<string, number>();
-    const completedMatchesByRound = new Map<string, number>();
-
-    if (roundIds.length) {
-      const { data: matches, error: mErr } = await supabase
-        .from("matches")
-        .select("id, round_id, winner_team")
-        .in("round_id", roundIds);
-
-      if (mErr) {
-        return NextResponse.json({ error: "Failed to read matches", details: mErr.message }, { status: 500 });
-      }
-
-      (matches as MatchRow[] | null)?.forEach((m) => {
-        const mid = String(m.id);
-        const rid = String(m.round_id);
-        matchIds.push(mid);
-        matchToRound.set(mid, rid);
-        totalMatchesByRound.set(rid, (totalMatchesByRound.get(rid) ?? 0) + 1);
-        if (String(m.winner_team ?? "").trim()) {
-          completedMatchesByRound.set(rid, (completedMatchesByRound.get(rid) ?? 0) + 1);
-        }
-      });
-    }
-
-    // tips for those matches
-    // round_id -> (user_id -> tip count entered for this round)
-    const tipCountByRoundUser = new Map<string, Map<string, number>>();
-
-    if (matchIds.length) {
-      const { data: tips, error: tErr } = await supabase
-        .from("tips")
-        .select("user_id, match_id")
-        .eq("competition_id", competitionId)
-        .in("match_id", matchIds);
-
-      if (tErr) {
-        return NextResponse.json({ error: "Failed to read tips", details: tErr.message }, { status: 500 });
-      }
-
-      (tips as TipRow[] | null)?.forEach((t) => {
-        const uid = String(t.user_id);
-        const rid = matchToRound.get(String(t.match_id));
-        if (!rid) return;
-
-        // Keep counts for competition members and the current user.
-        if (!memberSet.has(uid) && uid !== userId) return;
-
-        if (!tipCountByRoundUser.has(rid)) {
-          tipCountByRoundUser.set(rid, new Map<string, number>());
-        }
-        const byUser = tipCountByRoundUser.get(rid)!;
-        byUser.set(uid, (byUser.get(uid) ?? 0) + 1);
-      });
-    }
-
-    // build response
-    const out = roundList.map((r) => {
-      const totalMatches = totalMatchesByRound.get(r.id) ?? 0;
-      const completedMatches = completedMatchesByRound.get(r.id) ?? 0;
-      const roundComplete = totalMatches > 0 && completedMatches >= totalMatches;
-      const tipsByUser = tipCountByRoundUser.get(r.id) ?? new Map<string, number>();
-      const hasCompletedTips = (uid: string) =>
-        totalMatches > 0 && (tipsByUser.get(uid) ?? 0) >= totalMatches;
-
-      const tippedCount = memberIds.reduce((acc, uid) => {
-        return acc + (hasCompletedTips(uid) ? 1 : 0);
-      }, 0);
-
-      const totalPlayers = memberIds.length;
-      const missingCount = Math.max(0, totalPlayers - tippedCount);
-      const myTips = Math.min(tipsByUser.get(userId) ?? 0, totalMatches);
-
-      let missing:
-        | Array<RoundPlayerStatusRow>
-        | undefined = undefined;
-      let tippedPlayersList:
-        | Array<RoundPlayerStatusRow>
-        | undefined = undefined;
-
-      if (admin) {
-        const miss: Array<RoundPlayerStatusRow> = [];
-        const tippedRows: Array<RoundPlayerStatusRow> = [];
-        for (const uid of memberIds) {
-          const tipsEntered = Math.min(tipsByUser.get(uid) ?? 0, totalMatches);
-          const row = {
-            user_id: uid,
-            display_name: profileMap.get(uid) ?? null,
-            payment_status: paymentStatusByUserId.get(uid) ?? null,
-            tips_entered: tipsEntered,
-          };
-          if (hasCompletedTips(uid)) tippedRows.push(row);
-          else miss.push(row);
-        }
-
-        const byName = (a: RoundPlayerStatusRow, b: RoundPlayerStatusRow) => {
-          const aName = String(a.display_name ?? "").trim();
-          const bName = String(b.display_name ?? "").trim();
-          if (aName && bName) {
-            const cmp = aName.localeCompare(bName, "en", { sensitivity: "base" });
-            if (cmp !== 0) return cmp;
-          } else if (aName) {
-            return -1;
-          } else if (bName) {
-            return 1;
-          }
-          return String(a.user_id).localeCompare(String(b.user_id));
-        };
-
-        miss.sort(byName);
-        tippedRows.sort(byName);
-
-        missing = miss;
-        tippedPlayersList = tippedRows;
-      }
-
-      return {
-        round_id: r.id,
-        round_number: r.round_number,
-        lock_time_utc: r.lock_time_utc,
-        total_matches: totalMatches,
-        completed_matches: completedMatches,
-        round_complete: roundComplete,
-        my_tips: myTips,
-        total_players: memberIds.length,
-        tipped_players: tippedCount,
-        missing_players: admin ? missing : undefined,
-        tipped_players_list: admin ? tippedPlayersList : undefined,
-        missing_count: missingCount,
-      };
-    });
-
-    return NextResponse.json({
-      ok: true,
-      season,
-      competition_id: competitionId,
-      reigning_champion_user_id: reigningChampion.reigning_champion_user_id,
-      admin,
-      rounds: out,
-    });
+    return NextResponse.json(payload);
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });

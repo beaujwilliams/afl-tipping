@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase-server";
 import { getDefaultCompetitionId, requireAdminOrCron } from "@/lib/admin-auth";
+import { invalidateRoundTipStatusCache } from "@/lib/round-tip-status-data";
 
 type SquiggleTeam = {
   id?: number;
@@ -295,6 +296,18 @@ export async function GET(req: Request) {
     }
 
     matchesUpserted += matchRows.length;
+  }
+
+  if (roundsUpserted > 0 || matchesUpserted > 0) {
+    try {
+      await invalidateRoundTipStatusCache({
+        competitionId,
+        season,
+        supabase,
+      });
+    } catch (cacheErr) {
+      console.warn("round tip status cache invalidation failed after sync-fixture", cacheErr);
+    }
   }
 
   return NextResponse.json({

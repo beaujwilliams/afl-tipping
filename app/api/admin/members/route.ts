@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase-server";
 import { requireAdminOrCron, resolveCompetitionIdForAdminRequest } from "@/lib/admin-auth";
+import { invalidateRoundTipStatusCache } from "@/lib/round-tip-status-data";
 
 function isMissingColumnError(message: string, columnName: string) {
   const m = message.toLowerCase();
@@ -59,6 +60,12 @@ type MembershipRow = {
   payment_status?: string | null;
 };
 
+type ProfileMemberRow = {
+  id: string;
+  display_name: string | null;
+  email?: string | null;
+};
+
 export async function GET(req: Request) {
   try {
     const supabase = createServiceClient();
@@ -108,7 +115,7 @@ export async function GET(req: Request) {
     }
 
     // Try to read profiles including email (if your schema has it)
-    let profRows: any[] = [];
+    let profRows: ProfileMemberRow[] = [];
     let profilesHaveEmail = true;
 
     const tryWithEmail = await supabase
@@ -123,9 +130,9 @@ export async function GET(req: Request) {
         .select("id, display_name")
         .in("id", userIds);
 
-      if (!fallback.error) profRows = (fallback.data as any[]) ?? [];
+      if (!fallback.error) profRows = (fallback.data as ProfileMemberRow[] | null) ?? [];
     } else {
-      profRows = (tryWithEmail.data as any[]) ?? [];
+      profRows = (tryWithEmail.data as ProfileMemberRow[] | null) ?? [];
     }
 
     const profileMap = new Map<string, { display_name: string | null; email: string | null }>();
@@ -157,9 +164,9 @@ export async function GET(req: Request) {
     }
 
     return NextResponse.json({ ok: true, competition_id: competitionId, members: out });
-  } catch (e: any) {
+  } catch (e: unknown) {
     return NextResponse.json(
-      { error: "Unexpected error", details: e?.message ?? String(e) },
+      { error: "Unexpected error", details: e instanceof Error ? e.message : String(e) },
       { status: 500 }
     );
   }
@@ -262,10 +269,19 @@ export async function PATCH(req: Request) {
       }
     }
 
+    try {
+      await invalidateRoundTipStatusCache({
+        competitionId,
+        supabase,
+      });
+    } catch (cacheErr) {
+      console.warn("round tip status cache invalidation failed", cacheErr);
+    }
+
     return NextResponse.json({ ok: true });
-  } catch (e: any) {
+  } catch (e: unknown) {
     return NextResponse.json(
-      { error: "Unexpected error", details: e?.message ?? String(e) },
+      { error: "Unexpected error", details: e instanceof Error ? e.message : String(e) },
       { status: 500 }
     );
   }
@@ -299,10 +315,19 @@ export async function DELETE(req: Request) {
       );
     }
 
+    try {
+      await invalidateRoundTipStatusCache({
+        competitionId,
+        supabase,
+      });
+    } catch (cacheErr) {
+      console.warn("round tip status cache invalidation failed", cacheErr);
+    }
+
     return NextResponse.json({ ok: true });
-  } catch (e: any) {
+  } catch (e: unknown) {
     return NextResponse.json(
-      { error: "Unexpected error", details: e?.message ?? String(e) },
+      { error: "Unexpected error", details: e instanceof Error ? e.message : String(e) },
       { status: 500 }
     );
   }

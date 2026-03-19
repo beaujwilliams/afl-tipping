@@ -235,7 +235,7 @@ export default function RoundPage() {
   // Smooth countdown timer
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   useEffect(() => {
-    const t = setInterval(() => setNowMs(Date.now()), 1000);
+    const t = setInterval(() => setNowMs(Date.now()), 30000);
     return () => clearInterval(t);
   }, []);
 

@@ -33,7 +33,7 @@ export default function InfoPage() {
 
         <div>
           <h2 style={{ marginBottom: 8 }}>2. Odds are locked before the round</h2>
-          <p>Scoring odds are captured 36 hours before the round starts.</p>
+          <p>Scoring odds are locked 36 hours before the round starts, and they stay fixed from that moment.</p>
         </div>
 
         <div>

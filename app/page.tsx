@@ -516,7 +516,7 @@ export default function HomePage() {
         </div>
       )}
 
-      {!msg && dashboardNotice && dashboardNotice.tone !== "success" && (
+      {!msg && dashboardNotice && (
         <UiCard tone={dashboardNotice.tone} className="ui-mt-3">
           <div className="ui-kicker">{dashboardNotice.title}</div>
           <div className="ui-stack ui-mt-2">

@@ -290,6 +290,7 @@ export default function HomePage() {
   const primaryTipsPossible = primaryTipRound?.total_matches ?? 0;
   const primaryTipsEntered = primaryTipRound?.my_tips ?? 0;
   const primaryTipsLeft = Math.max(primaryTipsPossible - primaryTipsEntered, 0);
+  const showUpToDateTile = !!(currentRound && !locked && tipsLeft === 0);
 
   const reminders = useMemo(() => {
     const items: DashboardReminder[] = [];
@@ -361,16 +362,8 @@ export default function HomePage() {
       };
     }
 
-    if (currentRound && !locked && tipsLeft === 0) {
-      return {
-        tone: "success" as const,
-        title: "Up to date",
-        lines: ["You're all up to date on your tips."],
-      };
-    }
-
     return null;
-  }, [currentRound, locked, lockedRoundStillLive, nextOpenRound, tipsLeft]);
+  }, [currentRound, lockedRoundStillLive, nextOpenRound]);
 
   return (
     <main className="ui-page ui-page--content">
@@ -436,15 +429,23 @@ export default function HomePage() {
                     : "No live round right now"}
                 </div>
               </UiCard>
-              <UiCard className="dashboard-mini-card">
-                <div className="ui-kicker">Round progress</div>
-                <div className="ui-value">{primaryTipsEntered}/{primaryTipsPossible || 0}</div>
-                <div className="ui-meta">
-                  {primaryTipRound
-                    ? `${primaryTipsLeft} ${pluralize(primaryTipsLeft, "tip", "tips")} left for Round ${primaryTipRound.round_number}`
-                    : "Nothing due"}
-                </div>
-              </UiCard>
+              {showUpToDateTile ? (
+                <UiCard tone="success" className="dashboard-mini-card">
+                  <div className="ui-kicker">Up to date</div>
+                  <div className="ui-value">All set</div>
+                  <div className="ui-meta">You&apos;re all up to date on your tips.</div>
+                </UiCard>
+              ) : (
+                <UiCard className="dashboard-mini-card">
+                  <div className="ui-kicker">Round progress</div>
+                  <div className="ui-value">{primaryTipsEntered}/{primaryTipsPossible || 0}</div>
+                  <div className="ui-meta">
+                    {primaryTipRound
+                      ? `${primaryTipsLeft} ${pluralize(primaryTipsLeft, "tip", "tips")} left for Round ${primaryTipRound.round_number}`
+                      : "Nothing due"}
+                  </div>
+                </UiCard>
+              )}
             </UiCardGrid>
 
             {lockedRoundStillLive && (
@@ -515,7 +516,7 @@ export default function HomePage() {
         </div>
       )}
 
-      {!msg && dashboardNotice && (
+      {!msg && dashboardNotice && dashboardNotice.tone !== "success" && (
         <UiCard tone={dashboardNotice.tone} className="ui-mt-3">
           <div className="ui-kicker">{dashboardNotice.title}</div>
           <div className="ui-stack ui-mt-2">

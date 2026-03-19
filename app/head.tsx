@@ -1,7 +1,7 @@
 export default function Head() {
   return (
     <>
-      <title>Needlessly Complicated Tipping</title>
+      <title>Complicated Tips</title>
       <meta
         name="description"
         content="Needlessly Complicated AFL Tipping picks, results, leaderboard, and chat."

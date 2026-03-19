@@ -95,6 +95,12 @@ function LayoutChrome({ children }: { children: React.ReactNode }) {
   const { unreadChat, unreadMentions } = useChatActivity();
 
   useEffect(() => {
+    if (typeof document !== "undefined") {
+      document.title = "Complicated Tips";
+    }
+  }, [pathname]);
+
+  useEffect(() => {
     let mounted = true;
 
     async function load() {

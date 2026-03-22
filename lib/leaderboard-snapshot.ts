@@ -108,6 +108,7 @@ export type LeaderboardResponse = {
 
 const LEADERBOARD_CACHE_CONTROL = "public, s-maxage=30, stale-while-revalidate=300";
 const LEADERBOARD_CACHE_TABLE = "leaderboard_snapshot_cache";
+const LEADERBOARD_CACHE_MAX_AGE_MS = 2 * 60 * 1000;
 
 function safeDisplayName(name: string | null | undefined, userId: string) {
   const n = String(name ?? "").trim();
@@ -740,7 +741,14 @@ export async function getLeaderboardSnapshot(params: {
   });
 
   if (cached?.payload?.ok) {
-    return cached.payload;
+    const computedAtMs = cached.computed_at ? new Date(cached.computed_at).getTime() : NaN;
+    const fresh =
+      Number.isFinite(computedAtMs) &&
+      computedAtMs > 0 &&
+      Date.now() - computedAtMs <= LEADERBOARD_CACHE_MAX_AGE_MS;
+    if (fresh) {
+      return cached.payload;
+    }
   }
 
   return refreshLeaderboardSnapshot({

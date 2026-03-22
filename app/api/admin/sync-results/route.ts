@@ -168,7 +168,7 @@ export async function GET(req: Request) {
       updated++;
     }
 
-    if (updated > 0) {
+    if (consideredFinal > 0) {
       const { data: rounds } = await supabase
         .from("rounds")
         .select("competition_id")

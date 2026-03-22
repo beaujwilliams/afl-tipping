@@ -5,6 +5,7 @@ import { useChatActivity } from "@/components/ChatActivityProvider";
 import { UiBadge, UiButtonLink, UiCard, UiCardGrid, UiSectionHeader } from "@/components/ui";
 
 const CURRENT_SEASON = 2026;
+const LIVE_SIGNAL_GRACE_MS = 6 * 60 * 60 * 1000;
 
 export type HomeRoundStatusRow = {
   round_id: string;
@@ -91,6 +92,15 @@ function pluralize(count: number, single: string, plural: string) {
   return count === 1 ? single : plural;
 }
 
+function isRoundComplete(row: HomeRoundStatusRow | null | undefined) {
+  if (!row) return false;
+  return (
+    Boolean(row.round_complete) ||
+    (Number(row.total_matches ?? 0) > 0 &&
+      Number(row.completed_matches ?? 0) >= Number(row.total_matches ?? 0))
+  );
+}
+
 export default function HomePageClient({
   welcomeName,
   rounds,
@@ -106,63 +116,60 @@ export default function HomePageClient({
     return () => clearInterval(t);
   }, []);
 
-  const currentRound = useMemo(() => {
-    if (!rounds.length) return null;
+  const sortedRounds = useMemo(
+    () => [...rounds].sort((a, b) => a.round_number - b.round_number),
+    [rounds]
+  );
 
-    const isRoundComplete = (r: HomeRoundStatusRow) =>
-      Boolean(r.round_complete) ||
-      (Number(r.total_matches ?? 0) > 0 &&
-        Number(r.completed_matches ?? 0) >= Number(r.total_matches ?? 0));
+  const liveRound = useMemo(() => {
+    if (!sortedRounds.length) return null;
+    return (
+      [...sortedRounds].reverse().find((r) => {
+        const lock = melbourneMs(r.lock_time_utc);
+        if (lock === null || nowMs < lock) return false;
+        if (Number(r.total_matches ?? 0) <= 0) return false;
+        if (isRoundComplete(r)) return false;
 
-    const sorted = [...rounds].sort((a, b) => a.round_number - b.round_number);
-
-    // Keep the most recently started unfinished round as "current".
-    const inProgress = [...sorted].reverse().find((r) => {
-      const lock = melbourneMs(r.lock_time_utc);
-      return (
-        lock !== null &&
-        nowMs >= lock &&
-        Number(r.total_matches ?? 0) > 0 &&
-        !isRoundComplete(r)
-      );
-    });
-    if (inProgress) return inProgress;
-
-    const nextOpen = sorted.find((r) => {
-      const lock = melbourneMs(r.lock_time_utc);
-      return lock !== null && nowMs < lock;
-    });
-    return nextOpen ?? sorted[sorted.length - 1];
-  }, [rounds, nowMs]);
+        const completedMatches = Number(r.completed_matches ?? 0);
+        const recentlyLocked = nowMs - lock <= LIVE_SIGNAL_GRACE_MS;
+        return completedMatches > 0 || recentlyLocked;
+      }) ?? null
+    );
+  }, [sortedRounds, nowMs]);
 
   const nextOpenRound = useMemo(() => {
-    const sorted = [...rounds].sort((a, b) => a.round_number - b.round_number);
     return (
-      sorted.find((r) => {
+      sortedRounds.find((r) => {
         const lock = melbourneMs(r.lock_time_utc);
         return lock !== null && nowMs < lock;
       }) ?? null
     );
-  }, [rounds, nowMs]);
+  }, [sortedRounds, nowMs]);
+
+  const latestCompletedRound = useMemo(
+    () => [...sortedRounds].reverse().find((r) => isRoundComplete(r)) ?? null,
+    [sortedRounds]
+  );
+
+  const currentRound = useMemo(() => {
+    if (liveRound) return liveRound;
+    if (nextOpenRound) return nextOpenRound;
+    return sortedRounds[sortedRounds.length - 1] ?? null;
+  }, [liveRound, nextOpenRound, sortedRounds]);
 
   const lockMs = melbourneMs(currentRound?.lock_time_utc ?? null);
   const locked = lockMs ? nowMs >= lockMs : false;
   const tipsPossible = currentRound?.total_matches ?? 0;
   const tipsEntered = currentRound?.my_tips ?? 0;
   const tipsLeft = Math.max(tipsPossible - tipsEntered, 0);
-  const currentRoundComplete =
-    !!currentRound &&
-    (Boolean(currentRound.round_complete) ||
-      (Number(currentRound.total_matches ?? 0) > 0 &&
-        Number(currentRound.completed_matches ?? 0) >= Number(currentRound.total_matches ?? 0)));
-  const lockedRoundStillLive = !!currentRound && locked && !currentRoundComplete;
+  const lockedRoundStillLive = !!liveRound;
   const liveRoundProgressPct =
-    currentRound && currentRound.total_matches > 0
+    liveRound && liveRound.total_matches > 0
       ? Math.max(
           0,
           Math.min(
             100,
-            Math.round((Number(currentRound.completed_matches ?? 0) / Number(currentRound.total_matches ?? 1)) * 100)
+            Math.round((Number(liveRound.completed_matches ?? 0) / Number(liveRound.total_matches ?? 1)) * 100)
           )
         )
       : 0;
@@ -239,12 +246,12 @@ export default function HomePageClient({
   );
 
   const dashboardNotice = useMemo(() => {
-    if (currentRound && lockedRoundStillLive) {
+    if (liveRound && lockedRoundStillLive) {
       return {
         tone: "info" as const,
         title: "Round update",
         lines: [
-          `Round ${currentRound.round_number} is locked.`,
+          `Round ${liveRound.round_number} is locked.`,
           nextOpenRound
             ? `Round ${nextOpenRound.round_number} tips are due by ${fmtMelbourneShort(nextOpenRound.lock_time_utc)}.`
             : "The next round tips are now due.",
@@ -253,7 +260,7 @@ export default function HomePageClient({
     }
 
     return null;
-  }, [currentRound, lockedRoundStillLive, nextOpenRound]);
+  }, [liveRound, lockedRoundStillLive, nextOpenRound]);
 
   return (
     <main className="ui-page ui-page--content">
@@ -281,8 +288,10 @@ export default function HomePageClient({
             </div>
 
             <div className="dashboard-hero-title">
-              {lockedRoundStillLive && nextOpenRound
-                ? `Round ${currentRound.round_number} is live. Round ${nextOpenRound.round_number} closes in ${primaryRoundCountdown}.`
+              {liveRound && nextOpenRound
+                ? `Round ${liveRound.round_number} is live. Round ${nextOpenRound.round_number} closes in ${primaryRoundCountdown}.`
+                : liveRound
+                ? `Round ${liveRound.round_number} is live.`
                 : primaryTipRound && !primaryRoundLocked
                 ? `Round ${primaryTipRound.round_number} closes in ${primaryRoundCountdown}.`
                 : primaryTipRound
@@ -311,11 +320,11 @@ export default function HomePageClient({
               <UiCard className="dashboard-mini-card">
                 <div className="ui-kicker">Unfinished round</div>
                 <div className="ui-value">
-                  {lockedRoundStillLive ? `Round ${currentRound.round_number}` : "None"}
+                  {lockedRoundStillLive && liveRound ? `Round ${liveRound.round_number}` : "None"}
                 </div>
                 <div className="ui-meta">
-                  {lockedRoundStillLive
-                    ? `${currentRound.completed_matches}/${currentRound.total_matches} games complete`
+                  {lockedRoundStillLive && liveRound
+                    ? `${liveRound.completed_matches}/${liveRound.total_matches} games complete`
                     : "No live round right now"}
                 </div>
               </UiCard>
@@ -338,13 +347,13 @@ export default function HomePageClient({
               )}
             </UiCardGrid>
 
-            {lockedRoundStillLive && (
+            {lockedRoundStillLive && liveRound && (
               <div className="dashboard-live-strip">
                 <div className="ui-row-between">
                   <div>
                     <div className="ui-kicker">Round in progress</div>
                     <div className="ui-meta">
-                      {currentRound.completed_matches}/{currentRound.total_matches} games scored so far
+                      {liveRound.completed_matches}/{liveRound.total_matches} games scored so far
                     </div>
                   </div>
                   <div className="dashboard-live-percent">{liveRoundProgressPct}%</div>
@@ -367,9 +376,14 @@ export default function HomePageClient({
                   {primaryRoundLocked ? "View round" : "Continue tipping"}
                 </UiButtonLink>
               )}
-              {lockedRoundStillLive && (
-                <UiButtonLink href={`/results/${CURRENT_SEASON}/${currentRound.round_number}`}>
+              {lockedRoundStillLive && liveRound && (
+                <UiButtonLink href={`/results/${CURRENT_SEASON}/${liveRound.round_number}`}>
                   Follow live results
+                </UiButtonLink>
+              )}
+              {!lockedRoundStillLive && latestCompletedRound && (
+                <UiButtonLink href={`/results/${CURRENT_SEASON}/${latestCompletedRound.round_number}`}>
+                  View Round {latestCompletedRound.round_number} results
                 </UiButtonLink>
               )}
               <UiButtonLink href={`/leaderboard/${CURRENT_SEASON}`}>View leaderboard</UiButtonLink>

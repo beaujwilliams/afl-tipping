@@ -120,20 +120,6 @@ function round2(v: number) {
   return Number(v.toFixed(2));
 }
 
-function fmtMelbourne(isoUtc: string | null | undefined) {
-  if (!isoUtc) return "n/a";
-  const d = new Date(isoUtc);
-  if (Number.isNaN(d.getTime())) return String(isoUtc);
-  return new Intl.DateTimeFormat("en-AU", {
-    timeZone: "Australia/Melbourne",
-    weekday: "short",
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(d);
-}
-
 function safeDisplayName(name: string | null | undefined, userId: string) {
   const n = String(name ?? "").trim();
   if (n) return n;
@@ -313,6 +299,50 @@ function humanList(parts: string[]) {
   if (parts.length === 1) return parts[0];
   if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
   return `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}`;
+}
+
+function fmtSigned(n: number) {
+  const raw = Number(n) || 0;
+  const rounded = round2(raw);
+  const label =
+    Math.abs(rounded - Math.trunc(rounded)) < 0.0001
+      ? String(Math.trunc(rounded))
+      : rounded.toFixed(2);
+  return rounded > 0 ? `+${label}` : label;
+}
+
+function fmt2(n: number) {
+  return round2(Number(n) || 0).toFixed(2);
+}
+
+function fmt1(n: number) {
+  return (Math.round((Number(n) || 0) * 10) / 10).toFixed(1);
+}
+
+function ordinal(n: number) {
+  const v = Math.trunc(Number(n) || 0);
+  const mod100 = Math.abs(v) % 100;
+  if (mod100 >= 11 && mod100 <= 13) return `${v}th`;
+  const mod10 = Math.abs(v) % 10;
+  if (mod10 === 1) return `${v}st`;
+  if (mod10 === 2) return `${v}nd`;
+  if (mod10 === 3) return `${v}rd`;
+  return `${v}th`;
+}
+
+function computeDifficultyPct(
+  players: Array<{ correct_tips: number; total_tips: number }>
+) {
+  const tipsPlaced = players.reduce((sum, p) => sum + Number(p.total_tips ?? 0), 0);
+  const correctPlaced = players.reduce((sum, p) => sum + Number(p.correct_tips ?? 0), 0);
+  return tipsPlaced > 0 ? (correctPlaced / tipsPlaced) * 100 : 0;
+}
+
+function computeRoundAverage(players: Array<{ round_score: number }>) {
+  if (players.length === 0) return 0;
+  return (
+    players.reduce((sum, p) => sum + Number(p.round_score ?? 0), 0) / players.length
+  );
 }
 
 export async function GET(req: Request) {
@@ -651,13 +681,23 @@ export async function GET(req: Request) {
     const roundResultsUrl = `${url.origin}/api/round-results?season=${encodeURIComponent(
       String(season)
     )}&round=${encodeURIComponent(String(roundNumber))}`;
+    const previousRoundNumber = roundNumber > 0 ? roundNumber - 1 : null;
+    const previousRoundResultsUrl =
+      previousRoundNumber === null
+        ? null
+        : `${url.origin}/api/round-results?season=${encodeURIComponent(
+            String(season)
+          )}&round=${encodeURIComponent(String(previousRoundNumber))}`;
     const leaderboardUrl = `${url.origin}/api/leaderboard?season=${encodeURIComponent(
       String(season)
     )}`;
 
-    const [roundResultsRes, leaderboardRes] = await Promise.all([
+    const [roundResultsRes, leaderboardRes, previousRoundResultsRes] = await Promise.all([
       fetchJson<RoundResultsResponse>(roundResultsUrl),
       fetchJson<LeaderboardResponse>(leaderboardUrl),
+      previousRoundResultsUrl
+        ? fetchJson<RoundResultsResponse>(previousRoundResultsUrl)
+        : Promise.resolve(null),
     ]);
 
     if (!roundResultsRes.ok || !roundResultsRes.data?.ok) {
@@ -685,6 +725,10 @@ export async function GET(req: Request) {
     const lbRows = ((leaderboardRes.data.rows ?? []) as LeaderboardRow[]).sort(
       (a, b) => Number(a.rank) - Number(b.rank)
     );
+    const prevRoundPlayers =
+      previousRoundResultsRes?.ok && previousRoundResultsRes.data?.ok
+        ? ((previousRoundResultsRes.data.players ?? []) as RoundResultsPlayer[])
+        : [];
 
     const winnerOddsByMatch: Record<string, number | null> = {};
     const loserOddsByMatch: Record<string, number | null> = {};
@@ -719,11 +763,6 @@ export async function GET(req: Request) {
         away: Number(row.away_odds ?? 0),
       };
     }
-
-    const matchById: Record<string, MatchRow> = {};
-    roundMatches.forEach((m) => {
-      matchById[String(m.id)] = m;
-    });
 
     for (const m of roundMatches) {
       const mid = String(m.id);
@@ -799,62 +838,102 @@ export async function GET(req: Request) {
       };
     });
 
-    const tipsPlaced = playerStats.reduce((sum, p) => sum + p.total_tips, 0);
-    const correctPlaced = playerStats.reduce((sum, p) => sum + p.correct_tips, 0);
-    const roundDifficultyPct = tipsPlaced > 0 ? (correctPlaced / tipsPlaced) * 100 : 0;
+    const roundDifficultyPct = computeDifficultyPct(playerStats);
+    const roundAvg = computeRoundAverage(playerStats);
 
     const maxRoundScore = playerStats.length
       ? Math.max(...playerStats.map((p) => Number(p.round_score)))
       : 0;
-    const roundWinners = playerStats.filter((p) => Number(p.round_score) === maxRoundScore);
+    const roundWinners = playerStats.filter(
+      (p) => Math.abs(Number(p.round_score) - Number(maxRoundScore)) < 0.0001
+    );
 
-    const roundAvg =
-      playerStats.length > 0
-        ? playerStats.reduce((sum, p) => sum + Number(p.round_score), 0) / playerStats.length
-        : 0;
+    const sortedRoundScorers = [...playerStats].sort((a, b) => {
+      if (Number(b.round_score) !== Number(a.round_score)) {
+        return Number(b.round_score) - Number(a.round_score);
+      }
+      if (Number(b.correct_tips) !== Number(a.correct_tips)) {
+        return Number(b.correct_tips) - Number(a.correct_tips);
+      }
+      return a.display_name.localeCompare(b.display_name);
+    });
+    const topRoundScorers = topN(sortedRoundScorers, 5);
+    const tiedAtFifth =
+      topRoundScorers.length < 5
+        ? []
+        : sortedRoundScorers
+            .slice(5)
+            .filter(
+              (p) =>
+                Math.abs(
+                  Number(p.round_score) - Number(topRoundScorers[4].round_score)
+                ) < 0.0001
+            );
 
-    const perfectTips = rrMatches.length;
-    const closestToPerfect = [...playerStats]
-      .sort((a, b) => {
-        if (b.correct_tips !== a.correct_tips) return b.correct_tips - a.correct_tips;
-        return b.round_score - a.round_score;
-      })
-      .filter((p) => p.correct_tips < perfectTips);
+    const previousRoundDifficulty =
+      previousRoundNumber !== null && prevRoundPlayers.length > 0
+        ? computeDifficultyPct(
+            prevRoundPlayers.map((p) => ({
+              correct_tips: Number(p.correct_tips ?? 0),
+              total_tips: Number(p.total_tips ?? 0),
+            }))
+          )
+        : null;
+    const difficultyDelta =
+      previousRoundDifficulty === null ? null : roundDifficultyPct - previousRoundDifficulty;
 
-    const tippedUsers = new Set<string>();
-    roundTips.forEach((t) => tippedUsers.add(String(t.user_id)));
-    const tippedCount = tippedUsers.size;
-    const totalMembers = memberIds.length;
-    const missingCount = Math.max(0, totalMembers - tippedCount);
+    const playerStatByUserId = new Map(playerStats.map((p) => [String(p.user_id), p]));
 
-    const mostPickedTeam = Object.entries(roundTipCountByTeam)
-      .sort((a, b) => b[1] - a[1])[0] ?? null;
+    const topRises = topN(
+      [...lbRows]
+        .filter((r) => Number(r.movement) > 0)
+        .sort((a, b) => Number(b.movement) - Number(a.movement)),
+      5
+    );
+    const topDrops = topN(
+      [...lbRows]
+        .filter((r) => Number(r.movement) < 0)
+        .sort((a, b) => Number(a.movement) - Number(b.movement)),
+      5
+    );
 
-    const closestSplit = [...rrMatches]
-      .filter((m) => Number(m.total_tips ?? 0) > 0)
-      .map((m) => {
-        const diff = Math.abs(Number(m.tipping.home_pct) - Number(m.tipping.away_pct));
-        return { match: m, diff };
-      })
-      .sort((a, b) => a.diff - b.diff)[0] ?? null;
+    const tipInsightForUser = (userId: string) => {
+      const p = playerStatByUserId.get(String(userId));
+      if (!p) return "tip data unavailable";
+      const submitted = Number(p.total_tips);
+      const games = Number(rrMatches.length);
 
-    const consensusMiss = [...rrMatches]
-      .filter((m) => String(m.winner_team ?? "").trim().length > 0 && Number(m.total_tips ?? 0) > 0)
-      .map((m) => {
-        const winner = String(m.winner_team ?? "");
-        const loser = winner === m.home_team ? m.away_team : m.home_team;
-        const loserCount =
-          loser === m.home_team ? Number(m.tipping.home_count) : Number(m.tipping.away_count);
-        const loserPct = Number(m.total_tips ?? 0) > 0 ? (loserCount / Number(m.total_tips)) * 100 : 0;
-        return { match: m, loser, loserCount, loserPct };
-      })
-      .sort((a, b) => b.loserPct - a.loserPct)[0] ?? null;
+      if (submitted === 0) return "didn't submit tips this round";
+      if (submitted < games) {
+        return `submitted ${submitted}/${games} tips and scored ${fmt2(Number(p.round_score))} points`;
+      }
+      if (Number(p.correct_tips) === games) return `nailed a perfect ${games}/${games}`;
+      if (Number(p.round_score) <= 0 && Number(p.correct_tips) === 0) {
+        return `went 0/${games} despite tipping every game`;
+      }
+      if (Number(p.underdog_points) > 0) {
+        return `hit ${p.correct_tips}/${games} and banked ${fmt2(
+          Number(p.underdog_points)
+        )} underdog points`;
+      }
+      return `hit ${p.correct_tips}/${games} for ${fmt2(Number(p.round_score))} points`;
+    };
+
+    const roundTipsTotal = roundTips.length;
+    const mostPickedTeam =
+      Object.entries(roundTipCountByTeam).sort((a, b) => b[1] - a[1])[0] ?? null;
+
+    const rrMatchById = new Map<string, RoundResultsMatch>();
+    rrMatches.forEach((m) => rrMatchById.set(String(m.id), m));
 
     let biggestUpset:
-      | { match: MatchRow; winner: string; winnerOdds: number; loserOdds: number }
+      | {
+          match: MatchRow;
+          winner: string;
+          winnerOdds: number;
+          winnerTipShare: number;
+        }
       | null = null;
-    let underdogPointsAwarded = 0;
-    const underdogWinningMatchIds = new Set<string>();
 
     for (const m of roundMatches) {
       const mid = String(m.id);
@@ -862,398 +941,484 @@ export async function GET(req: Request) {
       if (!winner) continue;
 
       const winnerOdds = winnerOddsByMatch[mid];
-      const loserOdds = loserOddsByMatch[mid];
-      if (winnerOdds === null || loserOdds === null) continue;
+      if (winnerOdds === null) continue;
 
-      const winnerCount = roundTips.filter(
-        (t) => String(t.match_id) === mid && String(t.picked_team) === winner
-      ).length;
+      const rr = rrMatchById.get(mid);
+      const winnerCount = rr
+        ? winner === rr.home_team
+          ? Number(rr.tipping.home_count)
+          : winner === rr.away_team
+            ? Number(rr.tipping.away_count)
+            : 0
+        : 0;
+      const winnerTipShare =
+        rr && Number(rr.total_tips) > 0 ? (winnerCount / Number(rr.total_tips)) * 100 : 0;
 
-      if (Number(winnerOdds) > Number(loserOdds)) {
-        underdogWinningMatchIds.add(mid);
-        underdogPointsAwarded += Number(winnerOdds) * winnerCount;
-      }
-
-      if (
-        !biggestUpset ||
-        Number(winnerOdds) > Number(biggestUpset.winnerOdds)
-      ) {
+      if (!biggestUpset || Number(winnerOdds) > Number(biggestUpset.winnerOdds)) {
         biggestUpset = {
           match: m,
           winner,
           winnerOdds: Number(winnerOdds),
-          loserOdds: Number(loserOdds),
+          winnerTipShare,
         };
       }
     }
 
-    const clutchPick = [...rrMatches]
-      .filter((m) => String(m.winner_team ?? "").trim().length > 0 && Number(m.total_tips ?? 0) > 0)
+    const majorityPickWins = rrMatches.filter((m) => {
+      const winner = String(m.winner_team ?? "").trim();
+      if (!winner) return false;
+      const majorityTeam =
+        Number(m.tipping.home_count) >= Number(m.tipping.away_count)
+          ? m.home_team
+          : m.away_team;
+      return winner === majorityTeam;
+    }).length;
+
+    const minorityBackedWinners = rrMatches
       .map((m) => {
-        const winner = String(m.winner_team ?? "");
+        const winner = String(m.winner_team ?? "").trim();
+        if (!winner || Number(m.total_tips) <= 0) return null;
         const winnerCount =
-          winner === m.home_team ? Number(m.tipping.home_count) : Number(m.tipping.away_count);
-        const winnerShare = Number(m.total_tips ?? 0) > 0 ? (winnerCount / Number(m.total_tips)) * 100 : 0;
-        const winnerOdds = winnerOddsByMatch[m.id] ?? null;
-        return { match: m, winner, winnerShare, winnerCount, winnerOdds };
+          winner === m.home_team
+            ? Number(m.tipping.home_count)
+            : winner === m.away_team
+              ? Number(m.tipping.away_count)
+              : 0;
+        const winnerPct = (winnerCount / Number(m.total_tips)) * 100;
+        return { match: m, winner, winnerPct };
       })
-      .filter((x) => x.winnerOdds !== null && x.winnerCount > 0)
-      .sort((a, b) => {
-        if (a.winnerShare !== b.winnerShare) return a.winnerShare - b.winnerShare;
-        return Number(b.winnerOdds) - Number(a.winnerOdds);
-      })[0] ?? null;
+      .filter((x): x is { match: RoundResultsMatch; winner: string; winnerPct: number } => !!x)
+      .filter((x) => x.winnerPct < 50)
+      .sort((a, b) => a.winnerPct - b.winnerPct);
 
-    const topRises = topN(
-      [...lbRows].filter((r) => Number(r.movement) > 0).sort((a, b) => Number(b.movement) - Number(a.movement)),
-      3
+    const fullRoundTips = rrMatches.length;
+    const perfectRoundPlayers = playerStats.filter(
+      (p) =>
+        fullRoundTips > 0 &&
+        Number(p.total_tips) === Number(fullRoundTips) &&
+        Number(p.correct_tips) === Number(fullRoundTips)
     );
-    const topDrops = topN(
-      [...lbRows].filter((r) => Number(r.movement) < 0).sort((a, b) => Number(a.movement) - Number(b.movement)),
-      3
+    const zeroAfterTippingAllPlayers = playerStats.filter(
+      (p) =>
+        fullRoundTips > 0 &&
+        Number(p.total_tips) === Number(fullRoundTips) &&
+        Number(p.round_score) <= 0 &&
+        Number(p.correct_tips) === 0
     );
+    const sixPlusWinners = playerStats.filter((p) => Number(p.correct_tips) >= 6).length;
+    const fivePlusWinners = playerStats.filter((p) => Number(p.correct_tips) >= 5).length;
 
-    const podiumEntered = lbRows.filter(
-      (r) => Number(r.rank) <= 3 && (r.previous_rank === null || Number(r.previous_rank) > 3)
-    );
-    const podiumExited = lbRows.filter(
-      (r) => Number(r.rank) > 3 && r.previous_rank !== null && Number(r.previous_rank) <= 3
-    );
+    const { data: seasonFinishedRows, error: seasonFinishedErr } = await supabase
+      .from("matches")
+      .select(
+        "id, home_team, away_team, winner_team, round:rounds!inner(round_number, season, competition_id, odds_snapshot_for_time_utc)"
+      )
+      .not("winner_team", "is", null)
+      .eq("round.competition_id", competitionId)
+      .eq("round.season", season);
 
-    const highestVolatility =
-      [...lbRows]
-        .sort((a, b) => Math.abs(Number(b.movement)) - Math.abs(Number(a.movement)))[0] ?? null;
-
-    const closestRivalPairs: Array<{ a: LeaderboardRow; b: LeaderboardRow; gap: number }> = [];
-    for (let i = 0; i < lbRows.length - 1; i += 1) {
-      const a = lbRows[i];
-      const b = lbRows[i + 1];
-      const gap = Math.abs(Number(a.total_points) - Number(b.total_points));
-      closestRivalPairs.push({ a, b, gap });
-    }
-    closestRivalPairs.sort((x, y) => x.gap - y.gap);
-
-    const leader = lbRows.find((r) => Number(r.rank) === 1) ?? lbRows[0] ?? null;
-    const second = lbRows.find((r) => Number(r.rank) === 2) ?? null;
-    const leaderMargin = second ? Number(second.behind_leader ?? 0) : 0;
-
-    const seasonRoundsById = new Map<string, RoundRow>();
-    roundRows.forEach((r) => seasonRoundsById.set(String(r.id), r));
-
-    const beforeRoundMatchIds = matchRows
-      .filter((m) => {
-        const rr = seasonRoundsById.get(String(m.round_id));
-        return !!rr && Number(rr.round_number) < roundNumber;
-      })
-      .map((m) => String(m.id));
-
-    const beforeRoundTipsByTeam: Record<string, number> = {};
-    let beforeRoundTipsTotal = 0;
-    if (beforeRoundMatchIds.length > 0) {
-      const { data: beforeTips, error: btErr } = await supabase
-        .from("tips")
-        .select("picked_team")
-        .eq("competition_id", competitionId)
-        .in("match_id", beforeRoundMatchIds);
-
-      if (!btErr) {
-        ((beforeTips ?? []) as Array<{ picked_team: string }>).forEach((t) => {
-          const team = String(t.picked_team ?? "").trim();
-          if (!team) return;
-          beforeRoundTipsByTeam[team] = (beforeRoundTipsByTeam[team] ?? 0) + 1;
-          beforeRoundTipsTotal += 1;
-        });
-      }
+    if (seasonFinishedErr) {
+      return NextResponse.json(
+        { error: "Failed to read season matches for recap notes", details: seasonFinishedErr.message },
+        { status: 500 }
+      );
     }
 
-    const roundTipsTotal = Object.values(roundTipCountByTeam).reduce((s, n) => s + Number(n), 0);
-    const sentimentRows = Array.from(
-      new Set([...Object.keys(roundTipCountByTeam), ...Object.keys(beforeRoundTipsByTeam)])
-    )
-      .map((team) => {
-        const roundShare = roundTipsTotal > 0 ? (Number(roundTipCountByTeam[team] ?? 0) / roundTipsTotal) * 100 : 0;
-        const seasonShare =
-          beforeRoundTipsTotal > 0
-            ? (Number(beforeRoundTipsByTeam[team] ?? 0) / beforeRoundTipsTotal) * 100
-            : 0;
+    const seasonFinishedMatches = ((seasonFinishedRows ?? []) as Array<Record<string, unknown>>)
+      .map((row) => {
+        const rawRound = row.round as
+          | {
+              round_number?: number;
+              odds_snapshot_for_time_utc?: string | null;
+            }
+          | Array<{ round_number?: number; odds_snapshot_for_time_utc?: string | null }>
+          | null
+          | undefined;
+        const roundObj = Array.isArray(rawRound) ? rawRound[0] ?? null : rawRound ?? null;
+        const winner = String(row.winner_team ?? "").trim();
+        const snapshot = String(roundObj?.odds_snapshot_for_time_utc ?? "").trim();
+        const roundNo = Number(roundObj?.round_number ?? -1);
+        if (!winner || !snapshot || !Number.isFinite(roundNo) || roundNo < 0) return null;
         return {
-          team,
-          round_share: roundShare,
-          season_share: seasonShare,
-          delta: roundShare - seasonShare,
+          id: String(row.id ?? ""),
+          home_team: String(row.home_team ?? ""),
+          away_team: String(row.away_team ?? ""),
+          winner_team: winner,
+          round_number: roundNo,
+          snapshot_for_time_utc: snapshot,
         };
       })
-      .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+      .filter(
+        (
+          x
+        ): x is {
+          id: string;
+          home_team: string;
+          away_team: string;
+          winner_team: string;
+          round_number: number;
+          snapshot_for_time_utc: string;
+        } => !!x && !!x.id
+      );
 
-    const scoredMatchesUpTo = matchRows
-      .filter((m) => {
-        const rr = seasonRoundsById.get(String(m.round_id));
-        if (!rr) return false;
-        if (Number(rr.round_number) > roundNumber) return false;
-        return String(m.winner_team ?? "").trim().length > 0;
-      })
-      .sort((a, b) => a.commence_time_utc.localeCompare(b.commence_time_utc));
+    const seasonLockedSnapshotByMatch = new Map<string, string>(
+      seasonFinishedMatches.map((m) => [m.id, m.snapshot_for_time_utc])
+    );
+    const seasonMatchIds = seasonFinishedMatches.map((m) => m.id);
+    const seasonUniqueSnapshots = Array.from(
+      new Set(seasonFinishedMatches.map((m) => m.snapshot_for_time_utc))
+    );
 
-    const scoredMatchIdsUpTo = scoredMatchesUpTo.map((m) => String(m.id));
-
-    const allTipsUpToByUser = new Map<string, Map<string, string>>();
-    if (scoredMatchIdsUpTo.length > 0) {
-      const { data: upTips, error: upTErr } = await supabase
-        .from("tips")
-        .select("user_id, match_id, picked_team")
+    const seasonOddsByMatch = new Map<string, { home: number; away: number }>();
+    if (seasonMatchIds.length > 0 && seasonUniqueSnapshots.length > 0) {
+      const { data: seasonOddsRows, error: seasonOddsErr } = await supabase
+        .from("match_odds")
+        .select("match_id, home_odds, away_odds, snapshot_for_time_utc, captured_at_utc")
         .eq("competition_id", competitionId)
-        .in("match_id", scoredMatchIdsUpTo);
+        .in("match_id", seasonMatchIds)
+        .in("snapshot_for_time_utc", seasonUniqueSnapshots)
+        .order("captured_at_utc", { ascending: false });
 
-      if (!upTErr) {
-        ((upTips ?? []) as TipRow[]).forEach((t) => {
-          const uid = String(t.user_id);
-          if (!allTipsUpToByUser.has(uid)) allTipsUpToByUser.set(uid, new Map<string, string>());
-          allTipsUpToByUser.get(uid)!.set(String(t.match_id), String(t.picked_team ?? ""));
+      if (seasonOddsErr) {
+        return NextResponse.json(
+          { error: "Failed to read season odds for recap notes", details: seasonOddsErr.message },
+          { status: 500 }
+        );
+      }
+
+      for (const row of (seasonOddsRows ?? []) as MatchOddsRow[]) {
+        const mid = String(row.match_id);
+        const rowSnapshot = String(row.snapshot_for_time_utc ?? "").trim();
+        const lockedSnapshot = seasonLockedSnapshotByMatch.get(mid) ?? "";
+        if (!lockedSnapshot || rowSnapshot !== lockedSnapshot) continue;
+        if (seasonOddsByMatch.has(mid)) continue;
+        seasonOddsByMatch.set(mid, {
+          home: Number(row.home_odds ?? 0),
+          away: Number(row.away_odds ?? 0),
         });
       }
     }
 
-    const scoredBeforeRound = scoredMatchesUpTo.filter((m) => {
-      const rr = seasonRoundsById.get(String(m.round_id));
-      return !!rr && Number(rr.round_number) < roundNumber;
-    });
+    const seasonUpsetRows = seasonFinishedMatches
+      .map((m) => {
+        const odds = seasonOddsByMatch.get(m.id);
+        if (!odds) return null;
+        let winnerOdds: number | null = null;
+        if (m.winner_team === m.home_team) winnerOdds = Number(odds.home);
+        else if (m.winner_team === m.away_team) winnerOdds = Number(odds.away);
+        if (winnerOdds === null || !Number.isFinite(Number(winnerOdds))) return null;
+        return {
+          match_id: m.id,
+          round_number: m.round_number,
+          home_team: m.home_team,
+          away_team: m.away_team,
+          winner_team: m.winner_team,
+          winner_odds: Number(winnerOdds),
+        };
+      })
+      .filter(
+        (
+          x
+        ): x is {
+          match_id: string;
+          round_number: number;
+          home_team: string;
+          away_team: string;
+          winner_team: string;
+          winner_odds: number;
+        } => !!x
+      )
+      .sort((a, b) => Number(b.winner_odds) - Number(a.winner_odds));
 
-    function computeStreak(matchesOrdered: MatchRow[], picks: Map<string, string> | undefined) {
-      if (!picks || matchesOrdered.length === 0) return 0;
-      let streak = 0;
-      for (let i = matchesOrdered.length - 1; i >= 0; i -= 1) {
-        const m = matchesOrdered[i];
-        const winner = String(m.winner_team ?? "").trim();
-        const picked = String(picks.get(String(m.id)) ?? "").trim();
-        if (!winner || !picked || picked !== winner) break;
-        streak += 1;
-      }
-      return streak;
-    }
+    const seasonBiggestUpset = seasonUpsetRows[0] ?? null;
+    const seasonBiggestUpsetOdds = seasonBiggestUpset ? Number(seasonBiggestUpset.winner_odds) : null;
+    const seasonBiggestUpsetsThisRound =
+      seasonBiggestUpsetOdds === null
+        ? []
+        : seasonUpsetRows.filter(
+            (x) =>
+              x.round_number === roundNumber &&
+              Math.abs(Number(x.winner_odds) - Number(seasonBiggestUpsetOdds)) < 0.0001
+          );
 
-    const streakRows = memberIds.map((uid) => {
-      const picks = allTipsUpToByUser.get(uid);
-      const pre = computeStreak(scoredBeforeRound, picks);
-      const post = computeStreak(scoredMatchesUpTo, picks);
-      return {
-        user_id: uid,
-        display_name: safeDisplayName(nameByUserId[uid], uid),
-        pre_streak: pre,
-        post_streak: post,
-      };
-    });
-
-    const longestCurrentStreak = [...streakRows].sort((a, b) => b.post_streak - a.post_streak)[0] ?? null;
-    const brokenStreaks = streakRows
-      .filter((x) => x.pre_streak >= 3 && x.post_streak < x.pre_streak)
-      .sort((a, b) => b.pre_streak - a.pre_streak);
-
-    const highRisk = [...playerStats]
-      .filter((p) => p.correct_tips >= 2)
-      .sort((a, b) => b.avg_correct_odds - a.avg_correct_odds)[0] ?? null;
-
-    const efficient = [...playerStats]
-      .filter((p) => p.total_tips >= 3)
-      .sort((a, b) => {
-        if (b.accuracy_pct !== a.accuracy_pct) return b.accuracy_pct - a.accuracy_pct;
-        return b.round_score - a.round_score;
-      })[0] ?? null;
-
-    const sharpPickLeaders = topN(
-      [...playerStats]
-        .filter((p) => p.underdog_points > 0)
-        .sort((a, b) => b.underdog_points - a.underdog_points),
-      3
-    );
-
-    const whatIfRows = memberIds
-      .map((uid) => {
+    const oneTipSwapRows = lbRows
+      .map((r) => {
+        const uid = String(r.user_id);
         const picks = picksByUserMatch.get(uid);
-        let potentialGain = 0;
-        let missingTips = 0;
+        if (!picks) return null;
+
+        let bestSwap:
+          | {
+              match: MatchRow;
+              fromTeam: string;
+              toTeam: string;
+              gain: number;
+            }
+          | null = null;
 
         for (const m of roundMatches) {
           const mid = String(m.id);
-          const winnerOdds = winnerOddsByMatch[mid] ?? null;
-          if (!winnerOdds) continue;
+          const winner = String(m.winner_team ?? "").trim();
+          if (!winner) continue;
+          const picked = String(picks.get(mid) ?? "").trim();
+          if (!picked || picked === winner) continue;
 
-          const picked = picks?.get(mid) ?? null;
-          if (!picked) {
-            missingTips += 1;
-            potentialGain += Number(winnerOdds);
+          const gain = winnerOddsByMatch[mid];
+          if (gain === null || !Number.isFinite(Number(gain))) continue;
+
+          if (!bestSwap || Number(gain) > Number(bestSwap.gain)) {
+            bestSwap = {
+              match: m,
+              fromTeam: picked,
+              toTeam: winner,
+              gain: Number(gain),
+            };
           }
         }
 
+        if (!bestSwap) return null;
+
+        const newTotal = Number(r.total_points) + Number(bestSwap.gain);
+        const newRank = 1 + lbRows.filter((x) => Number(x.total_points) > newTotal).length;
+        const climbed = Number(r.rank) - Number(newRank);
+
         return {
           user_id: uid,
-          display_name: safeDisplayName(nameByUserId[uid], uid),
-          missing_tips: missingTips,
-          potential_gain: potentialGain,
+          display_name: r.display_name,
+          old_rank: Number(r.rank),
+          new_rank: Number(newRank),
+          climbed: Number(climbed),
+          gain: Number(bestSwap.gain),
+          new_total: Number(newTotal),
+          swap: bestSwap,
         };
       })
-      .filter((r) => r.missing_tips > 0 && r.potential_gain > 0)
-      .sort((a, b) => b.potential_gain - a.potential_gain);
-
-    const nextRound = roundRows.find((r) => Number(r.round_number) === roundNumber + 1) ?? null;
-    let nextRoundLock = "n/a";
-    let nextRoundUpsets: Array<{ home: string; away: string; gap: number }> = [];
-
-    if (nextRound) {
-      const nextMatches = matchRows.filter((m) => String(m.round_id) === String(nextRound.id));
-      if (nextMatches.length > 0) {
-        const firstMs = Math.min(
-          ...nextMatches
-            .map((m) => new Date(m.commence_time_utc).getTime())
-            .filter((ms) => Number.isFinite(ms))
-        );
-        if (Number.isFinite(firstMs)) {
-          nextRoundLock = fmtMelbourne(new Date(firstMs).toISOString());
-        }
-
-        const nextIds = nextMatches.map((m) => String(m.id));
-        const { data: nextOddsRows } = await supabase
-          .from("match_odds")
-          .select("match_id, home_odds, away_odds, captured_at_utc")
-          .eq("competition_id", competitionId)
-          .in("match_id", nextIds)
-          .order("captured_at_utc", { ascending: false });
-
-        const latestOddsByMatch: Record<string, { home: number; away: number }> = {};
-        ((nextOddsRows ?? []) as Array<{ match_id: string; home_odds: number; away_odds: number }>).forEach((r) => {
-          const mid = String(r.match_id);
-          if (latestOddsByMatch[mid]) return;
-          latestOddsByMatch[mid] = {
-            home: Number(r.home_odds ?? 0),
-            away: Number(r.away_odds ?? 0),
+      .filter(
+        (
+          x
+        ): x is {
+          user_id: string;
+          display_name: string;
+          old_rank: number;
+          new_rank: number;
+          climbed: number;
+          gain: number;
+          new_total: number;
+          swap: {
+            match: MatchRow;
+            fromTeam: string;
+            toTeam: string;
+            gain: number;
           };
-        });
-
-        nextRoundUpsets = nextMatches
-          .map((m) => {
-            const o = latestOddsByMatch[String(m.id)];
-            if (!o) return null;
-            return {
-              home: m.home_team,
-              away: m.away_team,
-              gap: Math.abs(Number(o.home) - Number(o.away)),
-            };
-          })
-          .filter((x): x is { home: string; away: string; gap: number } => !!x)
-          .sort((a, b) => a.gap - b.gap)
-          .slice(0, 3);
-      }
-    }
+        } => !!x && Number(x.climbed) > 0
+      )
+      .sort((a, b) => {
+        if (Number(b.climbed) !== Number(a.climbed)) return Number(b.climbed) - Number(a.climbed);
+        if (Number(b.gain) !== Number(a.gain)) return Number(b.gain) - Number(a.gain);
+        return Number(a.old_rank) - Number(b.old_rank);
+      });
+    const bestOneTipSwap = oneTipSwapRows[0] ?? null;
+    const nextBestOneTipSwaps = oneTipSwapRows.slice(1, 3);
 
     const headlineBits: string[] = [];
     if (roundWinners.length > 0) {
       headlineBits.push(
-        `Round winner: ${humanList(roundWinners.map((w) => w.display_name))} (${round2(maxRoundScore)} pts)`
+        `Round winner: ${humanList(roundWinners.map((w) => w.display_name))} (${fmt2(
+          maxRoundScore
+        )} pts)`
       );
     }
-    if (topRises.length > 0) {
-      headlineBits.push(
-        `Biggest rise: ${topRises[0].display_name} (+${topRises[0].movement})`
-      );
-    }
-    if (topDrops.length > 0) {
-      headlineBits.push(
-        `Biggest drop: ${topDrops[0].display_name} (${topDrops[0].movement})`
-      );
-    }
+    headlineBits.push(`Round difficulty: ${fmt2(roundDifficultyPct)}% correct`);
     if (biggestUpset) {
-      headlineBits.push(
-        `Biggest upset: ${biggestUpset.winner} at ${round2(biggestUpset.winnerOdds)}`
-      );
+      headlineBits.push(`Biggest upset: ${biggestUpset.winner} at ${fmt2(biggestUpset.winnerOdds)}`);
     }
-    headlineBits.push(`Round difficulty: ${round2(roundDifficultyPct)}% correct`);
 
     const subject = `Round ${roundNumber} recap (${season})`;
     const generatedAtIso = new Date().toISOString();
 
-    const narrativeLines: string[] = [];
-    narrativeLines.push("NARRATIVE RECAP");
-    narrativeLines.push(
-      `Round ${roundNumber} is complete. ${roundWinners.length ? `${humanList(roundWinners.map((w) => w.display_name))} topped the round with ${round2(maxRoundScore)} points.` : "No round winner could be resolved."}`
-    );
-    narrativeLines.push(
-      `Round difficulty finished at ${round2(roundDifficultyPct)}% correct tips, with an average round score of ${round2(roundAvg)}.`
-    );
-    narrativeLines.push(
-      `${tippedCount}/${totalMembers} members tipped in this round (${missingCount} missed).`
-    );
-    narrativeLines.push(
-      `Ladder movement: rises ${topRises.length ? topRises.map((r) => `${r.display_name} (+${r.movement})`).join(", ") : "none"}, drops ${topDrops.length ? topDrops.map((r) => `${r.display_name} (${r.movement})`).join(", ") : "none"}.`
-    );
-    narrativeLines.push(
-      `Biggest upset: ${biggestUpset ? `${biggestUpset.winner} at ${round2(biggestUpset.winnerOdds)} (${biggestUpset.match.home_team} vs ${biggestUpset.match.away_team})` : "n/a"}.`
-    );
-    narrativeLines.push(
-      `Most-picked side: ${mostPickedTeam ? `${mostPickedTeam[0]} (${mostPickedTeam[1]} picks)` : "n/a"}. Consensus miss: ${consensusMiss ? `${consensusMiss.match.home_team} vs ${consensusMiss.match.away_team}, where ${consensusMiss.loser} was backed by ${round2(consensusMiss.loserPct)}%` : "n/a"}.`
-    );
-    narrativeLines.push(
-      `Streak watch: ${longestCurrentStreak ? `${longestCurrentStreak.display_name} now leads with ${longestCurrentStreak.post_streak} in a row` : "n/a"}; broken streaks ${brokenStreaks.length ? brokenStreaks.slice(0, 3).map((s) => `${s.display_name} (${s.pre_streak} -> ${s.post_streak})`).join(", ") : "none"}.`
-    );
-    narrativeLines.push(
-      `Next round lock: ${nextRound ? nextRoundLock : "n/a"}. Closest odds matchups: ${nextRoundUpsets.length ? nextRoundUpsets.map((m) => `${m.home} vs ${m.away} (gap ${round2(m.gap)})`).join(", ") : "n/a"}.`
-    );
-
-    const rawStatsLines: string[] = [];
-    rawStatsLines.push("RAW STATS");
-    rawStatsLines.push(`Generated: ${fmtMelbourne(generatedAtIso)} (Melbourne)`);
-    rawStatsLines.push(`First game: ${fmtMelbourne(target.first_game_utc)}`);
-    rawStatsLines.push(`Eligible after ${hoursAfterFirst}h: ${fmtMelbourne(target.due_at_utc)}`);
-    rawStatsLines.push("");
-    rawStatsLines.push("Headline metrics");
-    headlineBits.forEach((h) => rawStatsLines.push(`- ${h}`));
-    rawStatsLines.push(`- Participation: ${tippedCount}/${totalMembers}`);
-    rawStatsLines.push(`- Missing tips: ${missingCount}`);
-    rawStatsLines.push(`- Leader margin: ${round2(leaderMargin)} pts`);
-    rawStatsLines.push(`- Underdog points awarded: ${round2(underdogPointsAwarded)}`);
-    rawStatsLines.push("");
-    rawStatsLines.push("Top ladder snapshot");
-    topN(lbRows, 10).forEach((r) => {
-      rawStatsLines.push(
-        `- #${r.rank} ${r.display_name}: total ${round2(r.total_points)}, round ${round2(r.round_score)}, accuracy ${round2(r.accuracy_pct)}%, move ${Number(r.movement) > 0 ? "+" : ""}${r.movement}`
-      );
-    });
-    rawStatsLines.push("");
-    rawStatsLines.push("Match outcomes");
-    rrMatches.forEach((m) => {
-      rawStatsLines.push(
-        `- ${m.home_team} vs ${m.away_team}: winner ${m.winner_team ?? "n/a"}, tips ${m.total_tips}, split ${m.home_team} ${m.tipping.home_count} (${round2(m.tipping.home_pct)}%) / ${m.away_team} ${m.tipping.away_count} (${round2(m.tipping.away_pct)}%)`
-      );
-    });
-    rawStatsLines.push("");
-    rawStatsLines.push("Additional signals");
-    rawStatsLines.push(
-      `- Closest rivals: ${closestRivalPairs.length ? topN(closestRivalPairs, 3).map((p) => `${p.a.display_name} vs ${p.b.display_name} (${round2(p.gap)} pts)`).join(", ") : "n/a"}`
-    );
-    rawStatsLines.push(
-      `- Sharp pick leaders: ${sharpPickLeaders.length ? sharpPickLeaders.map((p) => `${p.display_name} (${round2(p.underdog_points)} pts)`).join(", ") : "none"}`
-    );
-    rawStatsLines.push(
-      `- Risk profile: ${highRisk ? `${highRisk.display_name} (${round2(highRisk.avg_correct_odds)} avg correct odds)` : "n/a"}`
-    );
-    rawStatsLines.push(
-      `- Efficiency profile: ${efficient ? `${efficient.display_name} (${round2(efficient.accuracy_pct)}% accuracy)` : "n/a"}`
-    );
-    rawStatsLines.push(
-      `- Missed-tip max swing: ${whatIfRows.length ? topN(whatIfRows, 2).map((r) => `${r.display_name} (+${round2(r.potential_gain)})`).join(", ") : "n/a"}`
-    );
-    rawStatsLines.push(
-      `- Team sentiment shifts: ${sentimentRows.length ? topN(sentimentRows, 3).map((s) => `${s.team} (${s.delta >= 0 ? "+" : ""}${round2(s.delta)}pp)`).join(", ") : "n/a"}`
-    );
-
-    const narrativeText = narrativeLines.join("\n");
-    const rawStatsText = rawStatsLines.join("\n");
-
     const textLines: string[] = [];
-    textLines.push(`Needlessly Complicated Tipping - Round ${roundNumber} Recap`);
+    const winnerHeadline =
+      roundWinners.length === 1
+        ? `${roundWinners[0].display_name} topped the week with ${fmt2(maxRoundScore)} points.`
+        : `${humanList(roundWinners.map((w) => w.display_name))} topped the week with ${fmt2(
+            maxRoundScore
+          )} points.`;
+
+    textLines.push(`Round ${roundNumber} is complete, and ${winnerHeadline}`);
     textLines.push("");
-    textLines.push(...narrativeLines);
+    textLines.push("Next highest scorers:");
+    for (let idx = 1; idx < Math.min(5, topRoundScorers.length); idx += 1) {
+      const p = topRoundScorers[idx];
+      textLines.push(`${idx + 1}. ${p.display_name} - ${fmt2(Number(p.round_score))}`);
+    }
+    if (topRoundScorers.length <= 1) {
+      textLines.push("2. n/a");
+      textLines.push("3. n/a");
+      textLines.push("4. n/a");
+      textLines.push("5. n/a");
+    } else if (topRoundScorers.length < 5) {
+      for (let idx = topRoundScorers.length + 1; idx <= 5; idx += 1) {
+        textLines.push(`${idx}. n/a`);
+      }
+    }
+    if (tiedAtFifth.length > 0 && topRoundScorers.length >= 5) {
+      textLines.push(
+        `Also on ${fmt2(Number(topRoundScorers[4].round_score))}: ${humanList(
+          tiedAtFifth.map((p) => p.display_name)
+        )}.`
+      );
+    }
     textLines.push("");
-    textLines.push(...rawStatsLines);
+
+    textLines.push(
+      `Round difficulty landed at ${fmt2(
+        roundDifficultyPct
+      )}% correct tips, with an average round score of ${fmt2(roundAvg)}.`
+    );
+    if (previousRoundNumber !== null && previousRoundDifficulty !== null && difficultyDelta !== null) {
+      const difficultyGapAbs = Math.abs(difficultyDelta);
+      textLines.push(
+        `Compared to Round ${previousRoundNumber} (${fmt2(previousRoundDifficulty)}%), Round ${roundNumber} was ${
+          difficultyDelta >= 0 ? "+" : "-"
+        }${fmt2(difficultyGapAbs)} percentage points ${difficultyDelta >= 0 ? "easier" : "harder"}.`
+      );
+    } else {
+      textLines.push(
+        "Compared to previous round: N/A (this is the first completed round, so it sets the baseline)."
+      );
+    }
+    textLines.push("");
+
+    textLines.push("5 biggest climbers");
+    if (topRises.length > 0) {
+      topRises.forEach((r) => {
+        textLines.push(
+          `- ${r.display_name} (${fmtSigned(Number(r.movement))}): ${tipInsightForUser(String(
+            r.user_id
+          ))}.`
+        );
+      });
+    } else {
+      textLines.push("- None.");
+    }
+    textLines.push("");
+
+    textLines.push("5 biggest fallers");
+    if (topDrops.length > 0) {
+      topDrops.forEach((r) => {
+        textLines.push(
+          `- ${r.display_name} (${fmtSigned(Number(r.movement))}): ${tipInsightForUser(String(
+            r.user_id
+          ))}.`
+        );
+      });
+    } else {
+      textLines.push("- None.");
+    }
+    textLines.push("");
+
+    if (biggestUpset) {
+      textLines.push(
+        `Biggest upset this week: ${biggestUpset.winner} at ${fmt2(
+          biggestUpset.winnerOdds
+        )} (backed by only ${fmt1(biggestUpset.winnerTipShare)}%).`
+      );
+    } else {
+      textLines.push("Biggest upset this week: n/a.");
+    }
+    if (mostPickedTeam) {
+      const mostPickedPct =
+        roundTipsTotal > 0 ? (Number(mostPickedTeam[1]) / Number(roundTipsTotal)) * 100 : 0;
+      textLines.push(
+        `Most-picked side: ${mostPickedTeam[0]} (${mostPickedTeam[1]} picks, ${fmt1(mostPickedPct)}%).`
+      );
+    } else {
+      textLines.push("Most-picked side: n/a.");
+    }
+    textLines.push("");
+
+    textLines.push("Extra round notes:");
+    textLines.push(`- Majority pick won ${majorityPickWins} of ${rrMatches.length} games.`);
+    if (minorityBackedWinners.length > 0) {
+      textLines.push(
+        `- ${minorityBackedWinners.length} winner${
+          minorityBackedWinners.length === 1 ? "" : "s"
+        } ${minorityBackedWinners.length === 1 ? "was" : "were"} backed by fewer than half the comp: ${humanList(
+          minorityBackedWinners.map((x) => `${x.winner} (${fmt1(x.winnerPct)}%)`)
+        )}.`
+      );
+    } else {
+      textLines.push("- No winners were backed by fewer than half the comp.");
+    }
+    if (perfectRoundPlayers.length > 0) {
+      textLines.push(
+        `- Perfect round check: ${humanList(
+          perfectRoundPlayers.map((p) => p.display_name)
+        )} nailed ${fullRoundTips}/${fullRoundTips}.`
+      );
+    } else {
+      textLines.push(`- Perfect round check: no one went ${fullRoundTips}/${fullRoundTips}.`);
+    }
+    if (zeroAfterTippingAllPlayers.length > 0) {
+      textLines.push(
+        `- Zero-score-after-tipping check: ${humanList(
+          zeroAfterTippingAllPlayers.map((p) => p.display_name)
+        )} scored 0 despite tipping all ${fullRoundTips} games.`
+      );
+    } else {
+      textLines.push(
+        `- Zero-score-after-tipping check: no one scored 0 after tipping all ${fullRoundTips} games.`
+      );
+    }
+    if (seasonBiggestUpset && seasonBiggestUpsetsThisRound.length > 0) {
+      textLines.push(
+        `- Biggest upset-by-points check: yes. This round matched the season high at ${fmt2(
+          Number(seasonBiggestUpset.winner_odds)
+        )}.`
+      );
+    } else if (seasonBiggestUpset) {
+      textLines.push(
+        `- Biggest upset-by-points check: no. Season high remains ${seasonBiggestUpset.winner_team} at ${fmt2(
+          Number(seasonBiggestUpset.winner_odds)
+        )} in Round ${seasonBiggestUpset.round_number}.`
+      );
+    } else {
+      textLines.push("- Biggest upset-by-points check: unavailable.");
+    }
+    textLines.push(
+      `- ${fivePlusWinners} tipster${fivePlusWinners === 1 ? "" : "s"} hit 5+ winners; ${sixPlusWinners} hit 6+.`
+    );
+    textLines.push("");
+
+    textLines.push(`\"Why oh why did I pick them\" this round goes to:`);
+    if (bestOneTipSwap) {
+      textLines.push(`- ${bestOneTipSwap.display_name}`);
+      textLines.push(
+        `- Would have gone from ${ordinal(bestOneTipSwap.old_rank)} to ${ordinal(
+          bestOneTipSwap.new_rank
+        )} (${fmtSigned(bestOneTipSwap.climbed)} places)`
+      );
+      textLines.push(
+        `- Swap: ${bestOneTipSwap.swap.fromTeam} -> ${bestOneTipSwap.swap.toTeam} in ${bestOneTipSwap.swap.match.home_team} vs ${bestOneTipSwap.swap.match.away_team}`
+      );
+      textLines.push(`- Estimated points gain: +${fmt2(bestOneTipSwap.gain)}`);
+    } else {
+      textLines.push("- No positive one-tip swap scenarios this round.");
+    }
+    if (nextBestOneTipSwaps.length > 0) {
+      textLines.push("Next closest:");
+      nextBestOneTipSwaps.forEach((x) =>
+        textLines.push(
+          `- ${x.display_name}: ${fmtSigned(x.climbed)} places (${ordinal(x.old_rank)} -> ${ordinal(
+            x.new_rank
+          )})`
+        )
+      );
+    }
 
     const text = textLines.join("\n");
+    const narrativeText = text;
+    const rawStatsText = "";
     const html = `<div style=\"font-family:Arial,Helvetica,sans-serif;line-height:1.5;color:#111;white-space:pre-wrap\">${text
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
@@ -1267,9 +1432,8 @@ export async function GET(req: Request) {
       summary: {
         max_round_score: round2(maxRoundScore),
         avg_round_score: round2(roundAvg),
-        tipped_count: tippedCount,
-        total_members: totalMembers,
-        missing_count: missingCount,
+        player_count: playerStats.length,
+        match_count: rrMatches.length,
         round_difficulty_pct: round2(roundDifficultyPct),
       },
       headline_bits: headlineBits,

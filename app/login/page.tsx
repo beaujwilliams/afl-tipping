@@ -22,15 +22,19 @@ export default function LoginPage() {
     let mounted = true;
 
     async function goIfLoggedIn() {
-      const { data } = await supabaseBrowser.auth.getSession();
+      const { data, error } = await supabaseBrowser.auth.getUser();
       if (!mounted) return;
-      if (data.session) window.location.href = postLoginHref;
+      if (error) return;
+      if (data.user) window.location.replace(postLoginHref);
     }
 
     goIfLoggedIn();
 
-    const { data: sub } = supabaseBrowser.auth.onAuthStateChange((_event, session) => {
-      if (session) window.location.href = postLoginHref;
+    const { data: sub } = supabaseBrowser.auth.onAuthStateChange((event, session) => {
+      if (!mounted) return;
+      if (event === "SIGNED_IN" && session) {
+        window.location.replace(postLoginHref);
+      }
     });
 
     return () => {

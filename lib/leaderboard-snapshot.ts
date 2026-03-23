@@ -106,7 +106,7 @@ export type LeaderboardResponse = {
   rows: LeaderboardRow[];
 };
 
-const LEADERBOARD_CACHE_CONTROL = "public, s-maxage=30, stale-while-revalidate=300";
+const LEADERBOARD_CACHE_CONTROL = "no-store";
 const LEADERBOARD_CACHE_TABLE = "leaderboard_snapshot_cache";
 const LEADERBOARD_CACHE_MAX_AGE_MS = 2 * 60 * 1000;
 

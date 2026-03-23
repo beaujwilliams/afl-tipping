@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
-import { AFL_TEAMS } from "@/lib/afl-teams";
 import { getBearer } from "@/lib/admin-auth";
 import { pointsForWinningTip } from "@/lib/scoring-lock-rules";
 import { createClient, createServiceClient } from "@/lib/supabase-server";
@@ -44,6 +43,46 @@ type TeamRow = {
   avg_points_per_correct: number;
 };
 
+const TEAM_NAME_ALIASES: Record<string, string> = {
+  adelaide: "Adelaide",
+  "adelaide crows": "Adelaide",
+  "brisbane lions": "Brisbane Lions",
+  carlton: "Carlton",
+  "carlton blues": "Carlton",
+  collingwood: "Collingwood",
+  "collingwood magpies": "Collingwood",
+  essendon: "Essendon",
+  "essendon bombers": "Essendon",
+  fremantle: "Fremantle",
+  "fremantle dockers": "Fremantle",
+  geelong: "Geelong",
+  "geelong cats": "Geelong",
+  "gold coast": "Gold Coast",
+  "gold coast suns": "Gold Coast",
+  gws: "Greater Western Sydney",
+  "gws giants": "Greater Western Sydney",
+  "greater western sydney": "Greater Western Sydney",
+  "greater western sydney giants": "Greater Western Sydney",
+  hawthorn: "Hawthorn",
+  "hawthorn hawks": "Hawthorn",
+  melbourne: "Melbourne",
+  "melbourne demons": "Melbourne",
+  "north melbourne": "North Melbourne",
+  kangaroos: "North Melbourne",
+  "north melbourne kangaroos": "North Melbourne",
+  "port adelaide": "Port Adelaide",
+  "port adelaide power": "Port Adelaide",
+  richmond: "Richmond",
+  "richmond tigers": "Richmond",
+  "st kilda": "St Kilda",
+  "st kilda saints": "St Kilda",
+  sydney: "Sydney",
+  "sydney swans": "Sydney",
+  "west coast": "West Coast",
+  "west coast eagles": "West Coast",
+  "western bulldogs": "Western Bulldogs",
+};
+
 function mustEnv(name: string) {
   const value = process.env[name];
   if (!value) throw new Error(`Missing env var: ${name}`);
@@ -71,6 +110,14 @@ function pickCompetitionIdForSeason(roundRows: RoundRow[]) {
     if (b[1] !== a[1]) return b[1] - a[1];
     return a[0].localeCompare(b[0]);
   })[0]?.[0] ?? null;
+}
+
+function normalizeTeamName(value: string | null | undefined) {
+  const cleaned = String(value ?? "")
+    .trim()
+    .replace(/\s+/g, " ");
+  if (!cleaned) return "";
+  return TEAM_NAME_ALIASES[cleaned.toLowerCase()] ?? cleaned;
 }
 
 async function getUserFromBearer(req: Request) {
@@ -127,16 +174,6 @@ export async function GET(req: Request) {
     const allSeasonRounds = (rounds ?? []) as RoundRow[];
     const competitionId = pickCompetitionIdForSeason(allSeasonRounds);
     if (!competitionId) {
-      const rows = AFL_TEAMS.map((team) => ({
-        team,
-        tipped_count: 0,
-        correct_count: 0,
-        incorrect_count: 0,
-        accuracy_pct: 0,
-        total_points: 0,
-        avg_points_per_tip: 0,
-        avg_points_per_correct: 0,
-      }));
       return NextResponse.json({
         ok: true,
         season,
@@ -147,7 +184,7 @@ export async function GET(req: Request) {
           incorrect: 0,
           total_points: 0,
         },
-        rows,
+        rows: [],
       });
     }
 
@@ -232,17 +269,42 @@ export async function GET(req: Request) {
       }
     }
 
-    const scoredMatches = new Map<string, MatchRow & { home_odds: number; away_odds: number }>();
+    const seasonTeams = new Set<string>();
+    for (const match of matchRows) {
+      const homeTeamNormalized = normalizeTeamName(match.home_team);
+      const awayTeamNormalized = normalizeTeamName(match.away_team);
+      if (homeTeamNormalized) seasonTeams.add(homeTeamNormalized);
+      if (awayTeamNormalized) seasonTeams.add(awayTeamNormalized);
+    }
+
+    const scoredMatches = new Map<
+      string,
+      MatchRow & {
+        home_odds: number;
+        away_odds: number;
+        home_team_normalized: string;
+        away_team_normalized: string;
+        winner_team_normalized: string;
+      }
+    >();
     for (const match of matchRows) {
       const matchId = String(match.id);
       const winner = String(match.winner_team ?? "").trim();
       if (!winner) continue;
       const odds = oddsByMatchId.get(matchId);
       if (!odds) continue;
+
+      const homeTeamNormalized = normalizeTeamName(match.home_team);
+      const awayTeamNormalized = normalizeTeamName(match.away_team);
+      const winnerTeamNormalized = normalizeTeamName(match.winner_team);
+
       scoredMatches.set(matchId, {
         ...match,
         home_odds: odds.home_odds,
         away_odds: odds.away_odds,
+        home_team_normalized: homeTeamNormalized,
+        away_team_normalized: awayTeamNormalized,
+        winner_team_normalized: winnerTeamNormalized,
       });
     }
 
@@ -276,7 +338,7 @@ export async function GET(req: Request) {
       }
     >();
 
-    for (const team of AFL_TEAMS) {
+    for (const team of seasonTeams) {
       statsByTeam.set(team, {
         tipped_count: 0,
         correct_count: 0,
@@ -287,7 +349,9 @@ export async function GET(req: Request) {
 
     for (const tip of tips) {
       const matchId = String(tip.match_id);
-      const pickedTeam = String(tip.picked_team ?? "").trim();
+      const pickedTeamRaw = String(tip.picked_team ?? "").trim();
+      if (!pickedTeamRaw) continue;
+      const pickedTeam = normalizeTeamName(pickedTeamRaw);
       if (!pickedTeam) continue;
 
       const match = scoredMatches.get(matchId);
@@ -305,14 +369,14 @@ export async function GET(req: Request) {
       const teamStats = statsByTeam.get(pickedTeam)!;
       teamStats.tipped_count += 1;
 
-      const winnerTeam = String(match.winner_team ?? "").trim();
-      const correct = pickedTeam === winnerTeam;
+      const winnerTeam = match.winner_team_normalized;
+      const correct = Boolean(winnerTeam) && pickedTeam === winnerTeam;
       if (correct) {
         const points = pointsForWinningTip({
           pickedTeam,
           winnerTeam,
-          homeTeam: String(match.home_team ?? ""),
-          awayTeam: String(match.away_team ?? ""),
+          homeTeam: match.home_team_normalized,
+          awayTeam: match.away_team_normalized,
           homeOdds: Number(match.home_odds ?? 0),
           awayOdds: Number(match.away_odds ?? 0),
         });
@@ -381,4 +445,3 @@ export async function GET(req: Request) {
     );
   }
 }
-

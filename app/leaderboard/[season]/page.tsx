@@ -146,6 +146,10 @@ function TrendChart(props: {
   totalParticipants: number;
 }) {
   const { rounds, selectedSeries, totalParticipants } = props;
+  const [hoveredUserId, setHoveredUserId] = useState<string | null>(null);
+  const activeHoveredUserId = selectedSeries.some((series) => series.user_id === hoveredUserId)
+    ? hoveredUserId
+    : null;
 
   if (rounds.length === 0) {
     return (
@@ -262,7 +266,9 @@ function TrendChart(props: {
               })
               .join(" ");
 
-            const stroke = colorForUser(series.user_id);
+            const isActive =
+              activeHoveredUserId === null || activeHoveredUserId === series.user_id;
+            const stroke = isActive ? colorForUser(series.user_id) : "var(--muted)";
             const lastPoint = orderedPoints[orderedPoints.length - 1];
             return (
               <g key={series.user_id}>
@@ -270,7 +276,8 @@ function TrendChart(props: {
                   d={pathData}
                   fill="none"
                   stroke={stroke}
-                  strokeWidth={2.5}
+                  strokeOpacity={isActive ? 1 : 0.38}
+                  strokeWidth={isActive ? 2.8 : 2.1}
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 />
@@ -279,6 +286,7 @@ function TrendChart(props: {
                   cy={y(lastPoint.rank)}
                   r={4}
                   fill={stroke}
+                  opacity={isActive ? 1 : 0.45}
                   stroke="var(--card)"
                   strokeWidth={1.5}
                 />
@@ -291,18 +299,33 @@ function TrendChart(props: {
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
         {selectedSeries.map((series) => {
           const latest = series.points[series.points.length - 1];
+          const isActive =
+            activeHoveredUserId === null || activeHoveredUserId === series.user_id;
+          const isHovered = activeHoveredUserId === series.user_id;
           return (
-            <div
+            <button
+              type="button"
               key={`legend-${series.user_id}`}
+              onMouseEnter={() => setHoveredUserId(series.user_id)}
+              onMouseLeave={() => setHoveredUserId(null)}
+              onFocus={() => setHoveredUserId(series.user_id)}
+              onBlur={() => setHoveredUserId(null)}
+              title="Highlight this tipster on chart"
               style={{
+                appearance: "none",
+                background: "var(--card)",
+                color: "var(--foreground)",
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 8,
-                border: "1px solid var(--border)",
+                border: `1px solid ${isHovered ? colorForUser(series.user_id) : "var(--border)"}`,
                 borderRadius: 999,
                 padding: "5px 10px",
                 fontSize: 13,
                 fontWeight: 600,
+                cursor: "pointer",
+                opacity: isActive ? 1 : 0.62,
+                transition: "opacity 120ms ease, border-color 120ms ease",
               }}
             >
               <span
@@ -318,7 +341,7 @@ function TrendChart(props: {
               <span className="ui-caption" style={{ fontSize: 12 }}>
                 #{latest?.rank ?? "-"}
               </span>
-            </div>
+            </button>
           );
         })}
       </div>

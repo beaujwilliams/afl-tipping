@@ -94,6 +94,19 @@ export type LeaderboardRow = {
   avg_winning_odds: number;
 };
 
+export type LeaderboardTrendPoint = {
+  round_number: number;
+  rank: number;
+  total_points: number;
+};
+
+export type LeaderboardTrendSeries = {
+  user_id: string;
+  display_name: string;
+  payment_status: string | null;
+  points: LeaderboardTrendPoint[];
+};
+
 export type LeaderboardResponse = {
   ok: true;
   season: number;
@@ -103,6 +116,8 @@ export type LeaderboardResponse = {
   previous_round_for_movement: number | null;
   matches_scored: number;
   matches_skipped_no_odds?: number;
+  scored_rounds: number[];
+  rank_trends: LeaderboardTrendSeries[];
   rows: LeaderboardRow[];
 };
 
@@ -250,6 +265,8 @@ export async function computeLeaderboardSnapshot(params: {
       latest_scored_round: null,
       previous_round_for_movement: null,
       matches_scored: 0,
+      scored_rounds: [],
+      rank_trends: [],
       rows: [],
     };
   }
@@ -606,6 +623,59 @@ export async function computeLeaderboardSnapshot(params: {
     };
   });
 
+  const rankTrendByUserId = new Map<string, LeaderboardTrendPoint[]>();
+  statsByUser.forEach((stats) => {
+    rankTrendByUserId.set(stats.user_id, []);
+  });
+
+  for (const roundNo of roundsWithScores) {
+    const rankedAtRound = Array.from(statsByUser.values())
+      .map((stats) => {
+        const totalPointsAtRound = sumUpTo(stats.points_by_round, roundNo);
+        const correctTipsAtRound = sumUpTo(stats.correct_by_round, roundNo);
+        const tipsAtRound = sumUpTo(stats.tips_by_round, roundNo);
+        const accuracyAtRound = tipsAtRound > 0 ? (correctTipsAtRound / tipsAtRound) * 100 : 0;
+        return {
+          user_id: stats.user_id,
+          display_name: stats.display_name,
+          total_points: totalPointsAtRound,
+          accuracy_pct: accuracyAtRound,
+          correct_tips: correctTipsAtRound,
+        };
+      })
+      .sort((a, b) =>
+        leaderboardRankComparator(
+          {
+            total_points: a.total_points,
+            accuracy_pct: a.accuracy_pct,
+            correct_tips: a.correct_tips,
+            display_name: a.display_name,
+          },
+          {
+            total_points: b.total_points,
+            accuracy_pct: b.accuracy_pct,
+            correct_tips: b.correct_tips,
+            display_name: b.display_name,
+          }
+        )
+      );
+
+    rankedAtRound.forEach((row, index) => {
+      rankTrendByUserId.get(row.user_id)?.push({
+        round_number: roundNo,
+        rank: index + 1,
+        total_points: round2(row.total_points),
+      });
+    });
+  }
+
+  const rankTrends: LeaderboardTrendSeries[] = rows.map((row) => ({
+    user_id: row.user_id,
+    display_name: row.display_name,
+    payment_status: row.payment_status,
+    points: rankTrendByUserId.get(row.user_id) ?? [],
+  }));
+
   return {
     ok: true,
     season: params.season,
@@ -615,6 +685,8 @@ export async function computeLeaderboardSnapshot(params: {
     previous_round_for_movement: previousRoundForMovement,
     matches_scored: scoredMatches.length,
     matches_skipped_no_odds: skippedNoOdds,
+    scored_rounds: roundsWithScores,
+    rank_trends: rankTrends,
     rows,
   };
 }

@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { UnpaidTag } from "@/components/UnpaidTag";
 import { ChampionCrown } from "@/components/ChampionCrown";
-import { UiTableCell, UiTableHeadCell, UiTableScroll, UiTableShell } from "@/components/ui";
+import { UiCard, UiTableCell, UiTableHeadCell, UiTableScroll, UiTableShell } from "@/components/ui";
 
 type LeaderboardRow = {
   user_id: string;
@@ -33,8 +33,23 @@ type LeaderboardResponse = {
   latest_scored_round: number | null;
   previous_round_for_movement: number | null;
   matches_scored: number;
+  scored_rounds?: number[];
+  rank_trends?: LeaderboardTrendSeries[];
   rows: LeaderboardRow[];
   error?: string;
+};
+
+type LeaderboardTrendPoint = {
+  round_number: number;
+  rank: number;
+  total_points: number;
+};
+
+type LeaderboardTrendSeries = {
+  user_id: string;
+  display_name: string;
+  payment_status?: string | null;
+  points: LeaderboardTrendPoint[];
 };
 
 type SortKey =
@@ -97,24 +112,286 @@ function numericSortValue(row: LeaderboardRow, key: NumericSortKey) {
   return row.avg_winning_odds;
 }
 
+const TREND_COLORS = [
+  "#0f766e",
+  "#2563eb",
+  "#dc2626",
+  "#16a34a",
+  "#d97706",
+  "#9333ea",
+  "#0891b2",
+  "#db2777",
+  "#4f46e5",
+  "#65a30d",
+  "#ea580c",
+  "#475569",
+];
+
+function hashString(value: string) {
+  let h = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    h = (h << 5) - h + value.charCodeAt(i);
+    h |= 0;
+  }
+  return Math.abs(h);
+}
+
+function colorForUser(userId: string) {
+  return TREND_COLORS[hashString(userId) % TREND_COLORS.length];
+}
+
+function TrendChart(props: {
+  rounds: number[];
+  selectedSeries: LeaderboardTrendSeries[];
+  totalParticipants: number;
+}) {
+  const { rounds, selectedSeries, totalParticipants } = props;
+
+  if (rounds.length === 0) {
+    return (
+      <div className="ui-caption" style={{ padding: 12 }}>
+        Position trend appears once at least one round has been scored.
+      </div>
+    );
+  }
+
+  if (selectedSeries.length === 0) {
+    return (
+      <div className="ui-caption" style={{ padding: 12 }}>
+        Select at least one tipster to draw the chart.
+      </div>
+    );
+  }
+
+  const width = 980;
+  const height = 360;
+  const margin = { top: 20, right: 20, bottom: 40, left: 42 };
+  const innerWidth = width - margin.left - margin.right;
+  const innerHeight = height - margin.top - margin.bottom;
+
+  const maxRankInSeries = Math.max(
+    1,
+    ...selectedSeries.flatMap((series) => series.points.map((point) => point.rank))
+  );
+  const rankMax = Math.max(1, totalParticipants, maxRankInSeries);
+
+  const minRound = rounds[0];
+  const maxRound = rounds[rounds.length - 1];
+  const roundRange = Math.max(1, maxRound - minRound);
+  const rankRange = Math.max(1, rankMax - 1);
+
+  const x = (roundNumber: number) =>
+    margin.left + ((roundNumber - minRound) / roundRange) * innerWidth;
+  const y = (rank: number) => margin.top + ((rank - 1) / rankRange) * innerHeight;
+
+  const maxRoundTicks = 9;
+  const roundTickStep = Math.max(1, Math.ceil(rounds.length / maxRoundTicks));
+  const xTicks = rounds.filter(
+    (_roundNumber, index) => index % roundTickStep === 0 || index === rounds.length - 1
+  );
+
+  const yTicksSet = new Set<number>([1, rankMax]);
+  const yTickStep = rankMax <= 12 ? 2 : rankMax <= 24 ? 4 : 5;
+  for (let rank = yTickStep; rank < rankMax; rank += yTickStep) {
+    yTicksSet.add(rank);
+  }
+  const yTicks = Array.from(yTicksSet).sort((a, b) => a - b);
+
+  return (
+    <div style={{ display: "grid", gap: 10 }}>
+      <div className="ui-caption">Round-by-round ladder position (1 = top).</div>
+      <div style={{ border: "1px solid var(--border)", borderRadius: 12, padding: 8 }}>
+        <svg viewBox={`0 0 ${width} ${height}`} width="100%" aria-label="Leaderboard position trend">
+          <rect x={0} y={0} width={width} height={height} fill="var(--card)" />
+
+          {yTicks.map((tick) => (
+            <g key={`y-${tick}`}>
+              <line
+                x1={margin.left}
+                x2={width - margin.right}
+                y1={y(tick)}
+                y2={y(tick)}
+                stroke="var(--border)"
+                strokeWidth={1}
+              />
+              <text
+                x={margin.left - 8}
+                y={y(tick) + 4}
+                textAnchor="end"
+                fontSize={11}
+                fill="var(--muted)"
+              >
+                #{tick}
+              </text>
+            </g>
+          ))}
+
+          {xTicks.map((tick) => (
+            <g key={`x-${tick}`}>
+              <line
+                x1={x(tick)}
+                x2={x(tick)}
+                y1={margin.top}
+                y2={height - margin.bottom}
+                stroke="var(--border)"
+                strokeWidth={1}
+              />
+              <text
+                x={x(tick)}
+                y={height - margin.bottom + 18}
+                textAnchor="middle"
+                fontSize={11}
+                fill="var(--muted)"
+              >
+                R{tick}
+              </text>
+            </g>
+          ))}
+
+          {selectedSeries.map((series) => {
+            const pointByRound = new Map(series.points.map((point) => [point.round_number, point]));
+            const orderedPoints = rounds
+              .map((roundNumber) => pointByRound.get(roundNumber))
+              .filter((point): point is LeaderboardTrendPoint => Boolean(point));
+            if (orderedPoints.length === 0) return null;
+
+            const pathData = orderedPoints
+              .map((point, index) => {
+                const command = index === 0 ? "M" : "L";
+                return `${command} ${x(point.round_number).toFixed(2)} ${y(point.rank).toFixed(2)}`;
+              })
+              .join(" ");
+
+            const stroke = colorForUser(series.user_id);
+            const lastPoint = orderedPoints[orderedPoints.length - 1];
+            return (
+              <g key={series.user_id}>
+                <path
+                  d={pathData}
+                  fill="none"
+                  stroke={stroke}
+                  strokeWidth={2.5}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <circle
+                  cx={x(lastPoint.round_number)}
+                  cy={y(lastPoint.rank)}
+                  r={4}
+                  fill={stroke}
+                  stroke="var(--card)"
+                  strokeWidth={1.5}
+                />
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        {selectedSeries.map((series) => {
+          const latest = series.points[series.points.length - 1];
+          return (
+            <div
+              key={`legend-${series.user_id}`}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                border: "1px solid var(--border)",
+                borderRadius: 999,
+                padding: "5px 10px",
+                fontSize: 13,
+                fontWeight: 600,
+              }}
+            >
+              <span
+                aria-hidden
+                style={{
+                  width: 9,
+                  height: 9,
+                  borderRadius: 999,
+                  background: colorForUser(series.user_id),
+                }}
+              />
+              <span>{series.display_name}</span>
+              <span className="ui-caption" style={{ fontSize: 12 }}>
+                #{latest?.rank ?? "-"}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function LeaderboardPage() {
   const params = useParams<{ season: string }>();
   const season = Number(params.season);
 
   const [rows, setRows] = useState<LeaderboardRow[]>([]);
   const [reigningChampionUserId, setReigningChampionUserId] = useState<string | null>(null);
+  const [trendRounds, setTrendRounds] = useState<number[]>([]);
+  const [trendSeries, setTrendSeries] = useState<LeaderboardTrendSeries[]>([]);
+  const [selectedTrendUserIds, setSelectedTrendUserIds] = useState<string[]>([]);
+  const [trendSearch, setTrendSearch] = useState("");
   const [msg, setMsg] = useState("Loading...");
   const [sortBy, setSortBy] = useState<SortKey>("total_points");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [isMobile, setIsMobile] = useState(false);
 
   function applyLeaderboardData(json: LeaderboardResponse) {
-    setRows(Array.isArray(json.rows) ? json.rows : []);
+    const nextRows = Array.isArray(json.rows) ? json.rows : [];
+    setRows(nextRows);
     setReigningChampionUserId(
       typeof json.reigning_champion_user_id === "string"
         ? json.reigning_champion_user_id
         : null
     );
+
+    const nextRounds = Array.isArray(json.scored_rounds)
+      ? json.scored_rounds
+          .map((roundNumber) => Number(roundNumber))
+          .filter((roundNumber) => Number.isFinite(roundNumber))
+          .sort((a, b) => a - b)
+      : [];
+
+    const nextTrends = Array.isArray(json.rank_trends)
+      ? json.rank_trends.map((series) => ({
+          user_id: String(series.user_id),
+          display_name: String(series.display_name ?? ""),
+          payment_status: series.payment_status ?? null,
+          points: Array.isArray(series.points)
+            ? series.points
+                .map((point) => ({
+                  round_number: Number(point.round_number),
+                  rank: Number(point.rank),
+                  total_points: Number(point.total_points),
+                }))
+                .filter(
+                  (point) =>
+                    Number.isFinite(point.round_number) &&
+                    Number.isFinite(point.rank) &&
+                    Number.isFinite(point.total_points)
+                )
+                .sort((a, b) => a.round_number - b.round_number)
+            : [],
+        }))
+      : [];
+
+    setTrendRounds(nextRounds);
+    setTrendSeries(nextTrends);
+
+    setSelectedTrendUserIds((prev) => {
+      const validIds = new Set(nextTrends.map((series) => series.user_id));
+      const kept = prev.filter((userId) => validIds.has(userId));
+      if (kept.length > 0) return kept;
+      return nextRows
+        .slice(0, 5)
+        .map((row) => row.user_id)
+        .filter((userId) => validIds.has(userId));
+    });
   }
 
   useEffect(() => {
@@ -184,6 +461,10 @@ export default function LeaderboardPage() {
 
   const activeSortBy: SortKey = sortBy;
   const activeSortDirection: SortDirection = sortDirection;
+  const rankByUserId = useMemo(
+    () => new Map(rows.map((row) => [row.user_id, row.rank])),
+    [rows]
+  );
 
   const rankColWidth = isMobile ? 56 : 68;
   const tipsterColWidth = isMobile ? 148 : 188;
@@ -236,6 +517,26 @@ export default function LeaderboardPage() {
     return list;
   }, [rows, activeSortBy, activeSortDirection]);
 
+  const filteredTrendOptions = useMemo(() => {
+    const query = trendSearch.trim().toLowerCase();
+    const list = query
+      ? trendSeries.filter((series) => series.display_name.toLowerCase().includes(query))
+      : trendSeries;
+    return [...list].sort((a, b) => {
+      const rankA = rankByUserId.get(a.user_id) ?? Number.MAX_SAFE_INTEGER;
+      const rankB = rankByUserId.get(b.user_id) ?? Number.MAX_SAFE_INTEGER;
+      if (rankA !== rankB) return rankA - rankB;
+      return a.display_name.localeCompare(b.display_name, "en", { sensitivity: "base" });
+    });
+  }, [trendSeries, trendSearch, rankByUserId]);
+
+  const selectedTrendSeries = useMemo(() => {
+    const byUserId = new Map(trendSeries.map((series) => [series.user_id, series]));
+    return selectedTrendUserIds
+      .map((userId) => byUserId.get(userId))
+      .filter((series): series is LeaderboardTrendSeries => Boolean(series));
+  }, [trendSeries, selectedTrendUserIds]);
+
   function onSort(nextKey: SortKey) {
     if (sortBy === nextKey) {
       setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
@@ -248,6 +549,24 @@ export default function LeaderboardPage() {
   function sortMarker(key: SortKey) {
     if (activeSortBy !== key) return "↑↓";
     return activeSortDirection === "asc" ? "↑" : "↓";
+  }
+
+  function toggleTrendUser(userId: string) {
+    setSelectedTrendUserIds((prev) => {
+      if (prev.includes(userId)) {
+        return prev.filter((existing) => existing !== userId);
+      }
+      return [...prev, userId];
+    });
+  }
+
+  function selectTopTrendUsers(count: number) {
+    const validIds = new Set(trendSeries.map((series) => series.user_id));
+    const topIds = rows
+      .slice(0, count)
+      .map((row) => row.user_id)
+      .filter((userId) => validIds.has(userId));
+    setSelectedTrendUserIds(topIds);
   }
 
   function sortableHeader(label: string, key: SortKey, stickyCol?: 1 | 2, width?: number) {
@@ -397,6 +716,150 @@ export default function LeaderboardPage() {
               </UiTableScroll>
             )}
           </UiTableShell>
+
+          <UiCard className="ui-mt-3">
+            <div style={{ padding: 16, display: "grid", gap: 14 }}>
+              <div style={{ display: "grid", gap: 4 }}>
+                <h2 style={{ margin: 0, fontSize: 30, lineHeight: 1.1 }}>Position Trend</h2>
+                <p className="ui-caption" style={{ margin: 0 }}>
+                  Compare leaderboard rank across completed rounds. Select multiple tipsters to
+                  track head-to-head movement.
+                </p>
+              </div>
+
+              {trendSeries.length === 0 || trendRounds.length === 0 ? (
+                <p className="ui-caption" style={{ margin: 0 }}>
+                  Trend data appears after rounds are scored.
+                </p>
+              ) : (
+                <div
+                  style={{
+                    display: "grid",
+                    gap: 14,
+                    gridTemplateColumns: isMobile ? "1fr" : "minmax(220px, 300px) 1fr",
+                    alignItems: "start",
+                  }}
+                >
+                  <div style={{ display: "grid", gap: 10 }}>
+                    <input
+                      value={trendSearch}
+                      onChange={(event) => setTrendSearch(event.target.value)}
+                      placeholder="Search tipsters..."
+                      className="ui-input"
+                      aria-label="Search tipsters"
+                    />
+
+                    <div
+                      style={{
+                        border: "1px solid var(--border)",
+                        borderRadius: 12,
+                        maxHeight: 280,
+                        overflow: "auto",
+                        background: "var(--background)",
+                      }}
+                    >
+                      {filteredTrendOptions.map((series) => {
+                        const checked = selectedTrendUserIds.includes(series.user_id);
+                        const rank = rankByUserId.get(series.user_id);
+                        return (
+                          <label
+                            key={`picker-${series.user_id}`}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 8,
+                              padding: "9px 10px",
+                              borderBottom: "1px solid var(--border)",
+                              cursor: "pointer",
+                              fontSize: 14,
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleTrendUser(series.user_id)}
+                              aria-label={`Toggle ${series.display_name}`}
+                            />
+                            <span
+                              aria-hidden
+                              style={{
+                                width: 9,
+                                height: 9,
+                                borderRadius: 999,
+                                background: colorForUser(series.user_id),
+                              }}
+                            />
+                            <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {series.display_name}
+                            </span>
+                            <span className="ui-caption" style={{ fontSize: 12 }}>
+                              {rank ? `#${rank}` : ""}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                      <button
+                        type="button"
+                        onClick={() => selectTopTrendUsers(5)}
+                        style={{
+                          border: "1px solid var(--border)",
+                          background: "var(--card)",
+                          color: "var(--foreground)",
+                          borderRadius: 999,
+                          padding: "6px 12px",
+                          cursor: "pointer",
+                          fontWeight: 600,
+                        }}
+                      >
+                        Top 5
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setSelectedTrendUserIds(trendSeries.map((series) => series.user_id))
+                        }
+                        style={{
+                          border: "1px solid var(--border)",
+                          background: "var(--card)",
+                          color: "var(--foreground)",
+                          borderRadius: 999,
+                          padding: "6px 12px",
+                          cursor: "pointer",
+                          fontWeight: 600,
+                        }}
+                      >
+                        All
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedTrendUserIds([])}
+                        style={{
+                          border: "1px solid var(--border)",
+                          background: "var(--card)",
+                          color: "var(--foreground)",
+                          borderRadius: 999,
+                          padding: "6px 12px",
+                          cursor: "pointer",
+                          fontWeight: 600,
+                        }}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+
+                  <TrendChart
+                    rounds={trendRounds}
+                    selectedSeries={selectedTrendSeries}
+                    totalParticipants={rows.length}
+                  />
+                </div>
+              )}
+            </div>
+          </UiCard>
         </>
       )}
     </main>

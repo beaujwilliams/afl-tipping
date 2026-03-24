@@ -217,6 +217,15 @@ export default function AppLayoutChrome({ children }: { children: React.ReactNod
                 unreadMentions={unreadMentions}
               />
             )}
+            {email && (
+              <NavItem
+                href="/announcements"
+                label="Announcements"
+                pathname={pathname ?? ""}
+                unreadChat={unreadChat}
+                unreadMentions={unreadMentions}
+              />
+            )}
             {isAdmin && (
               <NavItem
                 href="/admin"

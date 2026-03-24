@@ -755,14 +755,13 @@ export default function LeaderboardPage() {
                   Trend data appears after rounds are scored.
                 </p>
               ) : (
-                <div
-                  style={{
-                    display: "grid",
-                    gap: 14,
-                    gridTemplateColumns: isMobile ? "1fr" : "minmax(220px, 300px) 1fr",
-                    alignItems: "start",
-                  }}
-                >
+                <div style={{ display: "grid", gap: 14 }}>
+                  <TrendChart
+                    rounds={trendRounds}
+                    selectedSeries={selectedTrendSeries}
+                    totalParticipants={rows.length}
+                  />
+
                   <div style={{ display: "grid", gap: 10 }}>
                     <input
                       value={trendSearch}
@@ -776,7 +775,7 @@ export default function LeaderboardPage() {
                       style={{
                         border: "1px solid var(--border)",
                         borderRadius: 12,
-                        maxHeight: 280,
+                        maxHeight: isMobile ? 220 : 260,
                         overflow: "auto",
                         background: "var(--background)",
                       }}
@@ -812,7 +811,15 @@ export default function LeaderboardPage() {
                                 background: colorForUser(series.user_id),
                               }}
                             />
-                            <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            <span
+                              style={{
+                                flex: 1,
+                                minWidth: 0,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
                               {series.display_name}
                             </span>
                             <span className="ui-caption" style={{ fontSize: 12 }}>
@@ -873,12 +880,6 @@ export default function LeaderboardPage() {
                       </button>
                     </div>
                   </div>
-
-                  <TrendChart
-                    rounds={trendRounds}
-                    selectedSeries={selectedTrendSeries}
-                    totalParticipants={rows.length}
-                  />
                 </div>
               )}
             </div>

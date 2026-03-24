@@ -66,6 +66,7 @@ type SortKey =
 
 type SortDirection = "asc" | "desc";
 type NumericSortKey = Exclude<SortKey, "display_name">;
+type TrendMetric = "rank" | "points";
 
 const DEFAULT_SORT_DIR: Record<SortKey, SortDirection> = {
   rank: "asc",
@@ -140,16 +141,38 @@ function colorForUser(userId: string) {
   return TREND_COLORS[hashString(userId) % TREND_COLORS.length];
 }
 
+function buildNiceNumberTicks(maxValue: number, targetTickCount = 6) {
+  const safeMax = Number.isFinite(maxValue) ? Math.max(0, maxValue) : 0;
+  if (safeMax <= 0) return { ticks: [0, 1], axisMax: 1 };
+
+  const roughStep = safeMax / Math.max(2, targetTickCount - 1);
+  const magnitude = 10 ** Math.floor(Math.log10(roughStep));
+  const residual = roughStep / magnitude;
+  let niceResidual = 1;
+  if (residual > 1) niceResidual = 2;
+  if (residual > 2) niceResidual = 5;
+  if (residual > 5) niceResidual = 10;
+  const step = niceResidual * magnitude;
+  const axisMax = Math.ceil(safeMax / step) * step;
+  const ticks: number[] = [];
+  for (let value = 0; value <= axisMax + step * 0.5; value += step) {
+    ticks.push(Number(value.toFixed(2)));
+  }
+  return { ticks, axisMax };
+}
+
 function TrendChart(props: {
   rounds: number[];
   selectedSeries: LeaderboardTrendSeries[];
   totalParticipants: number;
+  metric: TrendMetric;
 }) {
-  const { rounds, selectedSeries, totalParticipants } = props;
+  const { rounds, selectedSeries, totalParticipants, metric } = props;
   const [hoveredUserId, setHoveredUserId] = useState<string | null>(null);
   const activeHoveredUserId = selectedSeries.some((series) => series.user_id === hoveredUserId)
     ? hoveredUserId
     : null;
+  const isRankMode = metric === "rank";
 
   if (rounds.length === 0) {
     return (
@@ -178,15 +201,26 @@ function TrendChart(props: {
     ...selectedSeries.flatMap((series) => series.points.map((point) => point.rank))
   );
   const rankMax = Math.max(1, totalParticipants, maxRankInSeries);
+  const maxPointsInSeries = Math.max(
+    0,
+    ...selectedSeries.flatMap((series) => series.points.map((point) => point.total_points))
+  );
+  const pointTicksData = buildNiceNumberTicks(maxPointsInSeries);
 
   const minRound = rounds[0];
   const maxRound = rounds[rounds.length - 1];
   const roundRange = Math.max(1, maxRound - minRound);
   const rankRange = Math.max(1, rankMax - 1);
+  const pointsRange = Math.max(1, pointTicksData.axisMax);
 
   const x = (roundNumber: number) =>
     margin.left + ((roundNumber - minRound) / roundRange) * innerWidth;
-  const y = (rank: number) => margin.top + ((rank - 1) / rankRange) * innerHeight;
+  const y = (value: number) => {
+    if (isRankMode) {
+      return margin.top + ((value - 1) / rankRange) * innerHeight;
+    }
+    return margin.top + (1 - value / pointsRange) * innerHeight;
+  };
 
   const maxRoundTicks = 9;
   const roundTickStep = Math.max(1, Math.ceil(rounds.length / maxRoundTicks));
@@ -194,18 +228,25 @@ function TrendChart(props: {
     (_roundNumber, index) => index % roundTickStep === 0 || index === rounds.length - 1
   );
 
-  const yTicksSet = new Set<number>([1, rankMax]);
-  const yTickStep = rankMax <= 12 ? 2 : rankMax <= 24 ? 4 : 5;
-  for (let rank = yTickStep; rank < rankMax; rank += yTickStep) {
-    yTicksSet.add(rank);
+  const yTicksSet = new Set<number>(isRankMode ? [1, rankMax] : pointTicksData.ticks);
+  if (isRankMode) {
+    const yTickStep = rankMax <= 12 ? 2 : rankMax <= 24 ? 4 : 5;
+    for (let rank = yTickStep; rank < rankMax; rank += yTickStep) {
+      yTicksSet.add(rank);
+    }
   }
   const yTicks = Array.from(yTicksSet).sort((a, b) => a - b);
+  const chartAriaLabel = isRankMode ? "Leaderboard position trend" : "Leaderboard points trend";
 
   return (
     <div style={{ display: "grid", gap: 10 }}>
-      <div className="ui-caption">Round-by-round ladder position (1 = top).</div>
+      <div className="ui-caption">
+        {isRankMode
+          ? "Round-by-round ladder position (1 = top)."
+          : "Round-by-round total points."}
+      </div>
       <div style={{ border: "1px solid var(--border)", borderRadius: 12, padding: 8 }}>
-        <svg viewBox={`0 0 ${width} ${height}`} width="100%" aria-label="Leaderboard position trend">
+        <svg viewBox={`0 0 ${width} ${height}`} width="100%" aria-label={chartAriaLabel}>
           <rect x={0} y={0} width={width} height={height} fill="var(--card)" />
 
           {yTicks.map((tick) => (
@@ -225,7 +266,7 @@ function TrendChart(props: {
                 fontSize={11}
                 fill="var(--muted)"
               >
-                #{tick}
+                {isRankMode ? `#${tick}` : fmtPts(tick)}
               </text>
             </g>
           ))}
@@ -262,7 +303,8 @@ function TrendChart(props: {
             const pathData = orderedPoints
               .map((point, index) => {
                 const command = index === 0 ? "M" : "L";
-                return `${command} ${x(point.round_number).toFixed(2)} ${y(point.rank).toFixed(2)}`;
+                const yValue = isRankMode ? point.rank : point.total_points;
+                return `${command} ${x(point.round_number).toFixed(2)} ${y(yValue).toFixed(2)}`;
               })
               .join(" ");
 
@@ -283,7 +325,7 @@ function TrendChart(props: {
                 />
                 <circle
                   cx={x(lastPoint.round_number)}
-                  cy={y(lastPoint.rank)}
+                  cy={y(isRankMode ? lastPoint.rank : lastPoint.total_points)}
                   r={4}
                   fill={stroke}
                   opacity={isActive ? 1 : 0.45}
@@ -339,7 +381,7 @@ function TrendChart(props: {
               />
               <span>{series.display_name}</span>
               <span className="ui-caption" style={{ fontSize: 12 }}>
-                #{latest?.rank ?? "-"}
+                {isRankMode ? `#${latest?.rank ?? "-"}` : `${fmtPts(latest?.total_points ?? 0)} pts`}
               </span>
             </button>
           );
@@ -359,6 +401,7 @@ export default function LeaderboardPage() {
   const [trendSeries, setTrendSeries] = useState<LeaderboardTrendSeries[]>([]);
   const [selectedTrendUserIds, setSelectedTrendUserIds] = useState<string[]>([]);
   const [trendSearch, setTrendSearch] = useState("");
+  const [trendMetric, setTrendMetric] = useState<TrendMetric>("rank");
   const [msg, setMsg] = useState("Loading...");
   const [sortBy, setSortBy] = useState<SortKey>("total_points");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
@@ -742,12 +785,57 @@ export default function LeaderboardPage() {
 
           <UiCard className="ui-mt-3">
             <div style={{ padding: 16, display: "grid", gap: 14 }}>
-              <div style={{ display: "grid", gap: 4 }}>
-                <h2 style={{ margin: 0, fontSize: 30, lineHeight: 1.1 }}>Position Trend</h2>
-                <p className="ui-caption" style={{ margin: 0 }}>
-                  Compare leaderboard rank across completed rounds. Select multiple tipsters to
-                  track head-to-head movement.
-                </p>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 12,
+                  justifyContent: "space-between",
+                  alignItems: isMobile ? "flex-start" : "center",
+                  flexWrap: "wrap",
+                }}
+              >
+                <div style={{ display: "grid", gap: 4 }}>
+                  <h2 style={{ margin: 0, fontSize: 30, lineHeight: 1.1 }}>Position Trend</h2>
+                  <p className="ui-caption" style={{ margin: 0 }}>
+                    Compare leaderboard rank or total points across completed rounds. Select
+                    multiple tipsters to track head-to-head movement.
+                  </p>
+                </div>
+                <div
+                  role="group"
+                  aria-label="Trend metric"
+                  style={{
+                    display: "inline-flex",
+                    border: "1px solid var(--border)",
+                    borderRadius: 999,
+                    overflow: "hidden",
+                    background: "var(--card)",
+                  }}
+                >
+                  {(["rank", "points"] as const).map((option) => {
+                    const isActive = trendMetric === option;
+                    return (
+                      <button
+                        key={option}
+                        type="button"
+                        onClick={() => setTrendMetric(option)}
+                        style={{
+                          appearance: "none",
+                          border: "none",
+                          padding: "6px 12px",
+                          cursor: "pointer",
+                          fontSize: 13,
+                          fontWeight: 700,
+                          background: isActive ? "var(--foreground)" : "transparent",
+                          color: isActive ? "var(--background)" : "var(--foreground)",
+                        }}
+                        aria-pressed={isActive}
+                      >
+                        {option === "rank" ? "Rank" : "Points"}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               {trendSeries.length === 0 || trendRounds.length === 0 ? (
@@ -760,6 +848,7 @@ export default function LeaderboardPage() {
                     rounds={trendRounds}
                     selectedSeries={selectedTrendSeries}
                     totalParticipants={rows.length}
+                    metric={trendMetric}
                   />
 
                   <div style={{ display: "grid", gap: 10 }}>

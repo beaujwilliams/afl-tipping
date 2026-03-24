@@ -363,16 +363,6 @@ export default function ProfilePage() {
     })[0];
   }, [nonZeroTeamRows]);
 
-  const bestAccuracyTeam = useMemo(() => {
-    const sampleEligible = nonZeroTeamRows.filter((row) => row.tipped_count >= 3);
-    if (!sampleEligible.length) return null;
-    return [...sampleEligible].sort((a, b) => {
-      if (b.accuracy_pct !== a.accuracy_pct) return b.accuracy_pct - a.accuracy_pct;
-      if (b.correct_count !== a.correct_count) return b.correct_count - a.correct_count;
-      return a.team.localeCompare(b.team, "en", { sensitivity: "base" });
-    })[0];
-  }, [nonZeroTeamRows]);
-
   const displayedTeamRows = showAllTeams ? teamRows : nonZeroTeamRows;
   const mobileTeamRows = useMemo(
     () => (showAllTeams ? displayedTeamRows : displayedTeamRows.slice(0, 8)),
@@ -697,12 +687,6 @@ export default function ProfilePage() {
               </UiTableShell>
             )}
 
-            {bestAccuracyTeam && (
-              <div className="ui-caption" style={{ marginTop: 8 }}>
-                Best accuracy (min 3 tips): <b>{bestAccuracyTeam.team}</b> at{" "}
-                <b>{fmtPct(bestAccuracyTeam.accuracy_pct)}</b>.
-              </div>
-            )}
           </>
         )}
 

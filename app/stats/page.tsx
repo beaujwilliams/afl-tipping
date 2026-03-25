@@ -14,17 +14,44 @@ import {
 
 const CURRENT_SEASON = 2026;
 
-type LeaderboardRow = {
-  user_id: string;
+type StatsSnapshot = {
   rank: number;
   total_points: number;
   accuracy_pct: number;
+  behind_leader: number;
+  movement: number;
+  current_streak: number;
+  correct_tips: number;
+  tips_submitted: number;
+  missed_tips: number;
+  round_score: number;
+  avg_winning_odds: number;
 };
 
-type LeaderboardApiResponse = {
+type StatsInsights = {
+  current_streak: number;
+  longest_streak: number;
+  underdog_record: { tips: number; correct: number; incorrect: number; points: number };
+  favourite_record: { tips: number; correct: number; incorrect: number; points: number };
+  risk_profile: { avg_tipped_odds: number; comp_avg_tipped_odds: number; delta_vs_comp: number };
+  contrarian_edge: {
+    contrarian_picks: number;
+    rounds_with_contrarian_pick: number;
+    net_points_delta: number;
+    gained_rounds: number;
+    lost_rounds: number;
+  };
+  best_round: { round_number: number; score: number; movement: number } | null;
+  worst_round: { round_number: number; score: number; movement: number } | null;
+  points_vs_comp_avg: { user_points: number; comp_avg_points: number; delta: number };
+  missed_tips_impact: { missed_tips: number; potential_points_lost: number };
+};
+
+type MyStatsInsightsResponse = {
   ok?: boolean;
   error?: string;
-  rows?: LeaderboardRow[];
+  snapshot?: StatsSnapshot | null;
+  insights?: StatsInsights;
 };
 
 type TeamStatsRow = {
@@ -58,11 +85,32 @@ function fmtPct(value: number) {
   return `${Number(value ?? 0).toFixed(2)}%`;
 }
 
+function fmtSigned(value: number) {
+  const num = Number(value ?? 0);
+  if (num > 0) return `+${num.toFixed(2)}`;
+  return num.toFixed(2);
+}
+
+function fmtSignedWhole(value: number) {
+  const num = Number(value ?? 0);
+  if (num > 0) return `+${num}`;
+  return `${num}`;
+}
+
+function movementLabel(value: number) {
+  const num = Number(value ?? 0);
+  if (num > 0) return `Up ${num}`;
+  if (num < 0) return `Down ${Math.abs(num)}`;
+  return "No change";
+}
+
 export default function StatsPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
   const [statsMsg, setStatsMsg] = useState<string | null>(null);
-  const [myRow, setMyRow] = useState<LeaderboardRow | null>(null);
+  const [snapshot, setSnapshot] = useState<StatsSnapshot | null>(null);
+  const [insights, setInsights] = useState<StatsInsights | null>(null);
+
   const [teamStatsMsg, setTeamStatsMsg] = useState<string | null>(null);
   const [teamRows, setTeamRows] = useState<TeamStatsRow[]>([]);
   const [teamTotals, setTeamTotals] = useState<{
@@ -112,16 +160,18 @@ export default function StatsPage() {
         const token = await getAccessToken();
         if (!token) {
           setStatsMsg("Not authenticated.");
-          setMyRow(null);
+          setSnapshot(null);
+          setInsights(null);
           setTeamRows([]);
           setTeamTotals(null);
           setStatsLoading(false);
           return;
         }
 
-        const [leaderboardRes, teamStatsRes] = await Promise.all([
-          fetch(`/api/leaderboard?season=${encodeURIComponent(String(CURRENT_SEASON))}`, {
+        const [insightsRes, teamStatsRes] = await Promise.all([
+          fetch(`/api/my-stats-insights?season=${encodeURIComponent(String(CURRENT_SEASON))}`, {
             cache: "no-store",
+            headers: { Authorization: `Bearer ${token}` },
           }),
           fetch(`/api/profile-team-stats?season=${encodeURIComponent(String(CURRENT_SEASON))}`, {
             cache: "no-store",
@@ -129,8 +179,8 @@ export default function StatsPage() {
           }),
         ]);
 
-        const leaderboardBody = (await leaderboardRes.json().catch(() => null)) as
-          | LeaderboardApiResponse
+        const insightsBody = (await insightsRes.json().catch(() => null)) as
+          | MyStatsInsightsResponse
           | null;
         const teamStatsBody = (await teamStatsRes.json().catch(() => null)) as
           | TeamStatsApiResponse
@@ -138,13 +188,14 @@ export default function StatsPage() {
 
         if (!alive) return;
 
-        if (!leaderboardRes.ok || !leaderboardBody?.ok) {
-          setStatsMsg(leaderboardBody?.error ?? "Could not load season stats.");
-          setMyRow(null);
+        if (!insightsRes.ok || !insightsBody?.ok || !insightsBody?.insights) {
+          setStatsMsg(insightsBody?.error ?? "Could not load season stats.");
+          setSnapshot(null);
+          setInsights(null);
         } else {
-          const row = (leaderboardBody.rows ?? []).find((r) => r.user_id === userId) ?? null;
-          setMyRow(row);
-          if (!row) {
+          setSnapshot((insightsBody.snapshot as StatsSnapshot | null) ?? null);
+          setInsights(insightsBody.insights);
+          if (!insightsBody.snapshot) {
             setStatsMsg("No season stats yet.");
           }
         }
@@ -166,7 +217,8 @@ export default function StatsPage() {
         if (!alive) return;
         setStatsMsg("Could not load season stats.");
         setTeamStatsMsg("Could not load team breakdown.");
-        setMyRow(null);
+        setSnapshot(null);
+        setInsights(null);
         setTeamRows([]);
         setTeamTotals(null);
       } finally {
@@ -224,6 +276,10 @@ export default function StatsPage() {
     [showAllTeams, displayedTeamRows]
   );
 
+  const pointsVsAvgDelta = Number(insights?.points_vs_comp_avg.delta ?? 0);
+  const riskDelta = Number(insights?.risk_profile.delta_vs_comp ?? 0);
+  const contrarianDelta = Number(insights?.contrarian_edge.net_points_delta ?? 0);
+
   return (
     <main className="ui-page ui-page--narrow">
       <div className="ui-page-header">
@@ -232,9 +288,9 @@ export default function StatsPage() {
       </div>
 
       <UiCard soft style={{ marginTop: 16 }}>
-        <div className="ui-title--section">Season stats</div>
+        <div className="ui-title--section">Season snapshot</div>
         <div className="ui-caption" style={{ marginTop: 6 }}>
-          Your current standing and performance for {CURRENT_SEASON}.
+          Where you stand right now and how your decisions are tracking.
         </div>
 
         {statsLoading ? (
@@ -245,31 +301,184 @@ export default function StatsPage() {
           <div className="ui-caption" style={{ marginTop: 12 }}>
             {statsMsg}
           </div>
-        ) : myRow ? (
-          <UiCardGrid columns={3} style={{ marginTop: 12 }}>
+        ) : snapshot && insights ? (
+          <>
+            <UiCardGrid columns={4} style={{ marginTop: 12 }}>
+              <UiCard>
+                <div className="ui-kicker">Rank</div>
+                <div className="ui-value">#{snapshot.rank}</div>
+              </UiCard>
+              <UiCard>
+                <div className="ui-kicker">Total points</div>
+                <div className="ui-value">{fmtPts(snapshot.total_points)}</div>
+              </UiCard>
+              <UiCard>
+                <div className="ui-kicker">Accuracy</div>
+                <div className="ui-value">{fmtPct(snapshot.accuracy_pct)}</div>
+              </UiCard>
+              <UiCard>
+                <div className="ui-kicker">Behind leader</div>
+                <div className="ui-value">{fmtPts(snapshot.behind_leader)}</div>
+              </UiCard>
+            </UiCardGrid>
+
+            <UiCardGrid columns={4} style={{ marginTop: 10 }}>
+              <UiCard>
+                <div className="ui-kicker">Current streak</div>
+                <div className="ui-value">{insights.current_streak}</div>
+                <div className="ui-meta">Longest: {insights.longest_streak}</div>
+              </UiCard>
+              <UiCard>
+                <div className="ui-kicker">Points vs comp avg</div>
+                <div
+                  className="ui-value"
+                  style={{ color: pointsVsAvgDelta < 0 ? "rgb(185,28,28)" : "inherit" }}
+                >
+                  {fmtSigned(pointsVsAvgDelta)}
+                </div>
+                <div className="ui-meta">
+                  You: {fmtPts(insights.points_vs_comp_avg.user_points)} • Avg:{" "}
+                  {fmtPts(insights.points_vs_comp_avg.comp_avg_points)}
+                </div>
+              </UiCard>
+              <UiCard>
+                <div className="ui-kicker">Risk profile</div>
+                <div
+                  className="ui-value"
+                  style={{ color: riskDelta > 0 ? "rgb(22,163,74)" : riskDelta < 0 ? "rgb(185,28,28)" : "inherit" }}
+                >
+                  {fmtSigned(riskDelta)}
+                </div>
+                <div className="ui-meta">
+                  Odds avg: {fmtPts(insights.risk_profile.avg_tipped_odds)} • Field:{" "}
+                  {fmtPts(insights.risk_profile.comp_avg_tipped_odds)}
+                </div>
+              </UiCard>
+              <UiCard>
+                <div className="ui-kicker">Missed tips impact</div>
+                <div className="ui-value">{insights.missed_tips_impact.missed_tips}</div>
+                <div className="ui-meta">
+                  Potential lost: {fmtPts(insights.missed_tips_impact.potential_points_lost)} pts
+                </div>
+              </UiCard>
+            </UiCardGrid>
+          </>
+        ) : null}
+      </UiCard>
+
+      {!statsLoading && !statsMsg && snapshot && insights && (
+        <UiCard soft style={{ marginTop: 14 }}>
+          <div className="ui-title--section">Decision insights</div>
+          <div className="ui-caption" style={{ marginTop: 6 }}>
+            What has helped (or hurt) your season so far.
+          </div>
+
+          <UiCardGrid columns={4} style={{ marginTop: 12 }}>
             <UiCard>
-              <div className="ui-kicker">Rank</div>
-              <div className="ui-value">#{myRow.rank}</div>
+              <div className="ui-kicker">Underdog record (2.00+)</div>
+              <div className="ui-value">
+                {insights.underdog_record.correct}/{insights.underdog_record.incorrect}
+              </div>
+              <div className="ui-meta">
+                Tips: {insights.underdog_record.tips} • Points: {fmtPts(insights.underdog_record.points)}
+              </div>
             </UiCard>
+
             <UiCard>
-              <div className="ui-kicker">Total Points</div>
-              <div className="ui-value">{fmtPts(myRow.total_points)}</div>
+              <div className="ui-kicker">Favourite record (&lt;2.00)</div>
+              <div className="ui-value">
+                {insights.favourite_record.correct}/{insights.favourite_record.incorrect}
+              </div>
+              <div className="ui-meta">
+                Tips: {insights.favourite_record.tips} • Points: {fmtPts(insights.favourite_record.points)}
+              </div>
             </UiCard>
+
             <UiCard>
-              <div className="ui-kicker">Accuracy</div>
-              <div className="ui-value">{fmtPct(myRow.accuracy_pct)}</div>
+              <div className="ui-kicker">Contrarian edge</div>
+              <div
+                className="ui-value"
+                style={{
+                  color:
+                    contrarianDelta > 0 ? "rgb(22,163,74)" : contrarianDelta < 0 ? "rgb(185,28,28)" : "inherit",
+                }}
+              >
+                {fmtSigned(contrarianDelta)}
+              </div>
+              <div className="ui-meta">
+                Picks: {insights.contrarian_edge.contrarian_picks} • Rounds:{" "}
+                {insights.contrarian_edge.rounds_with_contrarian_pick}
+              </div>
+              <div className="ui-meta">
+                +{insights.contrarian_edge.gained_rounds} / -{insights.contrarian_edge.lost_rounds} rounds
+              </div>
+            </UiCard>
+
+            <UiCard>
+              <div className="ui-kicker">Movement this round</div>
+              <div
+                className="ui-value"
+                style={{
+                  color:
+                    snapshot.movement > 0
+                      ? "rgb(22,163,74)"
+                      : snapshot.movement < 0
+                      ? "rgb(185,28,28)"
+                      : "inherit",
+                }}
+              >
+                {fmtSignedWhole(snapshot.movement)}
+              </div>
+              <div className="ui-meta">{movementLabel(snapshot.movement)}</div>
+            </UiCard>
+
+            <UiCard>
+              <div className="ui-kicker">Best round</div>
+              <div className="ui-value">
+                {insights.best_round ? `R${insights.best_round.round_number}` : "-"}
+              </div>
+              <div className="ui-meta">
+                Score: {fmtPts(insights.best_round?.score ?? 0)} • Move:{" "}
+                {fmtSignedWhole(insights.best_round?.movement ?? 0)}
+              </div>
+            </UiCard>
+
+            <UiCard>
+              <div className="ui-kicker">Worst round</div>
+              <div className="ui-value">
+                {insights.worst_round ? `R${insights.worst_round.round_number}` : "-"}
+              </div>
+              <div className="ui-meta">
+                Score: {fmtPts(insights.worst_round?.score ?? 0)} • Move:{" "}
+                {fmtSignedWhole(insights.worst_round?.movement ?? 0)}
+              </div>
+            </UiCard>
+
+            <UiCard>
+              <div className="ui-kicker">Current round score</div>
+              <div className="ui-value">{fmtPts(snapshot.round_score)}</div>
+              <div className="ui-meta">Correct: {snapshot.correct_tips}</div>
+            </UiCard>
+
+            <UiCard>
+              <div className="ui-kicker">Avg winning odds</div>
+              <div className="ui-value">{fmtPts(snapshot.avg_winning_odds)}</div>
+              <div className="ui-meta">
+                Submitted: {snapshot.tips_submitted} • Missed: {snapshot.missed_tips}
+              </div>
             </UiCard>
           </UiCardGrid>
-        ) : null}
+        </UiCard>
+      )}
+
+      <UiCard soft style={{ marginTop: 14 }}>
+        <div className="ui-title--section">Team breakdown</div>
+        <div className="ui-caption" style={{ marginTop: 6 }}>
+          How each team has performed for your tips this season.
+        </div>
 
         {!statsLoading && !teamStatsMsg && teamTotals && (
           <>
-            <div className="ui-kicker" style={{ marginTop: 16 }}>
-              Team breakdown
-            </div>
-            <div className="ui-caption" style={{ marginTop: 4 }}>
-              How each team has performed for your tips this season.
-            </div>
             {!isMobile && (
               <div style={{ marginTop: 8 }}>
                 <button
@@ -305,7 +514,7 @@ export default function StatsPage() {
             ) : (
               <UiCardGrid columns={4} style={{ marginTop: 10 }}>
                 <UiCard>
-                  <div className="ui-kicker">Total Tips</div>
+                  <div className="ui-kicker">Total tips</div>
                   <div className="ui-value">{teamTotals.tipped}</div>
                 </UiCard>
                 <UiCard>
@@ -315,13 +524,13 @@ export default function StatsPage() {
                   </div>
                 </UiCard>
                 <UiCard>
-                  <div className="ui-kicker">Most Tipped</div>
+                  <div className="ui-kicker">Most tipped</div>
                   <div className="ui-value" style={{ fontSize: 28 }}>
                     {mostTippedTeam ? mostTippedTeam.team : "-"}
                   </div>
                 </UiCard>
                 <UiCard>
-                  <div className="ui-kicker">Best Scoring Team</div>
+                  <div className="ui-kicker">Best scoring team</div>
                   <div className="ui-value" style={{ fontSize: 28 }}>
                     {bestTeamByPoints ? bestTeamByPoints.team : "-"}
                   </div>

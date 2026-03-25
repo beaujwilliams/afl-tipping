@@ -22,6 +22,7 @@ type AnnouncementsResponse = {
   rows?: AnnouncementRow[];
   error?: string;
   details?: string;
+  hint?: string;
 };
 
 type CreateAnnouncementResponse = {
@@ -29,6 +30,7 @@ type CreateAnnouncementResponse = {
   row?: AnnouncementRow;
   error?: string;
   details?: string;
+  hint?: string;
 };
 
 function fmtMelbourne(iso: string | null) {
@@ -93,7 +95,8 @@ export default function AnnouncementsPage() {
     const json = (await res.json().catch(() => null)) as AnnouncementsResponse | null;
     if (!res.ok || !json?.ok) {
       const detail = json?.details ? ` (${json.details})` : "";
-      setMsg(`${json?.error ?? "Could not load announcements."}${detail}`);
+      const hint = json?.hint ? ` ${json.hint}` : "";
+      setMsg(`${json?.error ?? "Could not load announcements."}${detail}${hint}`);
       setRows([]);
       setIsAdmin(false);
       return;
@@ -153,7 +156,8 @@ export default function AnnouncementsPage() {
     const json = (await res.json().catch(() => null)) as CreateAnnouncementResponse | null;
     if (!res.ok || !json?.ok) {
       const detail = json?.details ? ` (${json.details})` : "";
-      setAdminMsg(`${json?.error ?? "Could not publish announcement."}${detail}`);
+      const hint = json?.hint ? ` ${json.hint}` : "";
+      setAdminMsg(`${json?.error ?? "Could not publish announcement."}${detail}${hint}`);
       setSaving(false);
       return;
     }
@@ -178,9 +182,12 @@ export default function AnnouncementsPage() {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}` },
     });
-    const json = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+    const json = (await res.json().catch(() => null)) as
+      | { ok?: boolean; error?: string; hint?: string }
+      | null;
     if (!res.ok || !json?.ok) {
-      setAdminMsg(json?.error ?? "Could not delete announcement.");
+      const hint = json?.hint ? ` ${json.hint}` : "";
+      setAdminMsg(`${json?.error ?? "Could not delete announcement."}${hint}`);
       setDeletingId(null);
       return;
     }

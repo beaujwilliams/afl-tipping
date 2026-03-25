@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase-server";
-import { requireAdminOrCron, resolveCompetitionIdForAdminRequest } from "@/lib/admin-auth";
+import {
+  getUserIdFromBearer,
+  resolveCompetitionIdForAdminRequest,
+  userHasAdminRole,
+} from "@/lib/admin-auth";
 
 type AnnouncementInsert = {
   competition_id: string | null;
@@ -12,6 +16,31 @@ type AnnouncementInsert = {
   created_by_user_id: string | null;
   published_at_utc: string;
 };
+
+function isMissingRelationError(message: string, relationName: string) {
+  const m = String(message ?? "").toLowerCase();
+  const rel = relationName.toLowerCase();
+  return m.includes(rel) && m.includes("relation") && m.includes("does not exist");
+}
+
+function isMissingSchemaCacheTableError(message: string, relationName: string) {
+  const m = String(message ?? "").toLowerCase();
+  const rel = relationName.toLowerCase();
+  return (
+    m.includes("schema cache") &&
+    (m.includes(rel) || m.includes(`public.${rel}`)) &&
+    m.includes("could not find the table")
+  );
+}
+
+function isMissingAnnouncementsTableError(message: string, code?: string) {
+  const normalizedCode = String(code ?? "").toUpperCase();
+  return (
+    isMissingRelationError(message, "announcements") ||
+    isMissingSchemaCacheTableError(message, "announcements") ||
+    normalizedCode === "PGRST205"
+  );
+}
 
 function normalizeImageUrls(input: unknown) {
   const values = Array.isArray(input) ? input : [];
@@ -45,9 +74,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "No competition found" }, { status: 404 });
     }
 
-    const gate = await requireAdminOrCron(req, { competitionId });
-    if (!gate.ok) {
-      return NextResponse.json(gate.json, { status: gate.status });
+    const userId = await getUserIdFromBearer(req);
+    if (!userId) {
+      return NextResponse.json({ error: "Missing Bearer token" }, { status: 401 });
+    }
+    const isAdmin = await userHasAdminRole({ userId, competitionId, supabase: service });
+    if (!isAdmin) {
+      return NextResponse.json({ error: "Admin only" }, { status: 403 });
     }
 
     const payload = (await req.json().catch(() => null)) as
@@ -80,7 +113,7 @@ export async function POST(req: Request) {
       image_urls: imageUrls,
       is_pinned: isPinned,
       is_published: isPublished,
-      created_by_user_id: gate.mode === "bearer" ? gate.userId : null,
+      created_by_user_id: userId,
       published_at_utc: new Date().toISOString(),
     };
 
@@ -93,6 +126,16 @@ export async function POST(req: Request) {
       .single();
 
     if (error || !data) {
+      const errCode = error && "code" in error ? String(error.code ?? "") : "";
+      if (error && isMissingAnnouncementsTableError(error.message, errCode)) {
+        return NextResponse.json(
+          {
+            error: "Announcements are not set up yet.",
+            hint: "Apply migration db/migrations/20260325_announcements.sql",
+          },
+          { status: 500 }
+        );
+      }
       return NextResponse.json(
         { error: "Failed to create announcement", details: error?.message ?? "Unknown error" },
         { status: 500 }
@@ -131,9 +174,13 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "No competition found" }, { status: 404 });
     }
 
-    const gate = await requireAdminOrCron(req, { competitionId });
-    if (!gate.ok) {
-      return NextResponse.json(gate.json, { status: gate.status });
+    const userId = await getUserIdFromBearer(req);
+    if (!userId) {
+      return NextResponse.json({ error: "Missing Bearer token" }, { status: 401 });
+    }
+    const isAdmin = await userHasAdminRole({ userId, competitionId, supabase: service });
+    if (!isAdmin) {
+      return NextResponse.json({ error: "Admin only" }, { status: 403 });
     }
 
     const url = new URL(req.url);
@@ -149,6 +196,16 @@ export async function DELETE(req: Request) {
       .eq("competition_id", competitionId);
 
     if (error) {
+      const errCode = "code" in error ? String(error.code ?? "") : "";
+      if (isMissingAnnouncementsTableError(error.message, errCode)) {
+        return NextResponse.json(
+          {
+            error: "Announcements are not set up yet.",
+            hint: "Apply migration db/migrations/20260325_announcements.sql",
+          },
+          { status: 500 }
+        );
+      }
       return NextResponse.json(
         { error: "Failed to delete announcement", details: error.message },
         { status: 500 }
@@ -164,4 +221,3 @@ export async function DELETE(req: Request) {
     );
   }
 }
-

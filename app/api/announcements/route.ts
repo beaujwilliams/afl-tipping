@@ -25,6 +25,31 @@ type ProfileRow = {
   display_name: string | null;
 };
 
+function isMissingRelationError(message: string, relationName: string) {
+  const m = String(message ?? "").toLowerCase();
+  const rel = relationName.toLowerCase();
+  return m.includes(rel) && m.includes("relation") && m.includes("does not exist");
+}
+
+function isMissingSchemaCacheTableError(message: string, relationName: string) {
+  const m = String(message ?? "").toLowerCase();
+  const rel = relationName.toLowerCase();
+  return (
+    m.includes("schema cache") &&
+    (m.includes(rel) || m.includes(`public.${rel}`)) &&
+    m.includes("could not find the table")
+  );
+}
+
+function isMissingAnnouncementsTableError(message: string, code?: string) {
+  const normalizedCode = String(code ?? "").toUpperCase();
+  return (
+    isMissingRelationError(message, "announcements") ||
+    isMissingSchemaCacheTableError(message, "announcements") ||
+    normalizedCode === "PGRST205"
+  );
+}
+
 function mustEnv(name: string) {
   const value = process.env[name];
   if (!value) throw new Error(`Missing env var: ${name}`);
@@ -128,6 +153,16 @@ export async function GET(req: Request) {
     ]);
 
     if (competitionResult?.error) {
+      const errCode = "code" in competitionResult.error ? String(competitionResult.error.code ?? "") : "";
+      if (isMissingAnnouncementsTableError(competitionResult.error.message, errCode)) {
+        return NextResponse.json(
+          {
+            error: "Announcements are not set up yet.",
+            hint: "Apply migration db/migrations/20260325_announcements.sql",
+          },
+          { status: 500 }
+        );
+      }
       return NextResponse.json(
         { error: "Failed to read announcements", details: competitionResult.error.message },
         { status: 500 }
@@ -135,6 +170,16 @@ export async function GET(req: Request) {
     }
 
     if (globalResult.error) {
+      const errCode = "code" in globalResult.error ? String(globalResult.error.code ?? "") : "";
+      if (isMissingAnnouncementsTableError(globalResult.error.message, errCode)) {
+        return NextResponse.json(
+          {
+            error: "Announcements are not set up yet.",
+            hint: "Apply migration db/migrations/20260325_announcements.sql",
+          },
+          { status: 500 }
+        );
+      }
       return NextResponse.json(
         { error: "Failed to read announcements", details: globalResult.error.message },
         { status: 500 }

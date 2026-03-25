@@ -37,6 +37,21 @@ type PaymentSettingsResponse = {
   details?: string;
 };
 
+type PaymentReminderSendResponse = {
+  ok?: boolean;
+  error?: string;
+  details?: string;
+  pending_members?: number;
+  recipients_targeted?: number;
+  totals?: {
+    sent?: number;
+    simulated?: number;
+    failed?: number;
+    no_email?: number;
+    skipped_already_sent?: number;
+  };
+};
+
 type ChampionSettingsResponse = {
   ok?: boolean;
   reigning_champion_user_id?: string | null;
@@ -158,6 +173,7 @@ export default function AdminMembersPage() {
 
   const [enforceUnpaidTipLock, setEnforceUnpaidTipLock] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [sendingPaymentReminders, setSendingPaymentReminders] = useState(false);
 
   const [championResolvedUserId, setChampionResolvedUserId] = useState<string | null>(null);
   const [championOverrideUserId, setChampionOverrideUserId] = useState<string | null>(null);
@@ -493,6 +509,38 @@ export default function AdminMembersPage() {
     setEnforceUnpaidTipLock(nextValue);
   }
 
+  async function sendPaymentReminders() {
+    if (!sessionToken) return;
+    const ok = confirm(
+      "Send payment reminder emails now? This will contact members with payment status pending who have not already been sent this reminder this season."
+    );
+    if (!ok) return;
+
+    setSendingPaymentReminders(true);
+    setMsg("");
+
+    const res = await fetch(`/api/admin/send-payment-reminders?season=${CURRENT_SEASON}`, {
+      headers: {
+        Authorization: `Bearer ${sessionToken}`,
+      },
+      cache: "no-store",
+    });
+
+    const json = (await res.json().catch(() => null)) as PaymentReminderSendResponse | null;
+    setSendingPaymentReminders(false);
+
+    if (!res.ok) {
+      const detail = json?.details ? `: ${json.details}` : "";
+      setMsg((json?.error ?? "Failed to send payment reminders") + detail);
+      return;
+    }
+
+    const totals = json?.totals ?? {};
+    setMsg(
+      `Payment reminders: sent ${totals.sent ?? 0}. Already sent ${totals.skipped_already_sent ?? 0}. No email ${totals.no_email ?? 0}. Failed ${totals.failed ?? 0}.`
+    );
+  }
+
   async function saveChampionOverride() {
     if (!sessionToken) return;
 
@@ -546,6 +594,13 @@ export default function AdminMembersPage() {
     background: "var(--card-soft)",
   };
 
+  const toolCardStyle: React.CSSProperties = {
+    border: "1px solid var(--border)",
+    borderRadius: 14,
+    padding: 18,
+    background: "var(--card)",
+  };
+
   return (
     <main style={{ maxWidth: 1180, margin: "30px auto", padding: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
@@ -566,32 +621,60 @@ export default function AdminMembersPage() {
       </div>
 
       <div style={{ marginTop: 14, ...cardStyle }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-          <div>
-            <div style={{ fontWeight: 800 }}>Unpaid tip lock</div>
-            <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75 }}>
-              When ON, members with payment status <b>pending</b> cannot submit tips.
-              Log in/chat/results remain available.
-            </div>
+        <div style={toolCardStyle}>
+          <div style={{ fontWeight: 800 }}>Payment reminders (manual)</div>
+          <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75 }}>
+            Send payment reminder emails to members with payment status <b>pending</b>.
           </div>
           <button
             type="button"
-            disabled={savingSettings}
-            onClick={() => saveSettings(!enforceUnpaidTipLock)}
+            disabled={sendingPaymentReminders}
+            onClick={sendPaymentReminders}
             style={{
-              alignSelf: "flex-start",
+              marginTop: 12,
+              width: "100%",
               padding: "10px 12px",
               borderRadius: 10,
               border: "1px solid var(--border)",
-              background: enforceUnpaidTipLock ? "#fee2e2" : "#ecfdf5",
-              color: enforceUnpaidTipLock ? "#991b1b" : "#065f46",
+              background: "var(--card)",
+              color: "var(--foreground)",
               fontWeight: 900,
-              cursor: savingSettings ? "not-allowed" : "pointer",
-              opacity: savingSettings ? 0.7 : 1,
+              cursor: sendingPaymentReminders ? "not-allowed" : "pointer",
+              opacity: sendingPaymentReminders ? 0.7 : 1,
             }}
           >
-            {savingSettings ? "Saving…" : enforceUnpaidTipLock ? "ON (Click to disable)" : "OFF (Click to enable)"}
+            {sendingPaymentReminders ? "Sending…" : "Send Payment Pending Reminders"}
           </button>
+
+          <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontWeight: 800 }}>Unpaid tip lock</div>
+                <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75 }}>
+                  When ON, members with payment status <b>pending</b> cannot submit tips.
+                  Log in/chat/results remain available.
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={savingSettings}
+                onClick={() => saveSettings(!enforceUnpaidTipLock)}
+                style={{
+                  alignSelf: "flex-start",
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: "1px solid var(--border)",
+                  background: enforceUnpaidTipLock ? "#fee2e2" : "#ecfdf5",
+                  color: enforceUnpaidTipLock ? "#991b1b" : "#065f46",
+                  fontWeight: 900,
+                  cursor: savingSettings ? "not-allowed" : "pointer",
+                  opacity: savingSettings ? 0.7 : 1,
+                }}
+              >
+                {savingSettings ? "Saving…" : enforceUnpaidTipLock ? "ON (Click to disable)" : "OFF (Click to enable)"}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 

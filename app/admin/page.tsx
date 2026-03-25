@@ -11,42 +11,6 @@ type ConfirmAction = {
   path: string;
 };
 
-type RoundStatusPlayer = {
-  user_id: string;
-  display_name: string | null;
-};
-
-type TipStatusRound = {
-  round_id: string;
-  round_number: number;
-  lock_time_utc: string | null;
-  total_players: number;
-  tipped_players: number;
-  missing_count: number;
-  missing_players?: RoundStatusPlayer[];
-};
-
-type TipStatusResponse = {
-  ok?: boolean;
-  error?: string;
-  admin?: boolean;
-  rounds?: TipStatusRound[];
-};
-
-function fmtMelbourneShort(iso: string | null) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  return new Intl.DateTimeFormat("en-AU", {
-    timeZone: "Australia/Melbourne",
-    weekday: "short",
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(d);
-}
-
 export default function AdminPage() {
   const [season, setSeason] = useState<number>(2026);
   const [recapRound, setRecapRound] = useState<number>(1);
@@ -54,10 +18,6 @@ export default function AdminPage() {
   const [result, setResult] = useState<unknown>(null);
   const [loading, setLoading] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
-  const [commandCenterRounds, setCommandCenterRounds] = useState<TipStatusRound[]>([]);
-  const [commandCenterMsg, setCommandCenterMsg] = useState<string>("Loading rounds…");
-  const [commandCenterLoading, setCommandCenterLoading] = useState<boolean>(false);
-  const [openMissingRoundId, setOpenMissingRoundId] = useState<string | null>(null);
   const isRunning = loading !== null;
 
   useEffect(() => {
@@ -72,11 +32,6 @@ export default function AdminPage() {
       alive = false;
     };
   }, []);
-
-  useEffect(() => {
-    void loadRoundCommandCenter(season);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [season]);
 
   async function getToken() {
     const { data } = await supabaseBrowser.auth.getSession();
@@ -113,53 +68,6 @@ export default function AdminPage() {
       setResult({ error: err instanceof Error ? err.message : "Unknown error" });
     } finally {
       setLoading(null);
-    }
-  }
-
-  async function loadRoundCommandCenter(targetSeason: number) {
-    try {
-      setCommandCenterLoading(true);
-      setCommandCenterMsg("Loading rounds…");
-
-      const token = await getToken();
-      if (!token) {
-        setCommandCenterRounds([]);
-        setCommandCenterMsg("Not authenticated.");
-        return;
-      }
-
-      const res = await fetch(
-        `/api/round-tip-status?season=${encodeURIComponent(String(targetSeason))}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-          cache: "no-store",
-        }
-      );
-      const json = (await res.json().catch(() => null)) as TipStatusResponse | null;
-
-      if (!res.ok || !json?.ok) {
-        setCommandCenterRounds([]);
-        setCommandCenterMsg(json?.error ?? "Could not load command center rounds.");
-        return;
-      }
-
-      if (!json.admin) {
-        setCommandCenterRounds([]);
-        setCommandCenterMsg("Admin access required.");
-        return;
-      }
-
-      const rows = [...(json.rounds ?? [])].sort((a, b) => a.round_number - b.round_number);
-      setCommandCenterRounds(rows);
-      setCommandCenterMsg(rows.length ? "" : "No rounds found.");
-      setOpenMissingRoundId((prev) =>
-        prev && rows.some((r) => r.round_id === prev) ? prev : null
-      );
-    } catch {
-      setCommandCenterRounds([]);
-      setCommandCenterMsg("Could not load command center rounds.");
-    } finally {
-      setCommandCenterLoading(false);
     }
   }
 
@@ -204,15 +112,6 @@ export default function AdminPage() {
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) return 0;
     return Math.max(0, Math.trunc(parsed));
-  }
-
-  function openForceReminderConfirm(round: number) {
-    setConfirmAction({
-      title: "Force-send tip reminders?",
-      body: `This will send reminder emails now for round ${round}, ignoring the normal 3-hour window.`,
-      confirmLabel: "Yes, send reminders now",
-      path: `/api/admin/send-prelock-reminders?season=${season}&round=${round}&force=1`,
-    });
   }
 
   function runRecapToMeNow() {
@@ -261,20 +160,7 @@ export default function AdminPage() {
     const path = confirmAction.path;
     setConfirmAction(null);
     await run(path);
-    if (path.includes("/api/admin/send-prelock-reminders")) {
-      await loadRoundCommandCenter(season);
-    }
   }
-
-  const currentCommandRound = (() => {
-    if (commandCenterRounds.length === 0) return null;
-    const nextOpen = commandCenterRounds.find((round) => {
-      if (!round.lock_time_utc) return false;
-      const lockMs = new Date(round.lock_time_utc).getTime();
-      return Number.isFinite(lockMs) && Date.now() < lockMs;
-    });
-    return nextOpen ?? commandCenterRounds[commandCenterRounds.length - 1] ?? null;
-  })();
 
   return (
     <main className="ui-page ui-page--narrow ui-admin-page">
@@ -292,18 +178,9 @@ export default function AdminPage() {
 
       <div className="ui-admin-grid">
         <UiCard soft className="ui-admin-section ui-admin-section--wide" style={{ order: 0 }}>
-          <div className="ui-row-wrap" style={{ justifyContent: "space-between", gap: 10 }}>
-            <h2 className="ui-admin-section-title">Round Command Center</h2>
-            <UiButton
-              disabled={isRunning || commandCenterLoading}
-              onClick={() => loadRoundCommandCenter(season)}
-              className="ui-admin-btn"
-            >
-              {commandCenterLoading ? "Refreshing…" : "Refresh"}
-            </UiButton>
-          </div>
+          <h2 className="ui-admin-section-title">Round Command Center</h2>
           <div className="ui-admin-summary">
-            Quick actions by round: open round, see who is missing tips, and send reminders.
+            Main in-season action for updating finished results and refreshing the leaderboard.
           </div>
 
           <div className="ui-admin-stack">
@@ -315,70 +192,6 @@ export default function AdminPage() {
               Sync Results + Recalculate Leaderboard
             </UiButton>
           </div>
-
-          {commandCenterMsg ? (
-            <div className="ui-admin-summary">{commandCenterMsg}</div>
-          ) : (
-            <div className="ui-admin-stack">
-              {currentCommandRound ? (
-                (() => {
-                  const round = currentCommandRound;
-                  const missing = round.missing_players ?? [];
-                  const isOpen = openMissingRoundId === round.round_id;
-
-                  return (
-                    <UiCard key={round.round_id} className="ui-admin-tool">
-                      <div className="ui-row-wrap ui-admin-gap-sm">
-                      <UiButtonLink
-                        href={`/round/${season}/${round.round_number}`}
-                        className="ui-admin-btn"
-                        pill
-                      >
-                        Open round
-                      </UiButtonLink>
-                      <UiButton
-                        type="button"
-                        onClick={() =>
-                          setOpenMissingRoundId((prev) => (prev === round.round_id ? null : round.round_id))
-                        }
-                        className="ui-admin-btn"
-                        pill
-                      >
-                        {isOpen ? "Hide missing" : `Who is missing (${round.missing_count})`}
-                      </UiButton>
-                      <UiButton
-                        type="button"
-                        disabled={isRunning || round.missing_count === 0}
-                        onClick={() => openForceReminderConfirm(round.round_number)}
-                        className="ui-admin-btn"
-                        tone="dangerSoft"
-                        pill
-                      >
-                        Send reminder
-                      </UiButton>
-                      </div>
-
-                      {isOpen && (
-                        <div className="ui-admin-missing-list">
-                          {missing.length === 0 ? (
-                            <div className="ui-admin-summary">Everyone has tipped this round.</div>
-                          ) : (
-                            missing.map((p) => (
-                              <div key={p.user_id} className="ui-admin-missing-item">
-                                {p.display_name?.trim() || "(no display name)"}
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      )}
-                    </UiCard>
-                  );
-                })()
-              ) : (
-                <div className="ui-admin-summary">No current round available.</div>
-              )}
-            </div>
-          )}
         </UiCard>
 
         <UiCard soft className="ui-admin-section" style={{ order: 1 }}>
@@ -388,9 +201,11 @@ export default function AdminPage() {
           </div>
 
           <div className="ui-admin-stack">
-            <UiButtonLink href="/admin/members" className="ui-admin-btn ui-admin-btn--full ui-admin-btn--alt">
-              Manage Members
-            </UiButtonLink>
+            <UiCard className="ui-admin-tool">
+              <UiButtonLink href="/admin/members" className="ui-admin-btn ui-admin-btn--full ui-admin-btn--alt">
+                Manage Members
+              </UiButtonLink>
+            </UiCard>
 
             <UiCard className="ui-admin-tool">
               <div className="ui-admin-subtitle">Payment reminders (manual)</div>
@@ -411,10 +226,6 @@ export default function AdminPage() {
 
         <UiCard soft className="ui-admin-section" style={{ order: 2 }}>
           <h2 className="ui-admin-section-title">Comms</h2>
-          <div className="ui-admin-summary">
-            Generate and send round recap emails.
-          </div>
-
           <div className="ui-admin-stack">
             <UiCard className="ui-admin-tool">
               <div className="ui-admin-subtitle">Round recap</div>

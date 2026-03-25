@@ -256,10 +256,11 @@ export default function AppLayoutChrome({ children }: { children: React.ReactNod
   }, [openMenu]);
 
   const profileHref = email ? "/profile" : "/login";
+  const statsHref = email ? "/stats" : "/login";
   const profileLabel = "My Profile";
 
   const tippingActive =
-    pathname.startsWith("/round/") || pathname.startsWith("/results/") || pathname.startsWith("/profile");
+    pathname.startsWith("/round/") || pathname.startsWith("/results/") || pathname.startsWith("/stats");
   const infoActive =
     pathname.startsWith("/announcements") || pathname.startsWith("/info") || pathname.startsWith("/admin");
 
@@ -267,9 +268,9 @@ export default function AppLayoutChrome({ children }: { children: React.ReactNod
     () => [
       { href: "/round/2026", label: "Tip rounds" },
       { href: "/results/2026", label: "Results" },
-      { href: profileHref, label: "My stats" },
+      { href: statsHref, label: "My stats" },
     ],
-    [profileHref]
+    [statsHref]
   );
 
   const infoItems = useMemo<MenuItem[]>(() => {

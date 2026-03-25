@@ -13,6 +13,7 @@ import { supabaseBrowser } from "@/lib/supabase-browser";
 type ChatActivityContextValue = {
   unreadChat: number;
   unreadMentions: number;
+  unreadAnnouncements: number;
 };
 
 const ChatActivityContext = createContext<ChatActivityContextValue | null>(null);
@@ -28,6 +29,17 @@ function markChatSeenNow() {
   window.localStorage.setItem("chat_last_seen_ms", String(Date.now()));
 }
 
+function getLastAnnouncementsSeenMs() {
+  if (typeof window === "undefined") return 0;
+  const v = window.localStorage.getItem("announcements_last_seen_ms");
+  return v ? Number(v) || 0 : 0;
+}
+
+function markAnnouncementsSeenNow() {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem("announcements_last_seen_ms", String(Date.now()));
+}
+
 function isMissingRelationError(message: string, relationName: string) {
   const m = String(message || "").toLowerCase();
   const rel = relationName.toLowerCase();
@@ -41,8 +53,10 @@ export function ChatActivityProvider({
 }) {
   const pathname = usePathname();
   const viewingChat = pathname?.startsWith("/chat") ?? false;
+  const viewingAnnouncements = pathname?.startsWith("/announcements") ?? false;
   const [unreadChat, setUnreadChat] = useState(0);
   const [unreadMentions, setUnreadMentions] = useState(0);
+  const [unreadAnnouncements, setUnreadAnnouncements] = useState(0);
   const [authTick, setAuthTick] = useState(0);
 
   useEffect(() => {
@@ -61,6 +75,7 @@ export function ChatActivityProvider({
       if (!data.session) {
         setUnreadChat(0);
         setUnreadMentions(0);
+        setUnreadAnnouncements(0);
         return;
       }
 
@@ -86,10 +101,36 @@ export function ChatActivityProvider({
         if (isMissingRelationError(mentionErr.message, "chat_message_mentions")) {
           setUnreadMentions(0);
         }
-        return;
+      } else {
+        setUnreadMentions(mentionCount ?? 0);
       }
 
-      setUnreadMentions(mentionCount ?? 0);
+      const lastAnnouncementsSeenMs = getLastAnnouncementsSeenMs();
+      try {
+        const announcementsRes = await fetch("/api/announcements", {
+          cache: "no-store",
+          headers: {
+            Authorization: `Bearer ${data.session.access_token}`,
+          },
+        });
+        const announcementsJson = (await announcementsRes
+          .json()
+          .catch(() => null)) as { ok?: boolean; rows?: Array<{ published_at_utc?: string | null; created_at?: string | null }> } | null;
+
+        if (!announcementsRes.ok || !announcementsJson?.ok || !Array.isArray(announcementsJson.rows)) {
+          setUnreadAnnouncements(0);
+          return;
+        }
+
+        let unread = 0;
+        announcementsJson.rows.forEach((row) => {
+          const ts = new Date(String(row.published_at_utc ?? row.created_at ?? "")).getTime();
+          if (Number.isFinite(ts) && ts > lastAnnouncementsSeenMs) unread += 1;
+        });
+        setUnreadAnnouncements(unread);
+      } catch {
+        setUnreadAnnouncements(0);
+      }
     }
 
     if (!pathname) return;
@@ -100,21 +141,25 @@ export function ChatActivityProvider({
         window.localStorage.setItem("chat_last_seen_snapshot_ms", String(previousSeen));
       }
       markChatSeenNow();
-      return;
+    }
+
+    if (viewingAnnouncements) {
+      markAnnouncementsSeenNow();
     }
 
     refreshChatActivity();
 
     const t = setInterval(refreshChatActivity, 30000);
     return () => clearInterval(t);
-  }, [authTick, pathname, viewingChat]);
+  }, [authTick, pathname, viewingChat, viewingAnnouncements]);
 
   const value = useMemo(
     () => ({
       unreadChat: viewingChat ? 0 : unreadChat,
       unreadMentions: viewingChat ? 0 : unreadMentions,
+      unreadAnnouncements: viewingAnnouncements ? 0 : unreadAnnouncements,
     }),
-    [unreadChat, unreadMentions, viewingChat]
+    [unreadChat, unreadMentions, unreadAnnouncements, viewingChat, viewingAnnouncements]
   );
 
   return <ChatActivityContext.Provider value={value}>{children}</ChatActivityContext.Provider>;

@@ -15,6 +15,7 @@ function NavItem({
   pathname,
   unreadChat,
   unreadMentions,
+  unreadAnnouncements,
   tone = "default",
 }: {
   href: string;
@@ -22,6 +23,7 @@ function NavItem({
   pathname: string;
   unreadChat: number;
   unreadMentions: number;
+  unreadAnnouncements: number;
   tone?: "default" | "danger";
 }) {
   const active =
@@ -30,6 +32,7 @@ function NavItem({
       : pathname.startsWith(href);
 
   const isChat = href === "/chat";
+  const isAnnouncements = href === "/announcements";
   const isDanger = tone === "danger";
 
   return (
@@ -83,6 +86,21 @@ function NavItem({
           @{unreadMentions}
         </span>
       )}
+      {isAnnouncements && unreadAnnouncements > 0 && (
+        <span
+          style={{
+            fontSize: 12,
+            fontWeight: 900,
+            background: "rgb(239,68,68)",
+            color: "white",
+            borderRadius: 999,
+            padding: "2px 7px",
+            lineHeight: 1,
+          }}
+        >
+          {unreadAnnouncements}
+        </span>
+      )}
     </Link>
   );
 }
@@ -91,7 +109,7 @@ export default function AppLayoutChrome({ children }: { children: React.ReactNod
   const pathname = usePathname();
   const [email, setEmail] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
-  const { unreadChat, unreadMentions } = useChatActivity();
+  const { unreadChat, unreadMentions, unreadAnnouncements } = useChatActivity();
 
   useEffect(() => {
     let mounted = true;
@@ -179,6 +197,7 @@ export default function AppLayoutChrome({ children }: { children: React.ReactNod
               pathname={pathname ?? ""}
               unreadChat={unreadChat}
               unreadMentions={unreadMentions}
+              unreadAnnouncements={unreadAnnouncements}
             />
             <NavItem
               href="/results/2026"
@@ -186,6 +205,7 @@ export default function AppLayoutChrome({ children }: { children: React.ReactNod
               pathname={pathname ?? ""}
               unreadChat={unreadChat}
               unreadMentions={unreadMentions}
+              unreadAnnouncements={unreadAnnouncements}
             />
             <NavItem
               href="/leaderboard/2026"
@@ -193,6 +213,7 @@ export default function AppLayoutChrome({ children }: { children: React.ReactNod
               pathname={pathname ?? ""}
               unreadChat={unreadChat}
               unreadMentions={unreadMentions}
+              unreadAnnouncements={unreadAnnouncements}
             />
             <NavItem
               href="/chat"
@@ -200,6 +221,7 @@ export default function AppLayoutChrome({ children }: { children: React.ReactNod
               pathname={pathname ?? ""}
               unreadChat={unreadChat}
               unreadMentions={unreadMentions}
+              unreadAnnouncements={unreadAnnouncements}
             />
             <NavItem
               href="/info"
@@ -207,6 +229,7 @@ export default function AppLayoutChrome({ children }: { children: React.ReactNod
               pathname={pathname ?? ""}
               unreadChat={unreadChat}
               unreadMentions={unreadMentions}
+              unreadAnnouncements={unreadAnnouncements}
             />
             {email && (
               <NavItem
@@ -215,6 +238,7 @@ export default function AppLayoutChrome({ children }: { children: React.ReactNod
                 pathname={pathname ?? ""}
                 unreadChat={unreadChat}
                 unreadMentions={unreadMentions}
+                unreadAnnouncements={unreadAnnouncements}
               />
             )}
             {email && (
@@ -224,6 +248,7 @@ export default function AppLayoutChrome({ children }: { children: React.ReactNod
                 pathname={pathname ?? ""}
                 unreadChat={unreadChat}
                 unreadMentions={unreadMentions}
+                unreadAnnouncements={unreadAnnouncements}
               />
             )}
             {isAdmin && (
@@ -233,6 +258,7 @@ export default function AppLayoutChrome({ children }: { children: React.ReactNod
                 pathname={pathname ?? ""}
                 unreadChat={unreadChat}
                 unreadMentions={unreadMentions}
+                unreadAnnouncements={unreadAnnouncements}
                 tone="danger"
               />
             )}
@@ -280,6 +306,7 @@ export default function AppLayoutChrome({ children }: { children: React.ReactNod
                 pathname={pathname ?? ""}
                 unreadChat={unreadChat}
                 unreadMentions={unreadMentions}
+                unreadAnnouncements={unreadAnnouncements}
               />
             )}
           </div>

@@ -223,14 +223,6 @@ export default function AppLayoutChrome({ children }: { children: React.ReactNod
               unreadMentions={unreadMentions}
               unreadAnnouncements={unreadAnnouncements}
             />
-            <NavItem
-              href="/info"
-              label="How it works"
-              pathname={pathname ?? ""}
-              unreadChat={unreadChat}
-              unreadMentions={unreadMentions}
-              unreadAnnouncements={unreadAnnouncements}
-            />
             {email && (
               <NavItem
                 href="/profile"
@@ -241,6 +233,14 @@ export default function AppLayoutChrome({ children }: { children: React.ReactNod
                 unreadAnnouncements={unreadAnnouncements}
               />
             )}
+            <NavItem
+              href="/info"
+              label="How it works"
+              pathname={pathname ?? ""}
+              unreadChat={unreadChat}
+              unreadMentions={unreadMentions}
+              unreadAnnouncements={unreadAnnouncements}
+            />
             {email && (
               <NavItem
                 href="/announcements"
@@ -271,9 +271,11 @@ export default function AppLayoutChrome({ children }: { children: React.ReactNod
                   display: "flex",
                   flexDirection: "column",
                   alignItems: "flex-end",
-                  gap: 6,
+                  gap: 4,
                 }}
               >
+                <LogoutButton compact />
+
                 <div
                   style={{
                     fontSize: 12,
@@ -290,12 +292,6 @@ export default function AppLayoutChrome({ children }: { children: React.ReactNod
                 <div style={{ fontSize: 12, opacity: 0.45 }}>
                   {BUILD_LABEL}
                 </div>
-              </div>
-            )}
-
-            {email && (
-              <div style={{ marginLeft: 10 }}>
-                <LogoutButton />
               </div>
             )}
 

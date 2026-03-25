@@ -2,7 +2,7 @@
 
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
-export default function LogoutButton() {
+export default function LogoutButton({ compact = false }: { compact?: boolean }) {
   return (
     <button
       onClick={async () => {
@@ -10,13 +10,15 @@ export default function LogoutButton() {
         window.location.href = "/login";
       }}
       style={{
-        padding: "10px 14px",
-        borderRadius: 12,
-        border: "1px solid rgba(255,255,255,0.18)",
-        background: "rgba(255,255,255,0.06)",
+        padding: compact ? 0 : "10px 14px",
+        borderRadius: compact ? 0 : 12,
+        border: compact ? "none" : "1px solid rgba(255,255,255,0.18)",
+        background: compact ? "transparent" : "rgba(255,255,255,0.06)",
         color: "inherit",
-        fontWeight: 800,
+        fontSize: compact ? 13 : 15,
+        fontWeight: compact ? 700 : 800,
         cursor: "pointer",
+        opacity: compact ? 0.75 : 1,
       }}
     >
       Log out

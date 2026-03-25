@@ -21,6 +21,25 @@ export default function ResetPasswordPage() {
       const code = url.searchParams.get("code");
       const tokenHash = url.searchParams.get("token_hash");
       const type = url.searchParams.get("type");
+      const hashParams = new URLSearchParams(url.hash.replace(/^#/, ""));
+      const hashType = hashParams.get("type");
+      const hashAccessToken = hashParams.get("access_token");
+      const hashRefreshToken = hashParams.get("refresh_token");
+      const hasRecoveryHash = hashType === "recovery" && hashAccessToken && hashRefreshToken;
+
+      if (hasRecoveryHash) {
+        const { error } = await supabaseBrowser.auth.setSession({
+          access_token: hashAccessToken,
+          refresh_token: hashRefreshToken,
+        });
+        if (!mounted) return;
+        if (error) {
+          setCanReset(false);
+          setMsg(error.message);
+          setReady(true);
+          return;
+        }
+      }
 
       if (code) {
         const { error } = await supabaseBrowser.auth.exchangeCodeForSession(code);
@@ -45,11 +64,14 @@ export default function ResetPasswordPage() {
         }
       }
 
-      if (code || (tokenHash && type === "recovery")) {
+      if (code || (tokenHash && type === "recovery") || hasRecoveryHash) {
         url.searchParams.delete("code");
         url.searchParams.delete("token_hash");
         url.searchParams.delete("type");
         url.searchParams.delete("next");
+        if (hasRecoveryHash) {
+          url.hash = "";
+        }
         window.history.replaceState(
           {},
           "",

@@ -228,6 +228,20 @@ export default function AppLayoutChrome({ children }: { children: React.ReactNod
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (window.location.pathname === "/reset-password") return;
+
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const hashType = hashParams.get("type");
+    const hashAccessToken = hashParams.get("access_token");
+    const hashRefreshToken = hashParams.get("refresh_token");
+
+    if (hashType === "recovery" && hashAccessToken && hashRefreshToken) {
+      window.location.replace(`/reset-password#${hashParams.toString()}`);
+    }
+  }, [pathname]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
     const media = window.matchMedia("(max-width: 860px)");
     const onChange = () => setIsMobile(media.matches);
     onChange();

@@ -403,25 +403,6 @@ export default function AdminPage() {
             <UiButtonLink href="/admin/members" className="ui-admin-btn ui-admin-btn--full ui-admin-btn--alt">
               Manage Members
             </UiButtonLink>
-          </div>
-        </UiCard>
-
-        <UiCard soft className="ui-admin-section" style={{ order: 2 }}>
-          <h2 className="ui-admin-section-title">Comms</h2>
-          <div className="ui-admin-summary">
-            Send reminder, payment, and recap emails.
-          </div>
-
-          <div className="ui-admin-stack">
-            <UiCard className="ui-admin-tool">
-              <div className="ui-admin-subtitle">Tip reminders (automated)</div>
-              <div className="ui-admin-summary">
-                Runs automatically every 30 minutes and only sends in the configured 3-hour pre-lock window.
-              </div>
-              <div className="ui-admin-summary">
-                Manual override is available in the Round Command Center via <b>Send reminder</b>.
-              </div>
-            </UiCard>
 
             <UiCard className="ui-admin-tool">
               <div className="ui-admin-subtitle">Payment reminders (manual)</div>
@@ -437,7 +418,16 @@ export default function AdminPage() {
                 Send Payment Pending Reminders
               </UiButton>
             </UiCard>
+          </div>
+        </UiCard>
 
+        <UiCard soft className="ui-admin-section" style={{ order: 2 }}>
+          <h2 className="ui-admin-section-title">Comms</h2>
+          <div className="ui-admin-summary">
+            Generate and send round recap emails.
+          </div>
+
+          <div className="ui-admin-stack">
             <UiCard className="ui-admin-tool">
               <div className="ui-admin-subtitle">Round recap</div>
               <div className="ui-admin-summary">
@@ -489,11 +479,11 @@ export default function AdminPage() {
               <div className="ui-admin-summary">
                 Use these only when you need to run part of the normal sync flow on its own.
               </div>
-              <div className="ui-admin-two-col">
+              <div className="ui-row-wrap ui-admin-gap-sm">
                 <UiButton
                   disabled={isRunning}
                   onClick={() => run(`/api/admin/sync-results?season=${season}`)}
-                  className="ui-admin-btn ui-admin-btn--full ui-admin-btn--wrap"
+                  className="ui-admin-btn"
                 >
                   Sync Results (Only)
                 </UiButton>
@@ -501,10 +491,20 @@ export default function AdminPage() {
                 <UiButton
                   disabled={isRunning}
                   onClick={() => run(`/api/admin/recalc-leaderboard?season=${season}`)}
-                  className="ui-admin-btn ui-admin-btn--full ui-admin-btn--wrap"
+                  className="ui-admin-btn"
                 >
                   Recalculate Leaderboard (Only)
                 </UiButton>
+              </div>
+            </UiCard>
+
+            <UiCard className="ui-admin-tool">
+              <div className="ui-admin-subtitle">Tip reminders (automated)</div>
+              <div className="ui-admin-summary">
+                If the GitHub Actions reminder workflow is enabled, it runs every 30 minutes and only sends in the configured 3-hour pre-lock window.
+              </div>
+              <div className="ui-admin-summary">
+                Manual override is still available in the Round Command Center via <b>Send reminder</b>.
               </div>
             </UiCard>
 

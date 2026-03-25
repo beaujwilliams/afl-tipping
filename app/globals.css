@@ -574,13 +574,6 @@ button {
   font-size: 16px;
 }
 
-.ui-admin-btn--wrap {
-  white-space: normal;
-  line-height: 1.2;
-  min-height: 52px;
-  text-align: center;
-}
-
 .ui-admin-btn--full {
   width: 100%;
 }

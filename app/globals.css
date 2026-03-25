@@ -533,13 +533,6 @@ button {
   margin-top: 0;
 }
 
-.ui-admin-command-summary {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--foreground);
-  line-height: 1.35;
-}
-
 .ui-admin-stack {
   margin-top: 12px;
   display: grid;
@@ -574,6 +567,13 @@ button {
   font-size: 16px;
 }
 
+.ui-admin-btn--compact {
+  white-space: normal;
+  line-height: 1.2;
+  max-width: 100%;
+  text-align: center;
+}
+
 .ui-admin-btn--full {
   width: 100%;
 }
@@ -603,6 +603,13 @@ button {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
+.ui-admin-maintenance-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  align-items: start;
+}
+
 .ui-admin-details {
   padding: 14px;
 }
@@ -628,6 +635,22 @@ button {
 
 .ui-admin-details[open] .ui-admin-details-summary::before {
   transform: rotate(90deg);
+}
+
+.ui-admin-automation-item {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-soft);
+}
+
+.ui-admin-automation-list {
+  display: grid;
+  gap: 8px;
+}
+
+.ui-admin-automation-title {
+  font-weight: 800;
 }
 
 @media (max-width: 640px) {

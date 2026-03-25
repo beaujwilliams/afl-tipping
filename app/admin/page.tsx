@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
-import { UiBadge, UiButton, UiButtonLink, UiCard } from "@/components/ui";
+import { UiButton, UiButtonLink, UiCard } from "@/components/ui";
 
 type ConfirmAction = {
   title: string;
@@ -323,24 +323,12 @@ export default function AdminPage() {
               {currentCommandRound ? (
                 (() => {
                   const round = currentCommandRound;
-                  const lockMs = round.lock_time_utc ? new Date(round.lock_time_utc).getTime() : null;
-                  const isLocked = lockMs !== null && Date.now() >= lockMs;
                   const missing = round.missing_players ?? [];
                   const isOpen = openMissingRoundId === round.round_id;
 
                   return (
                     <UiCard key={round.round_id} className="ui-admin-tool">
-                    <div className="ui-row-wrap" style={{ justifyContent: "space-between", gap: 8 }}>
-                      <div className="ui-admin-command-summary">
-                        Locks {fmtMelbourneShort(round.lock_time_utc)} • Tipped {round.tipped_players}/
-                        {round.total_players} • Missing {round.missing_count}
-                      </div>
-                      <UiBadge tone={isLocked ? "locked" : "open"}>
-                        {isLocked ? "LOCKED" : "OPEN"}
-                      </UiBadge>
-                    </div>
-
-                    <div className="ui-row-wrap ui-admin-gap-sm" style={{ marginTop: 10 }}>
+                      <div className="ui-row-wrap ui-admin-gap-sm">
                       <UiButtonLink
                         href={`/round/${season}/${round.round_number}`}
                         className="ui-admin-btn"
@@ -368,21 +356,21 @@ export default function AdminPage() {
                       >
                         Send reminder
                       </UiButton>
-                    </div>
-
-                    {isOpen && (
-                      <div className="ui-admin-missing-list">
-                        {missing.length === 0 ? (
-                          <div className="ui-admin-summary">Everyone has tipped this round.</div>
-                        ) : (
-                          missing.map((p) => (
-                            <div key={p.user_id} className="ui-admin-missing-item">
-                              {p.display_name?.trim() || "(no display name)"}
-                            </div>
-                          ))
-                        )}
                       </div>
-                    )}
+
+                      {isOpen && (
+                        <div className="ui-admin-missing-list">
+                          {missing.length === 0 ? (
+                            <div className="ui-admin-summary">Everyone has tipped this round.</div>
+                          ) : (
+                            missing.map((p) => (
+                              <div key={p.user_id} className="ui-admin-missing-item">
+                                {p.display_name?.trim() || "(no display name)"}
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
                     </UiCard>
                   );
                 })()
@@ -470,85 +458,126 @@ export default function AdminPage() {
         <details className="ui-card ui-card-soft ui-admin-section ui-admin-section--wide ui-admin-details" style={{ order: 3 }}>
           <summary className="ui-admin-details-summary">Advanced / Maintenance</summary>
           <div className="ui-admin-summary">
-            Infrequent tools for manual scoring checks, fixture refreshes, and odds snapshot maintenance.
+            Infrequent tools plus a reference for the background automation and time-based rules running across the site.
           </div>
 
-          <div className="ui-admin-two-col ui-admin-stack">
+          <div className="ui-admin-stack">
             <UiCard className="ui-admin-tool">
-              <div className="ui-admin-subtitle">Manual scoring tools</div>
+              <div className="ui-admin-subtitle">Automated messaging / site jobs</div>
               <div className="ui-admin-summary">
-                Use these only when you need to run part of the normal sync flow on its own.
-              </div>
-              <div className="ui-row-wrap ui-admin-gap-sm">
-                <UiButton
-                  disabled={isRunning}
-                  onClick={() => run(`/api/admin/sync-results?season=${season}`)}
-                  className="ui-admin-btn"
-                >
-                  Sync Results (Only)
-                </UiButton>
-
-                <UiButton
-                  disabled={isRunning}
-                  onClick={() => run(`/api/admin/recalc-leaderboard?season=${season}`)}
-                  className="ui-admin-btn"
-                >
-                  Recalculate Leaderboard (Only)
-                </UiButton>
-              </div>
-            </UiCard>
-
-            <UiCard className="ui-admin-tool">
-              <div className="ui-admin-subtitle">Tip reminders (automated)</div>
-              <div className="ui-admin-summary">
-                If the GitHub Actions reminder workflow is enabled, it runs every 30 minutes and only sends in the configured 3-hour pre-lock window.
-              </div>
-              <div className="ui-admin-summary">
-                Manual override is still available in the Round Command Center via <b>Send reminder</b>.
-              </div>
-            </UiCard>
-
-            <UiCard className="ui-admin-tool">
-              <div className="ui-admin-subtitle">Data sync</div>
-              <div className="ui-admin-summary">
-                Keep rounds, fixtures and odds snapshots aligned for this season.
+                What runs automatically across the site today.
               </div>
 
-              <div className="ui-admin-stack">
-                <UiButton
-                  disabled={isRunning}
-                  onClick={() => run(`/api/admin/sync-fixture?season=${season}`)}
-                  className="ui-admin-btn ui-admin-btn--full"
-                >
-                  Sync Fixture (Squiggle)
-                </UiButton>
-
-                <UiButton
-                  disabled={isRunning}
-                  onClick={() => run(`/api/admin/snapshot-odds-all-due?season=${season}`)}
-                  className="ui-admin-btn ui-admin-btn--full"
-                >
-                  Snapshot Next Due Round
-                </UiButton>
-
-                <div className="ui-admin-tool ui-admin-tool--nested">
-                  <div className="ui-row-wrap" style={{ justifyContent: "space-between", gap: 8 }}>
-                    <div className="ui-admin-subtitle">Force Snapshot (Testing)</div>
-                    <span className="ui-admin-danger-chip">Force</span>
+              <div className="ui-admin-automation-list">
+                <div className="ui-admin-automation-item">
+                  <div className="ui-admin-automation-title">Tip reminders</div>
+                  <div className="ui-admin-summary ui-admin-summary--tight">
+                    GitHub Actions runs every 30 minutes and only sends in the configured 3-hour pre-lock window.
                   </div>
-                  <UiButton
-                    disabled={isRunning}
-                    onClick={runForceSnapshotNow}
-                    className="ui-admin-btn ui-admin-btn--full"
-                  >
-                    Run Force Snapshot
-                  </UiButton>
-                  <div className="ui-admin-summary">
-                    Forces odds capture immediately, even when not due. Use for testing/backfills only.
+                  <div className="ui-admin-summary ui-admin-summary--tight">
+                    Manual override is still available in the Round Command Center via <b>Send reminder</b>.
+                  </div>
+                </div>
+
+                <div className="ui-admin-automation-item">
+                  <div className="ui-admin-automation-title">Odds snapshot capture</div>
+                  <div className="ui-admin-summary ui-admin-summary--tight">
+                    GitHub Actions runs every 10 minutes and calls the due-round snapshot endpoint.
+                  </div>
+                  <div className="ui-admin-summary ui-admin-summary--tight">
+                    The endpoint only captures odds when a round is due, which is 36 hours before lock.
+                  </div>
+                </div>
+
+                <div className="ui-admin-automation-item">
+                  <div className="ui-admin-automation-title">Round locking</div>
+                  <div className="ui-admin-summary ui-admin-summary--tight">
+                    No scheduled job is needed. Rounds lock automatically when the current time passes <code>lock_time_utc</code>.
+                  </div>
+                  <div className="ui-admin-summary ui-admin-summary--tight">
+                    That same lock time controls when results, tip breakdowns, and everyone&apos;s tips become visible.
+                  </div>
+                </div>
+
+                <div className="ui-admin-automation-item">
+                  <div className="ui-admin-automation-title">Unpaid tip lock</div>
+                  <div className="ui-admin-summary ui-admin-summary--tight">
+                    If enabled in Members settings, members with payment status <b>pending</b> are blocked from tip submission automatically.
+                  </div>
+                  <div className="ui-admin-summary ui-admin-summary--tight">
+                    Login, chat, and results stay available while the payment lock is active.
                   </div>
                 </div>
               </div>
             </UiCard>
+
+            <div className="ui-admin-maintenance-grid">
+              <UiCard className="ui-admin-tool">
+                <div className="ui-admin-subtitle">Manual scoring tools</div>
+                <div className="ui-admin-summary">
+                  Use these only when you need to run part of the normal sync flow on its own.
+                </div>
+                <div className="ui-row-wrap ui-admin-gap-sm">
+                  <UiButton
+                    disabled={isRunning}
+                    onClick={() => run(`/api/admin/sync-results?season=${season}`)}
+                    className="ui-admin-btn ui-admin-btn--compact"
+                  >
+                    Sync Results (Only)
+                  </UiButton>
+
+                  <UiButton
+                    disabled={isRunning}
+                    onClick={() => run(`/api/admin/recalc-leaderboard?season=${season}`)}
+                    className="ui-admin-btn ui-admin-btn--compact"
+                  >
+                    Recalculate Leaderboard (Only)
+                  </UiButton>
+                </div>
+              </UiCard>
+
+              <UiCard className="ui-admin-tool">
+                <div className="ui-admin-subtitle">Data sync</div>
+                <div className="ui-admin-summary">
+                  Keep rounds, fixtures and odds snapshots aligned for this season.
+                </div>
+
+                <div className="ui-admin-stack">
+                  <UiButton
+                    disabled={isRunning}
+                    onClick={() => run(`/api/admin/sync-fixture?season=${season}`)}
+                    className="ui-admin-btn ui-admin-btn--full"
+                  >
+                    Sync Fixture (Squiggle)
+                  </UiButton>
+
+                  <UiButton
+                    disabled={isRunning}
+                    onClick={() => run(`/api/admin/snapshot-odds-all-due?season=${season}`)}
+                    className="ui-admin-btn ui-admin-btn--full"
+                  >
+                    Snapshot Next Due Round
+                  </UiButton>
+
+                  <div className="ui-admin-tool ui-admin-tool--nested">
+                    <div className="ui-row-wrap" style={{ justifyContent: "space-between", gap: 8 }}>
+                      <div className="ui-admin-subtitle">Force Snapshot (Testing)</div>
+                      <span className="ui-admin-danger-chip">Force</span>
+                    </div>
+                    <UiButton
+                      disabled={isRunning}
+                      onClick={runForceSnapshotNow}
+                      className="ui-admin-btn ui-admin-btn--full"
+                    >
+                      Run Force Snapshot
+                    </UiButton>
+                    <div className="ui-admin-summary">
+                      Forces odds capture immediately, even when not due. Use for testing/backfills only.
+                    </div>
+                  </div>
+                </div>
+              </UiCard>
+            </div>
           </div>
         </details>
       </div>

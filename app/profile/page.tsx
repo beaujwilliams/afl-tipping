@@ -561,30 +561,32 @@ export default function ProfilePage() {
             <div className="ui-caption" style={{ marginTop: 4 }}>
               How each team has performed for your tips this season.
             </div>
-            <div style={{ marginTop: 8 }}>
-              <button
-                type="button"
-                onClick={() => setShowAllTeams((prev) => !prev)}
-                style={{
-                  appearance: "none",
-                  border: "1px solid var(--border)",
-                  background: "var(--card)",
-                  color: "var(--foreground)",
-                  borderRadius: 999,
-                  padding: "6px 12px",
-                  fontSize: 13,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
-              >
-                {showAllTeams ? "Show simplified list" : "Show full team list"}
-              </button>
-            </div>
+            {!isMobile && (
+              <div style={{ marginTop: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setShowAllTeams((prev) => !prev)}
+                  style={{
+                    appearance: "none",
+                    border: "1px solid var(--border)",
+                    background: "var(--card)",
+                    color: "var(--foreground)",
+                    borderRadius: 999,
+                    padding: "6px 12px",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  {showAllTeams ? "Show simplified list" : "Show full team list"}
+                </button>
+              </div>
+            )}
 
             {isMobile ? (
               <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
-                <div style={{ fontSize: 14, fontWeight: 700 }}>
-                  {teamTotals.tipped} tips • {teamTotals.correct}/{teamTotals.incorrect} correct
+                <div style={{ fontSize: 15, fontWeight: 600 }}>
+                  {teamTotals.correct}/{teamTotals.incorrect} correct
                 </div>
                 <div className="ui-caption" style={{ fontSize: 13 }}>
                   Most tipped: <b>{mostTippedTeam ? mostTippedTeam.team : "-"}</b> • Best scoring:{" "}
@@ -620,6 +622,25 @@ export default function ProfilePage() {
 
             {isMobile ? (
               <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setShowAllTeams((prev) => !prev)}
+                    style={{
+                      appearance: "none",
+                      border: "1px solid var(--border)",
+                      background: "var(--card)",
+                      color: "var(--foreground)",
+                      borderRadius: 999,
+                      padding: "6px 12px",
+                      fontSize: 13,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {showAllTeams ? "Show simplified list" : "Show full team list"}
+                  </button>
+                </div>
                 {nonZeroTeamRows.length === 0 ? (
                   <div className="ui-caption">No scored team tips yet.</div>
                 ) : (
@@ -633,12 +654,14 @@ export default function ProfilePage() {
                           gap: 8,
                         }}
                       >
-                        <div style={{ fontWeight: 800, fontSize: 19 }}>{row.team}</div>
-                        <div style={{ fontWeight: 800, fontSize: 19 }}>{fmtPts(row.total_points)} pts</div>
+                        <div style={{ fontWeight: 700, fontSize: 17, lineHeight: 1.25 }}>{row.team}</div>
+                        <div style={{ fontWeight: 600, fontSize: 17, lineHeight: 1.25 }}>
+                          {fmtPts(row.total_points)} pts
+                        </div>
                       </div>
                       <div className="ui-caption" style={{ marginTop: 6, fontSize: 13 }}>
-                        Tips {row.tipped_count} • {row.correct_count}/{row.incorrect_count} •{" "}
-                        {fmtPct(row.accuracy_pct)} • Avg {fmtPts(row.avg_points_per_tip)}
+                        {row.correct_count}/{row.incorrect_count} • {fmtPct(row.accuracy_pct)} • Avg{" "}
+                        {fmtPts(row.avg_points_per_tip)}
                       </div>
                     </UiCard>
                   ))

@@ -331,12 +331,9 @@ export default function AdminPage() {
                   return (
                     <UiCard key={round.round_id} className="ui-admin-tool">
                     <div className="ui-row-wrap" style={{ justifyContent: "space-between", gap: 8 }}>
-                      <div className="ui-admin-stack-tight">
-                        <div className="ui-admin-subtitle">Round {round.round_number}</div>
-                        <div className="ui-admin-summary ui-admin-summary--tight">
-                          Locks {fmtMelbourneShort(round.lock_time_utc)} • Tipped {round.tipped_players}/
-                          {round.total_players} • Missing {round.missing_count}
-                        </div>
+                      <div className="ui-admin-command-summary">
+                        Locks {fmtMelbourneShort(round.lock_time_utc)} • Tipped {round.tipped_players}/
+                        {round.total_players} • Missing {round.missing_count}
                       </div>
                       <UiBadge tone={isLocked ? "locked" : "open"}>
                         {isLocked ? "LOCKED" : "OPEN"}
@@ -396,63 +393,23 @@ export default function AdminPage() {
           )}
         </UiCard>
 
-        <UiCard soft className="ui-admin-section" style={{ order: 4 }}>
-          <h2 className="ui-admin-section-title">Data Sync</h2>
+        <UiCard soft className="ui-admin-section" style={{ order: 1 }}>
+          <h2 className="ui-admin-section-title">Members</h2>
           <div className="ui-admin-summary">
-            Keep rounds, fixtures and odds snapshots aligned for this season.
+            Manage members, payment states, unpaid tip lock and seasonal settings.
           </div>
 
           <div className="ui-admin-stack">
-            <UiCard className="ui-admin-tool">
-              <UiButton
-                disabled={isRunning}
-                onClick={() => run(`/api/admin/sync-fixture?season=${season}`)}
-                className="ui-admin-btn ui-admin-btn--full"
-              >
-                Sync Fixture (Squiggle)
-              </UiButton>
-              <div className="ui-admin-summary">
-                Imports or refreshes rounds and matches for this season.
-              </div>
-            </UiCard>
-
-            <UiCard className="ui-admin-tool">
-              <UiButton
-                disabled={isRunning}
-                onClick={() => run(`/api/admin/snapshot-odds-all-due?season=${season}`)}
-                className="ui-admin-btn ui-admin-btn--full"
-              >
-                Snapshot Next Due Round
-              </UiButton>
-              <div className="ui-admin-summary">
-                Captures odds for the next round only when its snapshot window is due.
-              </div>
-            </UiCard>
-
-            <UiCard className="ui-admin-tool">
-              <div className="ui-row-wrap" style={{ justifyContent: "space-between", gap: 8 }}>
-                <div className="ui-admin-subtitle">Force Snapshot (Testing)</div>
-                <span className="ui-admin-danger-chip">Force</span>
-              </div>
-              <UiButton
-                disabled={isRunning}
-                onClick={runForceSnapshotNow}
-                className="ui-admin-btn ui-admin-btn--full"
-                style={{ marginTop: 8 }}
-              >
-                Run Force Snapshot
-              </UiButton>
-              <div className="ui-admin-summary">
-                Forces odds capture immediately, even when not due. Use for testing/backfills only.
-              </div>
-            </UiCard>
+            <UiButtonLink href="/admin/members" className="ui-admin-btn ui-admin-btn--full ui-admin-btn--alt">
+              Manage Members
+            </UiButtonLink>
           </div>
         </UiCard>
 
-        <UiCard soft className="ui-admin-section" style={{ order: 3 }}>
+        <UiCard soft className="ui-admin-section" style={{ order: 2 }}>
           <h2 className="ui-admin-section-title">Comms</h2>
           <div className="ui-admin-summary">
-            Send reminder and recap emails.
+            Send reminder, payment, and recap emails.
           </div>
 
           <div className="ui-admin-stack">
@@ -480,46 +437,6 @@ export default function AdminPage() {
                 Send Payment Pending Reminders
               </UiButton>
             </UiCard>
-          </div>
-        </UiCard>
-
-        <UiCard soft className="ui-admin-section" style={{ order: 2 }}>
-          <h2 className="ui-admin-section-title">Members</h2>
-          <div className="ui-admin-summary">
-            Manage members, payment states, unpaid tip lock and seasonal settings.
-          </div>
-
-          <div className="ui-admin-stack">
-            <UiButtonLink href="/admin/members" className="ui-admin-btn ui-admin-btn--full ui-admin-btn--alt">
-              Manage Members
-            </UiButtonLink>
-          </div>
-        </UiCard>
-
-        <UiCard soft className="ui-admin-section" style={{ order: 1 }}>
-          <h2 className="ui-admin-section-title">Scoring</h2>
-          <div className="ui-admin-summary">
-            Update finished game results and refresh season totals.
-          </div>
-
-          <div className="ui-admin-stack">
-            <div className="ui-admin-two-col">
-              <UiButton
-                disabled={isRunning}
-                onClick={() => run(`/api/admin/sync-results?season=${season}`)}
-                className="ui-admin-btn ui-admin-btn--full ui-admin-btn--wrap"
-              >
-                Sync Results (Only)
-              </UiButton>
-
-              <UiButton
-                disabled={isRunning}
-                onClick={() => run(`/api/admin/recalc-leaderboard?season=${season}`)}
-                className="ui-admin-btn ui-admin-btn--full ui-admin-btn--wrap"
-              >
-                Recalculate Leaderboard (Only)
-              </UiButton>
-            </div>
 
             <UiCard className="ui-admin-tool">
               <div className="ui-admin-subtitle">Round recap</div>
@@ -559,6 +476,81 @@ export default function AdminPage() {
             </UiCard>
           </div>
         </UiCard>
+
+        <details className="ui-card ui-card-soft ui-admin-section ui-admin-section--wide ui-admin-details" style={{ order: 3 }}>
+          <summary className="ui-admin-details-summary">Advanced / Maintenance</summary>
+          <div className="ui-admin-summary">
+            Infrequent tools for manual scoring checks, fixture refreshes, and odds snapshot maintenance.
+          </div>
+
+          <div className="ui-admin-two-col ui-admin-stack">
+            <UiCard className="ui-admin-tool">
+              <div className="ui-admin-subtitle">Manual scoring tools</div>
+              <div className="ui-admin-summary">
+                Use these only when you need to run part of the normal sync flow on its own.
+              </div>
+              <div className="ui-admin-two-col">
+                <UiButton
+                  disabled={isRunning}
+                  onClick={() => run(`/api/admin/sync-results?season=${season}`)}
+                  className="ui-admin-btn ui-admin-btn--full ui-admin-btn--wrap"
+                >
+                  Sync Results (Only)
+                </UiButton>
+
+                <UiButton
+                  disabled={isRunning}
+                  onClick={() => run(`/api/admin/recalc-leaderboard?season=${season}`)}
+                  className="ui-admin-btn ui-admin-btn--full ui-admin-btn--wrap"
+                >
+                  Recalculate Leaderboard (Only)
+                </UiButton>
+              </div>
+            </UiCard>
+
+            <UiCard className="ui-admin-tool">
+              <div className="ui-admin-subtitle">Data sync</div>
+              <div className="ui-admin-summary">
+                Keep rounds, fixtures and odds snapshots aligned for this season.
+              </div>
+
+              <div className="ui-admin-stack">
+                <UiButton
+                  disabled={isRunning}
+                  onClick={() => run(`/api/admin/sync-fixture?season=${season}`)}
+                  className="ui-admin-btn ui-admin-btn--full"
+                >
+                  Sync Fixture (Squiggle)
+                </UiButton>
+
+                <UiButton
+                  disabled={isRunning}
+                  onClick={() => run(`/api/admin/snapshot-odds-all-due?season=${season}`)}
+                  className="ui-admin-btn ui-admin-btn--full"
+                >
+                  Snapshot Next Due Round
+                </UiButton>
+
+                <div className="ui-admin-tool ui-admin-tool--nested">
+                  <div className="ui-row-wrap" style={{ justifyContent: "space-between", gap: 8 }}>
+                    <div className="ui-admin-subtitle">Force Snapshot (Testing)</div>
+                    <span className="ui-admin-danger-chip">Force</span>
+                  </div>
+                  <UiButton
+                    disabled={isRunning}
+                    onClick={runForceSnapshotNow}
+                    className="ui-admin-btn ui-admin-btn--full"
+                  >
+                    Run Force Snapshot
+                  </UiButton>
+                  <div className="ui-admin-summary">
+                    Forces odds capture immediately, even when not due. Use for testing/backfills only.
+                  </div>
+                </div>
+              </div>
+            </UiCard>
+          </div>
+        </details>
       </div>
 
       {result !== null && (

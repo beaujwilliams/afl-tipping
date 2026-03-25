@@ -533,6 +533,13 @@ button {
   margin-top: 0;
 }
 
+.ui-admin-command-summary {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--foreground);
+  line-height: 1.35;
+}
+
 .ui-admin-stack {
   margin-top: 12px;
   display: grid;
@@ -552,6 +559,13 @@ button {
   padding: 12px;
   display: grid;
   gap: 10px;
+}
+
+.ui-admin-tool--nested {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-soft);
 }
 
 .ui-admin-btn {
@@ -594,6 +608,33 @@ button {
   display: grid;
   gap: 10px;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.ui-admin-details {
+  padding: 14px;
+}
+
+.ui-admin-details-summary {
+  cursor: pointer;
+  font-size: 18px;
+  font-weight: 800;
+  list-style: none;
+}
+
+.ui-admin-details-summary::-webkit-details-marker {
+  display: none;
+}
+
+.ui-admin-details-summary::before {
+  content: ">";
+  display: inline-block;
+  margin-right: 10px;
+  transform: rotate(0deg);
+  transition: transform 160ms ease;
+}
+
+.ui-admin-details[open] .ui-admin-details-summary::before {
+  transform: rotate(90deg);
 }
 
 @media (max-width: 640px) {

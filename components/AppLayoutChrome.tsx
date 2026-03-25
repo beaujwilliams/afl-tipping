@@ -137,7 +137,7 @@ function DesktopDropdown({
     <div
       style={{
         position: "absolute",
-        top: "calc(100% + 8px)",
+        top: "calc(100% + 2px)",
         left: align === "start" ? 0 : "auto",
         right: align === "end" ? 0 : "auto",
         minWidth: 220,
@@ -180,6 +180,7 @@ export default function AppLayoutChrome({ children }: { children: React.ReactNod
   const [isMobile, setIsMobile] = useState(false);
   const [openMenu, setOpenMenu] = useState<MenuKey | null>(null);
   const navRef = useRef<HTMLDivElement | null>(null);
+  const hoverCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { unreadChat, unreadMentions, unreadAnnouncements } = useChatActivity();
 
   useEffect(() => {
@@ -239,6 +240,14 @@ export default function AppLayoutChrome({ children }: { children: React.ReactNod
   }, []);
 
   useEffect(() => {
+    return () => {
+      if (hoverCloseTimerRef.current) {
+        clearTimeout(hoverCloseTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (!openMenu) return;
     function onPointerDown(event: MouseEvent | TouchEvent) {
       if (!navRef.current) return;
@@ -286,17 +295,30 @@ export default function AppLayoutChrome({ children }: { children: React.ReactNod
 
   const mobileOpenItems = openMenu === "tipping" ? tippingItems : infoItems;
 
+  function clearHoverCloseTimer() {
+    if (!hoverCloseTimerRef.current) return;
+    clearTimeout(hoverCloseTimerRef.current);
+    hoverCloseTimerRef.current = null;
+  }
+
   function onTriggerHoverOpen(key: MenuKey) {
-    if (!isMobile) setOpenMenu(key);
+    if (!isMobile) {
+      clearHoverCloseTimer();
+      setOpenMenu(key);
+    }
   }
 
   function onTriggerHoverClose(key: MenuKey) {
     if (!isMobile) {
-      setOpenMenu((current) => (current === key ? null : current));
+      clearHoverCloseTimer();
+      hoverCloseTimerRef.current = setTimeout(() => {
+        setOpenMenu((current) => (current === key ? null : current));
+      }, 180);
     }
   }
 
   function onTriggerClick(key: MenuKey) {
+    clearHoverCloseTimer();
     setOpenMenu((current) => (current === key ? null : key));
   }
 

@@ -1,14 +1,11 @@
 import { NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase-server";
+import {
+  type AuthOtpType,
+  getSafeNextPath,
+  resolvePostAuthRedirectPath,
+} from "@/lib/auth-callback-routing";
 import { isDuplicateUsernameError, validateUsername } from "@/lib/username";
-
-type AuthOtpType =
-  | "signup"
-  | "invite"
-  | "magiclink"
-  | "recovery"
-  | "email_change"
-  | "email";
 
 function isMissingColumnError(message: string, columnName: string) {
   const m = message.toLowerCase();
@@ -111,6 +108,7 @@ export async function GET(req: Request) {
   const code = url.searchParams.get("code");
   const token_hash = url.searchParams.get("token_hash");
   const type = url.searchParams.get("type"); // usually "magiclink"
+  const nextPath = getSafeNextPath(url.searchParams.get("next"));
 
   const supabase = await createClient();
 
@@ -122,8 +120,19 @@ export async function GET(req: Request) {
         new URL(`/login?error=${encodeURIComponent(error.message)}`, url.origin)
       );
     }
+
+    const redirectPath = resolvePostAuthRedirectPath({
+      flow: "code",
+      type,
+      nextPath,
+    });
+
+    if (redirectPath === "/reset-password") {
+      return NextResponse.redirect(new URL(redirectPath, url.origin));
+    }
+
     await bootstrapProfileFromSignupMetadata(supabase);
-    return NextResponse.redirect(new URL("/setup", url.origin));
+    return NextResponse.redirect(new URL(redirectPath, url.origin));
   }
 
   // Handle Supabase magic link callback
@@ -156,12 +165,19 @@ export async function GET(req: Request) {
       );
     }
 
-    if (otpType === "recovery") {
-      return NextResponse.redirect(new URL("/reset-password", url.origin));
+    const redirectPath = resolvePostAuthRedirectPath({
+      flow: "otp",
+      type,
+      otpType,
+      nextPath,
+    });
+
+    if (redirectPath === "/reset-password") {
+      return NextResponse.redirect(new URL(redirectPath, url.origin));
     }
 
     await bootstrapProfileFromSignupMetadata(supabase);
-    return NextResponse.redirect(new URL("/setup", url.origin));
+    return NextResponse.redirect(new URL(redirectPath, url.origin));
   }
 
   // Nothing we understand in the URL

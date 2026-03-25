@@ -17,6 +17,46 @@ export default function ResetPasswordPage() {
     let mounted = true;
 
     async function boot() {
+      const url = new URL(window.location.href);
+      const code = url.searchParams.get("code");
+      const tokenHash = url.searchParams.get("token_hash");
+      const type = url.searchParams.get("type");
+
+      if (code) {
+        const { error } = await supabaseBrowser.auth.exchangeCodeForSession(code);
+        if (!mounted) return;
+        if (error) {
+          setCanReset(false);
+          setMsg(error.message);
+          setReady(true);
+          return;
+        }
+      } else if (tokenHash && type === "recovery") {
+        const { error } = await supabaseBrowser.auth.verifyOtp({
+          token_hash: tokenHash,
+          type: "recovery",
+        });
+        if (!mounted) return;
+        if (error) {
+          setCanReset(false);
+          setMsg(error.message);
+          setReady(true);
+          return;
+        }
+      }
+
+      if (code || (tokenHash && type === "recovery")) {
+        url.searchParams.delete("code");
+        url.searchParams.delete("token_hash");
+        url.searchParams.delete("type");
+        url.searchParams.delete("next");
+        window.history.replaceState(
+          {},
+          "",
+          `${url.pathname}${url.search ? `?${url.searchParams.toString()}` : ""}${url.hash}`
+        );
+      }
+
       const { data } = await supabaseBrowser.auth.getSession();
       if (!mounted) return;
 

@@ -85,12 +85,6 @@ function fmtPct(value: number) {
   return `${Number(value ?? 0).toFixed(2)}%`;
 }
 
-function fmtSigned(value: number) {
-  const num = Number(value ?? 0);
-  if (num > 0) return `+${num.toFixed(2)}`;
-  return num.toFixed(2);
-}
-
 function fmtSignedWhole(value: number) {
   const num = Number(value ?? 0);
   if (num > 0) return `+${num}`;
@@ -276,7 +270,6 @@ export default function StatsPage() {
     [showAllTeams, displayedTeamRows]
   );
 
-  const pointsVsAvgDelta = Number(insights?.points_vs_comp_avg.delta ?? 0);
   const riskDelta = Number(insights?.risk_profile.delta_vs_comp ?? 0);
 
   return (
@@ -328,29 +321,40 @@ export default function StatsPage() {
                 <div className="ui-meta">Longest: {insights.longest_streak}</div>
               </UiCard>
               <UiCard>
-                <div className="ui-kicker">Points vs comp avg</div>
+                <div className="ui-kicker">Movement this round</div>
                 <div
                   className="ui-value"
-                  style={{ color: pointsVsAvgDelta < 0 ? "rgb(185,28,28)" : "inherit" }}
+                  style={{
+                    color:
+                      snapshot.movement > 0
+                        ? "rgb(22,163,74)"
+                        : snapshot.movement < 0
+                        ? "rgb(185,28,28)"
+                        : "inherit",
+                  }}
                 >
-                  {fmtSigned(pointsVsAvgDelta)}
+                  {fmtSignedWhole(snapshot.movement)}
+                </div>
+                <div className="ui-meta">{movementLabel(snapshot.movement)}</div>
+              </UiCard>
+              <UiCard>
+                <div className="ui-kicker">Best round</div>
+                <div className="ui-value">
+                  {insights.best_round ? `R${insights.best_round.round_number}` : "-"}
                 </div>
                 <div className="ui-meta">
-                  You: {fmtPts(insights.points_vs_comp_avg.user_points)} • Avg:{" "}
-                  {fmtPts(insights.points_vs_comp_avg.comp_avg_points)}
+                  Score: {fmtPts(insights.best_round?.score ?? 0)} • Move:{" "}
+                  {fmtSignedWhole(insights.best_round?.movement ?? 0)}
                 </div>
               </UiCard>
               <UiCard>
-                <div className="ui-kicker">Risk profile</div>
-                <div
-                  className="ui-value"
-                  style={{ color: riskDelta > 0 ? "rgb(22,163,74)" : riskDelta < 0 ? "rgb(185,28,28)" : "inherit" }}
-                >
-                  {fmtSigned(riskDelta)}
+                <div className="ui-kicker">Worst round</div>
+                <div className="ui-value">
+                  {insights.worst_round ? `R${insights.worst_round.round_number}` : "-"}
                 </div>
                 <div className="ui-meta">
-                  Odds avg: {fmtPts(insights.risk_profile.avg_tipped_odds)} • Field:{" "}
-                  {fmtPts(insights.risk_profile.comp_avg_tipped_odds)}
+                  Score: {fmtPts(insights.worst_round?.score ?? 0)} • Move:{" "}
+                  {fmtSignedWhole(insights.worst_round?.movement ?? 0)}
                 </div>
               </UiCard>
             </UiCardGrid>
@@ -366,6 +370,20 @@ export default function StatsPage() {
           </div>
 
           <UiCardGrid columns={4} style={{ marginTop: 12 }}>
+            <UiCard>
+              <div className="ui-kicker">Risk profile</div>
+              <div
+                className="ui-value"
+                style={{ color: riskDelta > 0 ? "rgb(22,163,74)" : riskDelta < 0 ? "rgb(185,28,28)" : "inherit" }}
+              >
+                {fmtSigned(riskDelta)}
+              </div>
+              <div className="ui-meta">
+                Odds avg: {fmtPts(insights.risk_profile.avg_tipped_odds)} • Field:{" "}
+                {fmtPts(insights.risk_profile.comp_avg_tipped_odds)}
+              </div>
+            </UiCard>
+
             <UiCard>
               <div className="ui-kicker">Underdog record (2.00+)</div>
               <div className="ui-value">
@@ -383,46 +401,6 @@ export default function StatsPage() {
               </div>
               <div className="ui-meta">
                 Tips: {insights.favourite_record.tips} • Points: {fmtPts(insights.favourite_record.points)}
-              </div>
-            </UiCard>
-
-            <UiCard>
-              <div className="ui-kicker">Movement this round</div>
-              <div
-                className="ui-value"
-                style={{
-                  color:
-                    snapshot.movement > 0
-                      ? "rgb(22,163,74)"
-                      : snapshot.movement < 0
-                      ? "rgb(185,28,28)"
-                      : "inherit",
-                }}
-              >
-                {fmtSignedWhole(snapshot.movement)}
-              </div>
-              <div className="ui-meta">{movementLabel(snapshot.movement)}</div>
-            </UiCard>
-
-            <UiCard>
-              <div className="ui-kicker">Best round</div>
-              <div className="ui-value">
-                {insights.best_round ? `R${insights.best_round.round_number}` : "-"}
-              </div>
-              <div className="ui-meta">
-                Score: {fmtPts(insights.best_round?.score ?? 0)} • Move:{" "}
-                {fmtSignedWhole(insights.best_round?.movement ?? 0)}
-              </div>
-            </UiCard>
-
-            <UiCard>
-              <div className="ui-kicker">Worst round</div>
-              <div className="ui-value">
-                {insights.worst_round ? `R${insights.worst_round.round_number}` : "-"}
-              </div>
-              <div className="ui-meta">
-                Score: {fmtPts(insights.worst_round?.score ?? 0)} • Move:{" "}
-                {fmtSignedWhole(insights.worst_round?.movement ?? 0)}
               </div>
             </UiCard>
 

@@ -181,3 +181,45 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ ok: false, error: "Unexpected error", details }, { status: 500 });
   }
 }
+
+export async function DELETE(req: Request) {
+  try {
+    const adminCheck = await assertAdmin(req);
+    if (!adminCheck.ok) return adminCheck.res;
+    const supabase = adminCheck.supabase;
+
+    const body = (await req.json().catch(() => null)) as
+      | null
+      | {
+          id?: string;
+        };
+
+    const id = String(body?.id ?? "").trim();
+    if (!id) {
+      return NextResponse.json({ ok: false, error: "Missing id" }, { status: 400 });
+    }
+
+    const { data, error } = await supabase
+      .from("next_season_interest")
+      .delete()
+      .eq("id", id)
+      .select("id")
+      .maybeSingle();
+
+    if (error) {
+      return NextResponse.json(
+        { ok: false, error: "Failed to delete interest row", details: error.message },
+        { status: 500 }
+      );
+    }
+
+    if (!data) {
+      return NextResponse.json({ ok: false, error: "Interest row not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({ ok: true, id: String(data.id) });
+  } catch (e: unknown) {
+    const details = e instanceof Error ? e.message : String(e);
+    return NextResponse.json({ ok: false, error: "Unexpected error", details }, { status: 500 });
+  }
+}

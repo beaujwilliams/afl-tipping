@@ -35,6 +35,25 @@ type InterestPatchResponse = {
   details?: string;
 };
 
+type InterestDeleteResponse = {
+  ok?: boolean;
+  id?: string;
+  error?: string;
+  details?: string;
+};
+
+type BulkSeasonOpenResponse = {
+  ok?: boolean;
+  error?: string;
+  details?: string;
+  recipients_targeted?: number;
+  totals?: {
+    sent?: number;
+    simulated?: number;
+    failed?: number;
+  };
+};
+
 type RowDraft = {
   status: InterestStatus;
   notes: string;
@@ -110,6 +129,8 @@ export default function AdminInterestedMembersPage() {
 
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [sendingBulk, setSendingBulk] = useState(false);
   const [msg, setMsg] = useState("");
 
   function buildDraft(nextRows: InterestRow[]) {
@@ -281,6 +302,74 @@ export default function AdminInterestedMembersPage() {
     setRows((prev) => prev.map((row) => (row.id === id ? json.row ?? row : row)));
   }
 
+  async function deleteRow(id: string) {
+    if (!sessionToken) return;
+    const ok = confirm("Delete this interested member? This cannot be undone.");
+    if (!ok) return;
+
+    setDeletingId(id);
+    setMsg("");
+
+    const res = await fetch("/api/admin/next-season-interest", {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${sessionToken}`,
+      },
+      body: JSON.stringify({ id }),
+    });
+
+    const json = (await res.json().catch(() => null)) as InterestDeleteResponse | null;
+    setDeletingId(null);
+
+    if (!res.ok || !json?.ok) {
+      const detail = json?.details ? `: ${json.details}` : "";
+      setMsg((json?.error ?? "Failed to delete row") + detail);
+      return;
+    }
+
+    setRows((prev) => prev.filter((row) => row.id !== id));
+    setDraftById((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  }
+
+  async function sendSeasonOpenBulkEmail() {
+    if (!sessionToken) return;
+    const ok = confirm(
+      `Send season-open email to all pending interested members for season ${season}? Successful sends will be marked as notified.`
+    );
+    if (!ok) return;
+
+    setSendingBulk(true);
+    setMsg("");
+
+    const res = await fetch("/api/admin/next-season-interest/send-season-open", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${sessionToken}`,
+      },
+      body: JSON.stringify({ season }),
+    });
+
+    const json = (await res.json().catch(() => null)) as BulkSeasonOpenResponse | null;
+    setSendingBulk(false);
+
+    if (!res.ok || !json?.ok) {
+      const detail = json?.details ? `: ${json.details}` : "";
+      setMsg((json?.error ?? "Failed to send bulk email") + detail);
+      return;
+    }
+
+    const totals = json.totals ?? {};
+    const summary = `Season-open email run complete. Targeted ${json.recipients_targeted ?? 0}, sent ${totals.sent ?? 0}, failed ${totals.failed ?? 0}.`;
+    await load();
+    setMsg(summary);
+  }
+
   function exportCsv() {
     const csv = toCsv(filteredRows);
     downloadCsv(`next-season-interest-${season}.csv`, csv);
@@ -335,6 +424,13 @@ export default function AdminInterestedMembersPage() {
           />
 
           <UiButton onClick={exportCsv}>Export CSV</UiButton>
+          <UiButton
+            disabled={sendingBulk || loading || counts.pending === 0}
+            onClick={sendSeasonOpenBulkEmail}
+            tone="activeSuccess"
+          >
+            {sendingBulk ? "Sending..." : `Email Pending (${counts.pending})`}
+          </UiButton>
         </div>
 
         <div className="ui-row-wrap" style={{ marginTop: 10 }}>
@@ -362,7 +458,7 @@ export default function AdminInterestedMembersPage() {
                 <UiTableHeadCell>Submitted</UiTableHeadCell>
                 <UiTableHeadCell>Source</UiTableHeadCell>
                 <UiTableHeadCell>Notes</UiTableHeadCell>
-                <UiTableHeadCell>Action</UiTableHeadCell>
+                <UiTableHeadCell>Actions</UiTableHeadCell>
               </tr>
             </thead>
             <tbody>
@@ -414,13 +510,23 @@ export default function AdminInterestedMembersPage() {
                         />
                       </UiTableCell>
                       <UiTableCell>
-                        <UiButton
-                          disabled={!dirty || savingId === row.id}
-                          onClick={() => saveRow(row.id)}
-                          style={{ width: 92 }}
-                        >
-                          {savingId === row.id ? "Saving..." : "Save"}
-                        </UiButton>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <UiButton
+                            disabled={!dirty || savingId === row.id || deletingId === row.id}
+                            onClick={() => saveRow(row.id)}
+                            style={{ width: 92 }}
+                          >
+                            {savingId === row.id ? "Saving..." : "Save"}
+                          </UiButton>
+                          <UiButton
+                            disabled={savingId === row.id || deletingId === row.id}
+                            onClick={() => deleteRow(row.id)}
+                            tone="dangerSoft"
+                            style={{ width: 92 }}
+                          >
+                            {deletingId === row.id ? "Deleting..." : "Delete"}
+                          </UiButton>
+                        </div>
                       </UiTableCell>
                     </tr>
                   );

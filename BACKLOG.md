@@ -1,6 +1,6 @@
 # AFL Tipping Backlog
 
-Last updated: 2026-03-12
+Last updated: 2026-03-26
 
 The backlog is now split into three tracks:
 

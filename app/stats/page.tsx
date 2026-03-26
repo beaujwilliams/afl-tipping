@@ -77,6 +77,28 @@ type TeamStatsApiResponse = {
   };
 };
 
+type TeamSortDirection = "asc" | "desc";
+type TeamSortKey =
+  | "team"
+  | "tipped_count"
+  | "correct_count"
+  | "incorrect_count"
+  | "accuracy_pct"
+  | "total_points"
+  | "avg_points_per_tip"
+  | "avg_points_per_correct";
+
+const TEAM_SORT_DEFAULT_DIRECTION: Record<TeamSortKey, TeamSortDirection> = {
+  team: "asc",
+  tipped_count: "desc",
+  correct_count: "desc",
+  incorrect_count: "desc",
+  accuracy_pct: "desc",
+  total_points: "desc",
+  avg_points_per_tip: "desc",
+  avg_points_per_correct: "desc",
+};
+
 function fmtPts(value: number) {
   return Number(value ?? 0).toFixed(2);
 }
@@ -121,6 +143,8 @@ export default function StatsPage() {
   } | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [showAllTeams, setShowAllTeams] = useState(false);
+  const [teamSortBy, setTeamSortBy] = useState<TeamSortKey>("total_points");
+  const [teamSortDirection, setTeamSortDirection] = useState<TeamSortDirection>("desc");
 
   async function getAccessToken() {
     const { data } = await supabaseBrowser.auth.getSession();
@@ -271,12 +295,52 @@ export default function StatsPage() {
   }, [nonZeroTeamRows]);
 
   const displayedTeamRows = showAllTeams ? teamRows : nonZeroTeamRows;
+  const sortedDisplayedTeamRows = useMemo(() => {
+    const list = [...displayedTeamRows];
+
+    list.sort((a, b) => {
+      let primaryCmp = 0;
+
+      if (teamSortBy === "team") {
+        primaryCmp = a.team.localeCompare(b.team, "en", { sensitivity: "base" });
+      } else {
+        primaryCmp = Number(a[teamSortBy] ?? 0) - Number(b[teamSortBy] ?? 0);
+      }
+
+      const directionalPrimary = teamSortDirection === "asc" ? primaryCmp : -primaryCmp;
+      if (directionalPrimary !== 0) {
+        return directionalPrimary;
+      }
+
+      if (b.total_points !== a.total_points) {
+        return b.total_points - a.total_points;
+      }
+      return a.team.localeCompare(b.team, "en", { sensitivity: "base" });
+    });
+
+    return list;
+  }, [displayedTeamRows, teamSortBy, teamSortDirection]);
   const mobileTeamRows = useMemo(
-    () => (showAllTeams ? displayedTeamRows : displayedTeamRows.slice(0, 8)),
-    [showAllTeams, displayedTeamRows]
+    () => (showAllTeams ? sortedDisplayedTeamRows : sortedDisplayedTeamRows.slice(0, 8)),
+    [showAllTeams, sortedDisplayedTeamRows]
   );
 
   const riskDelta = Number(insights?.risk_profile.delta_vs_comp ?? 0);
+
+  function onTeamSort(nextKey: TeamSortKey) {
+    if (teamSortBy === nextKey) {
+      setTeamSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+      return;
+    }
+
+    setTeamSortBy(nextKey);
+    setTeamSortDirection(TEAM_SORT_DEFAULT_DIRECTION[nextKey]);
+  }
+
+  function teamSortMarker(key: TeamSortKey) {
+    if (teamSortBy !== key) return "↑↓";
+    return teamSortDirection === "asc" ? "↑" : "↓";
+  }
 
   return (
     <main className="ui-page ui-page--narrow">
@@ -541,14 +605,262 @@ export default function StatsPage() {
                   <table className="ui-table ui-table--compact" style={{ minWidth: 920 }}>
                     <thead>
                       <tr className="ui-table-head-row">
-                        <UiTableHeadCell style={{ minWidth: 160 }}>Team</UiTableHeadCell>
-                        <UiTableHeadCell style={{ minWidth: 72 }}>Tipped</UiTableHeadCell>
-                        <UiTableHeadCell style={{ minWidth: 84 }}>Correct</UiTableHeadCell>
-                        <UiTableHeadCell style={{ minWidth: 92 }}>Incorrect</UiTableHeadCell>
-                        <UiTableHeadCell style={{ minWidth: 92 }}>Accuracy</UiTableHeadCell>
-                        <UiTableHeadCell style={{ minWidth: 92 }}>Points</UiTableHeadCell>
-                        <UiTableHeadCell style={{ minWidth: 108 }}>Avg / Tip</UiTableHeadCell>
-                        <UiTableHeadCell style={{ minWidth: 128 }}>Avg / Correct</UiTableHeadCell>
+                        <UiTableHeadCell style={{ minWidth: 160 }}>
+                          <button
+                            type="button"
+                            onClick={() => onTeamSort("team")}
+                            style={{
+                              appearance: "none",
+                              background: "transparent",
+                              border: "none",
+                              color: "inherit",
+                              cursor: "pointer",
+                              font: "inherit",
+                              fontWeight: teamSortBy === "team" ? 800 : 600,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 6,
+                              padding: 0,
+                              whiteSpace: "nowrap",
+                            }}
+                            title="Sort by team"
+                          >
+                            <span>Team</span>
+                            <span
+                              style={{
+                                opacity: teamSortBy === "team" ? 1 : 0.45,
+                                fontSize: 11,
+                                letterSpacing: -0.3,
+                              }}
+                            >
+                              {teamSortMarker("team")}
+                            </span>
+                          </button>
+                        </UiTableHeadCell>
+                        <UiTableHeadCell style={{ minWidth: 72 }}>
+                          <button
+                            type="button"
+                            onClick={() => onTeamSort("tipped_count")}
+                            style={{
+                              appearance: "none",
+                              background: "transparent",
+                              border: "none",
+                              color: "inherit",
+                              cursor: "pointer",
+                              font: "inherit",
+                              fontWeight: teamSortBy === "tipped_count" ? 800 : 600,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 6,
+                              padding: 0,
+                              whiteSpace: "nowrap",
+                            }}
+                            title="Sort by tipped count"
+                          >
+                            <span>Tipped</span>
+                            <span
+                              style={{
+                                opacity: teamSortBy === "tipped_count" ? 1 : 0.45,
+                                fontSize: 11,
+                                letterSpacing: -0.3,
+                              }}
+                            >
+                              {teamSortMarker("tipped_count")}
+                            </span>
+                          </button>
+                        </UiTableHeadCell>
+                        <UiTableHeadCell style={{ minWidth: 84 }}>
+                          <button
+                            type="button"
+                            onClick={() => onTeamSort("correct_count")}
+                            style={{
+                              appearance: "none",
+                              background: "transparent",
+                              border: "none",
+                              color: "inherit",
+                              cursor: "pointer",
+                              font: "inherit",
+                              fontWeight: teamSortBy === "correct_count" ? 800 : 600,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 6,
+                              padding: 0,
+                              whiteSpace: "nowrap",
+                            }}
+                            title="Sort by correct count"
+                          >
+                            <span>Correct</span>
+                            <span
+                              style={{
+                                opacity: teamSortBy === "correct_count" ? 1 : 0.45,
+                                fontSize: 11,
+                                letterSpacing: -0.3,
+                              }}
+                            >
+                              {teamSortMarker("correct_count")}
+                            </span>
+                          </button>
+                        </UiTableHeadCell>
+                        <UiTableHeadCell style={{ minWidth: 92 }}>
+                          <button
+                            type="button"
+                            onClick={() => onTeamSort("incorrect_count")}
+                            style={{
+                              appearance: "none",
+                              background: "transparent",
+                              border: "none",
+                              color: "inherit",
+                              cursor: "pointer",
+                              font: "inherit",
+                              fontWeight: teamSortBy === "incorrect_count" ? 800 : 600,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 6,
+                              padding: 0,
+                              whiteSpace: "nowrap",
+                            }}
+                            title="Sort by incorrect count"
+                          >
+                            <span>Incorrect</span>
+                            <span
+                              style={{
+                                opacity: teamSortBy === "incorrect_count" ? 1 : 0.45,
+                                fontSize: 11,
+                                letterSpacing: -0.3,
+                              }}
+                            >
+                              {teamSortMarker("incorrect_count")}
+                            </span>
+                          </button>
+                        </UiTableHeadCell>
+                        <UiTableHeadCell style={{ minWidth: 92 }}>
+                          <button
+                            type="button"
+                            onClick={() => onTeamSort("accuracy_pct")}
+                            style={{
+                              appearance: "none",
+                              background: "transparent",
+                              border: "none",
+                              color: "inherit",
+                              cursor: "pointer",
+                              font: "inherit",
+                              fontWeight: teamSortBy === "accuracy_pct" ? 800 : 600,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 6,
+                              padding: 0,
+                              whiteSpace: "nowrap",
+                            }}
+                            title="Sort by accuracy"
+                          >
+                            <span>Accuracy</span>
+                            <span
+                              style={{
+                                opacity: teamSortBy === "accuracy_pct" ? 1 : 0.45,
+                                fontSize: 11,
+                                letterSpacing: -0.3,
+                              }}
+                            >
+                              {teamSortMarker("accuracy_pct")}
+                            </span>
+                          </button>
+                        </UiTableHeadCell>
+                        <UiTableHeadCell style={{ minWidth: 92 }}>
+                          <button
+                            type="button"
+                            onClick={() => onTeamSort("total_points")}
+                            style={{
+                              appearance: "none",
+                              background: "transparent",
+                              border: "none",
+                              color: "inherit",
+                              cursor: "pointer",
+                              font: "inherit",
+                              fontWeight: teamSortBy === "total_points" ? 800 : 600,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 6,
+                              padding: 0,
+                              whiteSpace: "nowrap",
+                            }}
+                            title="Sort by points"
+                          >
+                            <span>Points</span>
+                            <span
+                              style={{
+                                opacity: teamSortBy === "total_points" ? 1 : 0.45,
+                                fontSize: 11,
+                                letterSpacing: -0.3,
+                              }}
+                            >
+                              {teamSortMarker("total_points")}
+                            </span>
+                          </button>
+                        </UiTableHeadCell>
+                        <UiTableHeadCell style={{ minWidth: 108 }}>
+                          <button
+                            type="button"
+                            onClick={() => onTeamSort("avg_points_per_tip")}
+                            style={{
+                              appearance: "none",
+                              background: "transparent",
+                              border: "none",
+                              color: "inherit",
+                              cursor: "pointer",
+                              font: "inherit",
+                              fontWeight: teamSortBy === "avg_points_per_tip" ? 800 : 600,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 6,
+                              padding: 0,
+                              whiteSpace: "nowrap",
+                            }}
+                            title="Sort by avg points per tip"
+                          >
+                            <span>Avg / Tip</span>
+                            <span
+                              style={{
+                                opacity: teamSortBy === "avg_points_per_tip" ? 1 : 0.45,
+                                fontSize: 11,
+                                letterSpacing: -0.3,
+                              }}
+                            >
+                              {teamSortMarker("avg_points_per_tip")}
+                            </span>
+                          </button>
+                        </UiTableHeadCell>
+                        <UiTableHeadCell style={{ minWidth: 128 }}>
+                          <button
+                            type="button"
+                            onClick={() => onTeamSort("avg_points_per_correct")}
+                            style={{
+                              appearance: "none",
+                              background: "transparent",
+                              border: "none",
+                              color: "inherit",
+                              cursor: "pointer",
+                              font: "inherit",
+                              fontWeight: teamSortBy === "avg_points_per_correct" ? 800 : 600,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 6,
+                              padding: 0,
+                              whiteSpace: "nowrap",
+                            }}
+                            title="Sort by avg points per correct tip"
+                          >
+                            <span>Avg / Correct</span>
+                            <span
+                              style={{
+                                opacity: teamSortBy === "avg_points_per_correct" ? 1 : 0.45,
+                                fontSize: 11,
+                                letterSpacing: -0.3,
+                              }}
+                            >
+                              {teamSortMarker("avg_points_per_correct")}
+                            </span>
+                          </button>
+                        </UiTableHeadCell>
                       </tr>
                     </thead>
                     <tbody>
@@ -559,7 +871,7 @@ export default function StatsPage() {
                           </UiTableCell>
                         </tr>
                       ) : (
-                        displayedTeamRows.map((row) => (
+                        sortedDisplayedTeamRows.map((row) => (
                           <tr key={row.team}>
                             <UiTableCell style={{ fontWeight: 700 }}>{row.team}</UiTableCell>
                             <UiTableCell>{row.tipped_count}</UiTableCell>

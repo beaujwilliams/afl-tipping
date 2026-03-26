@@ -139,7 +139,7 @@ export default function LoginPage() {
               Season {CURRENT_SEASON} is in progress, so new account creation is paused.
             </div>
             <UiButtonLink href="/next-season" style={{ width: "100%", padding: 12 }}>
-              Register Interest For {NEXT_SEASON}
+              Register your interest for {NEXT_SEASON} season
             </UiButtonLink>
           </div>
         )}

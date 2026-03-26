@@ -92,6 +92,15 @@ function pluralize(count: number, single: string, plural: string) {
   return count === 1 ? single : plural;
 }
 
+function paymentStatusLabel(status: string | null | undefined) {
+  const s = String(status ?? "paid")
+    .trim()
+    .toLowerCase();
+  if (s === "pending") return "Pending";
+  if (s === "waived") return "Waived";
+  return "Paid";
+}
+
 function isRoundComplete(row: HomeRoundStatusRow | null | undefined) {
   if (!row) return false;
   return (
@@ -471,9 +480,7 @@ export default function HomePageClient({
               </UiCard>
               <UiCard>
                 <div className="ui-kicker">Payment</div>
-                <div className="ui-value">
-                  {me?.payment_status ? me.payment_status : "paid"}
-                </div>
+                <div className="ui-value">{paymentStatusLabel(me?.payment_status)}</div>
                 <div className="ui-meta">
                   {me?.payment_status === "pending"
                     ? "Needs admin update"

@@ -233,7 +233,7 @@ export default function SeasonRoundsPageClient({
   return (
     <main className="ui-page ui-page--narrow">
       <div className="ui-page-header">
-        <h1 className="ui-title">Tip</h1>
+        <h1 className="ui-title">Submit your tips</h1>
         <div className="ui-caption">All times shown in Melbourne</div>
       </div>
 

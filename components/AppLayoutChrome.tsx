@@ -289,7 +289,7 @@ export default function AppLayoutChrome({ children }: { children: React.ReactNod
 
   const tippingItems = useMemo<MenuItem[]>(
     () => [
-      { href: "/round/2026", label: "Tip rounds" },
+      { href: "/round/2026", label: "Submit your tips" },
       { href: "/results/2026", label: "Results" },
       { href: statsHref, label: "My stats" },
     ],

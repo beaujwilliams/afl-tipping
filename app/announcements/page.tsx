@@ -19,13 +19,14 @@ type AnnouncementRow = {
 type AnnouncementsResponse = {
   ok?: boolean;
   admin?: boolean;
+  competition_id?: string | null;
   rows?: AnnouncementRow[];
   error?: string;
   details?: string;
   hint?: string;
 };
 
-type CreateAnnouncementResponse = {
+type SaveAnnouncementResponse = {
   ok?: boolean;
   row?: AnnouncementRow;
   error?: string;
@@ -68,8 +69,10 @@ export default function AnnouncementsPage() {
   const [msg, setMsg] = useState("Loading announcements...");
   const [token, setToken] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [managedCompetitionId, setManagedCompetitionId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -99,11 +102,13 @@ export default function AnnouncementsPage() {
       setMsg(`${json?.error ?? "Could not load announcements."}${detail}${hint}`);
       setRows([]);
       setIsAdmin(false);
+      setManagedCompetitionId(null);
       return;
     }
 
     setRows(Array.isArray(json.rows) ? json.rows : []);
     setIsAdmin(!!json.admin);
+    setManagedCompetitionId(json.competition_id ? String(json.competition_id) : null);
     setMsg("");
   }
 
@@ -127,7 +132,25 @@ export default function AnnouncementsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function publishAnnouncement() {
+  function resetEditor() {
+    setEditingId(null);
+    setTitle("");
+    setBody("");
+    setImageUrlsInput("");
+    setIsPinned(false);
+  }
+
+  function beginEditAnnouncement(row: AnnouncementRow) {
+    setEditingId(row.id);
+    setTitle(row.title);
+    setBody(row.body);
+    setImageUrlsInput((row.image_urls ?? []).join("\n"));
+    setIsPinned(row.is_pinned);
+    setAdminMsg(`Editing announcement: ${row.title}`);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function saveAnnouncement() {
     if (!token || saving) return;
     const cleanTitle = title.trim();
     const cleanBody = body.trim();
@@ -136,11 +159,18 @@ export default function AnnouncementsPage() {
       return;
     }
 
+    const activeEditId = editingId;
+    const isEditing = !!activeEditId;
     setSaving(true);
     setAdminMsg("");
 
-    const res = await fetch("/api/admin/announcements", {
-      method: "POST",
+    const endpoint = isEditing
+      ? `/api/admin/announcements?id=${encodeURIComponent(activeEditId)}`
+      : "/api/admin/announcements";
+    const method = isEditing ? "PATCH" : "POST";
+
+    const res = await fetch(endpoint, {
+      method,
       headers: {
         "content-type": "application/json",
         Authorization: `Bearer ${token}`,
@@ -153,20 +183,20 @@ export default function AnnouncementsPage() {
       }),
     });
 
-    const json = (await res.json().catch(() => null)) as CreateAnnouncementResponse | null;
+    const json = (await res.json().catch(() => null)) as SaveAnnouncementResponse | null;
     if (!res.ok || !json?.ok) {
       const detail = json?.details ? ` (${json.details})` : "";
       const hint = json?.hint ? ` ${json.hint}` : "";
-      setAdminMsg(`${json?.error ?? "Could not publish announcement."}${detail}${hint}`);
+      const fallback = isEditing
+        ? "Could not save announcement changes."
+        : "Could not publish announcement.";
+      setAdminMsg(`${json?.error ?? fallback}${detail}${hint}`);
       setSaving(false);
       return;
     }
 
-    setTitle("");
-    setBody("");
-    setImageUrlsInput("");
-    setIsPinned(false);
-    setAdminMsg("Announcement published.");
+    resetEditor();
+    setAdminMsg(isEditing ? "Announcement updated." : "Announcement published.");
     await load(token);
     setSaving(false);
   }
@@ -193,7 +223,11 @@ export default function AnnouncementsPage() {
     }
 
     setRows((prev) => prev.filter((row) => row.id !== id));
+    if (editingId === id) {
+      resetEditor();
+    }
     setDeletingId(null);
+    setAdminMsg("Announcement deleted.");
   }
 
   return (
@@ -211,9 +245,13 @@ export default function AnnouncementsPage() {
 
       {isAdmin && (
         <UiCard soft style={{ marginTop: 14 }}>
-          <div className="ui-title--section">Post announcement</div>
+          <div className="ui-title--section">
+            {editingId ? "Edit announcement" : "Post announcement"}
+          </div>
           <div className="ui-caption" style={{ marginTop: 6 }}>
-            Publish updates to all members in this competition.
+            {editingId
+              ? "Update an existing announcement for members in this competition."
+              : "Publish updates to all members in this competition."}
           </div>
 
           <div className="ui-stack" style={{ marginTop: 12 }}>
@@ -262,15 +300,32 @@ export default function AnnouncementsPage() {
               <span className="ui-caption">Pin to top</span>
             </label>
 
-            <button
-              type="button"
-              className="ui-btn"
-              style={{ width: "100%", padding: 12 }}
-              disabled={saving}
-              onClick={publishAnnouncement}
-            >
-              {saving ? "Publishing..." : "Publish announcement"}
-            </button>
+            <div className="ui-row-wrap" style={{ gap: 8 }}>
+              <button
+                type="button"
+                className="ui-btn"
+                style={{ flex: "1 1 260px", padding: 12 }}
+                disabled={saving}
+                onClick={saveAnnouncement}
+              >
+                {saving ? (editingId ? "Saving..." : "Publishing...") : editingId ? "Save changes" : "Publish announcement"}
+              </button>
+
+              {editingId && (
+                <button
+                  type="button"
+                  className="ui-btn"
+                  style={{ padding: 12 }}
+                  disabled={saving}
+                  onClick={() => {
+                    resetEditor();
+                    setAdminMsg("Edit canceled.");
+                  }}
+                >
+                  Cancel edit
+                </button>
+              )}
+            </div>
           </div>
 
           {adminMsg && (
@@ -293,6 +348,10 @@ export default function AnnouncementsPage() {
         <div style={{ display: "grid", gap: 14, marginTop: 14 }}>
           {rows.map((row) => {
             const publishedAt = fmtMelbourne(row.published_at_utc ?? row.created_at);
+            const canManageRow =
+              isAdmin &&
+              managedCompetitionId !== null &&
+              String(row.competition_id ?? "") === managedCompetitionId;
             return (
               <UiCard key={row.id} soft={row.is_pinned}>
                 <div className="ui-row-between-start">
@@ -305,15 +364,25 @@ export default function AnnouncementsPage() {
                   </div>
                   <div className="ui-row-wrap" style={{ gap: 8 }}>
                     {row.is_pinned && <UiBadge>Pinned</UiBadge>}
-                    {isAdmin && (
-                      <button
-                        type="button"
-                        className="ui-btn"
-                        disabled={deletingId === row.id}
-                        onClick={() => deleteAnnouncement(row.id)}
-                      >
-                        {deletingId === row.id ? "Deleting..." : "Delete"}
-                      </button>
+                    {canManageRow && (
+                      <>
+                        <button
+                          type="button"
+                          className="ui-btn"
+                          disabled={saving || deletingId === row.id || editingId === row.id}
+                          onClick={() => beginEditAnnouncement(row)}
+                        >
+                          {editingId === row.id ? "Editing..." : "Edit"}
+                        </button>
+                        <button
+                          type="button"
+                          className="ui-btn"
+                          disabled={deletingId === row.id || saving}
+                          onClick={() => deleteAnnouncement(row.id)}
+                        >
+                          {deletingId === row.id ? "Deleting..." : "Delete"}
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>

@@ -269,7 +269,7 @@ export default function AdminPage() {
                     GitHub Actions runs every 30 minutes and only sends in the configured 3-hour pre-lock window.
                   </div>
                   <div className="ui-admin-summary ui-admin-summary--tight">
-                    Manual override is still available in the Round Command Center via <b>Send reminder</b>.
+                    Manual override is available in <b>Tip lists</b> for the current open round via <b>Send reminders now</b>.
                   </div>
                 </div>
 

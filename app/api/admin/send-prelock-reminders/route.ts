@@ -10,6 +10,7 @@ const DEFAULT_WINDOW_MINUTES = 30;
 const REMINDER_TYPE = "missing_tips_3h";
 const RESEND_RATE_LIMIT_RETRY_ATTEMPTS = 3;
 const MIN_SEND_SPACING_MS = 1100;
+const FORCE_RESEND_WITHIN_MINUTES = 60;
 
 type RoundRow = {
   id: string;
@@ -65,6 +66,7 @@ type RoundResult = {
   sent: number;
   simulated: number;
   failed: number;
+  resend_override_applied: boolean;
   skipped_no_matches: boolean;
 };
 
@@ -487,6 +489,7 @@ export async function GET(req: Request) {
           sent: 0,
           simulated: 0,
           failed: 0,
+          resend_override_applied: false,
           skipped_no_matches: true,
         });
         continue;
@@ -521,6 +524,7 @@ export async function GET(req: Request) {
           sent: 0,
           simulated: 0,
           failed: 0,
+          resend_override_applied: false,
           skipped_no_matches: false,
         });
         continue;
@@ -565,6 +569,7 @@ export async function GET(req: Request) {
           sent: 0,
           simulated: 0,
           failed: 0,
+          resend_override_applied: false,
           skipped_no_matches: false,
         });
         continue;
@@ -591,7 +596,18 @@ export async function GET(req: Request) {
         ((existing ?? []) as ExistingReminderRow[]).map((x) => String(x.user_id))
       );
 
-      const candidateUserIds = missingMemberIds.filter((u) => !alreadyRemindedSet.has(u));
+      const lockMs = new Date(r.lock_time_utc).getTime();
+      const msUntilLock = lockMs - Date.now();
+      const resendOverrideApplied =
+        forceRound &&
+        Number.isFinite(msUntilLock) &&
+        msUntilLock > 0 &&
+        msUntilLock <= FORCE_RESEND_WITHIN_MINUTES * 60 * 1000;
+
+      const alreadyRemindedSkipped = resendOverrideApplied ? 0 : alreadyRemindedSet.size;
+      const candidateUserIds = resendOverrideApplied
+        ? missingMemberIds
+        : missingMemberIds.filter((u) => !alreadyRemindedSet.has(u));
 
       if (candidateUserIds.length === 0) {
         results.push({
@@ -599,12 +615,13 @@ export async function GET(req: Request) {
           lock_time_utc: r.lock_time_utc,
           total_members: memberIds.length,
           missing_tip_members: missingMemberIds.length,
-          already_reminded: missingMemberIds.length,
+          already_reminded: alreadyRemindedSkipped,
           candidates: 0,
           no_email: 0,
           sent: 0,
           simulated: 0,
           failed: 0,
+          resend_override_applied: resendOverrideApplied,
           skipped_no_matches: false,
         });
         continue;
@@ -738,12 +755,13 @@ export async function GET(req: Request) {
         lock_time_utc: r.lock_time_utc,
         total_members: memberIds.length,
         missing_tip_members: missingMemberIds.length,
-        already_reminded: alreadyRemindedSet.size,
+        already_reminded: alreadyRemindedSkipped,
         candidates: candidateUserIds.length,
         no_email: noEmail,
         sent,
         simulated,
         failed,
+        resend_override_applied: resendOverrideApplied,
         skipped_no_matches: false,
       });
     }
@@ -754,6 +772,7 @@ export async function GET(req: Request) {
       reminder_type: REMINDER_TYPE,
       reminder_hours_before_lock: reminderHours,
       reminder_window_minutes: windowMinutes,
+      force_resend_override_window_minutes: FORCE_RESEND_WITHIN_MINUTES,
       dry_run: dryRun,
       force_round: forceRound,
       rounds_considered: roundRows.length,

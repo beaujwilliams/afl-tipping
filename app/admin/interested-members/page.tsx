@@ -430,6 +430,51 @@ export default function AdminInterestedMembersPage() {
           </table>
         </UiTableScroll>
       </UiTableShell>
+
+      <details
+        style={{
+          marginTop: 16,
+          border: "1px solid var(--border)",
+          borderRadius: 14,
+          padding: 12,
+          background: "var(--card-soft)",
+        }}
+      >
+        <summary style={{ cursor: "pointer", fontWeight: 800 }}>
+          Re-Open Sign Ups Instructions
+        </summary>
+
+        <div style={{ marginTop: 12, display: "grid", gap: 10, fontSize: 14, lineHeight: 1.6 }}>
+          <div style={{ fontWeight: 700 }}>1) Enable app signup UI (Vercel)</div>
+          <ol style={{ margin: 0, paddingLeft: 22 }}>
+            <li>Open Vercel project settings.</li>
+            <li>Go to Environment Variables.</li>
+            <li>Set <code>NEXT_PUBLIC_SIGNUPS_OPEN=true</code>.</li>
+            <li>Confirm <code>NEXT_PUBLIC_CURRENT_SEASON</code> is correct.</li>
+            <li>Redeploy production.</li>
+          </ol>
+
+          <div style={{ fontWeight: 700 }}>2) Enable account creation hard lock (Supabase Auth)</div>
+          <ol style={{ margin: 0, paddingLeft: 22 }}>
+            <li>Open Supabase project.</li>
+            <li>Go to Authentication, then Sign In / Providers.</li>
+            <li>Turn ON <b>Allow new users to sign up</b>.</li>
+            <li>Save changes.</li>
+          </ol>
+
+          <div style={{ fontWeight: 700 }}>3) Verify it works safely</div>
+          <ol style={{ margin: 0, paddingLeft: 22 }}>
+            <li>Existing member can still sign in and tip.</li>
+            <li><code>/signup</code> allows new account creation.</li>
+            <li>New account receives confirmation email and can complete setup.</li>
+          </ol>
+
+          <div className="ui-caption">
+            If you need to close signups again: set <code>NEXT_PUBLIC_SIGNUPS_OPEN=false</code>,
+            redeploy, then turn OFF <b>Allow new users to sign up</b> in Supabase Auth.
+          </div>
+        </div>
+      </details>
     </main>
   );
 }

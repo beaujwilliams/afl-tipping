@@ -146,10 +146,12 @@ export default function SeasonResultsPage() {
   const hasRows = useMemo(() => rows.length > 0, [rows.length]);
   const [nowMs] = useState<number>(() => Date.now());
   const visibleRows = useMemo(() => {
-    return rows.filter((r) => {
-      const lock = melbourneMs(r.lock_time_utc);
-      return lock ? nowMs >= lock : false;
-    });
+    return rows
+      .filter((r) => {
+        const lock = melbourneMs(r.lock_time_utc);
+        return lock ? nowMs >= lock : false;
+      })
+      .sort((a, b) => b.round_number - a.round_number);
   }, [rows, nowMs]);
   const hiddenCount = rows.length - visibleRows.length;
 

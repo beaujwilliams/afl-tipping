@@ -278,7 +278,6 @@ export default function StatsPage() {
 
   const pointsVsAvgDelta = Number(insights?.points_vs_comp_avg.delta ?? 0);
   const riskDelta = Number(insights?.risk_profile.delta_vs_comp ?? 0);
-  const contrarianDelta = Number(insights?.contrarian_edge.net_points_delta ?? 0);
 
   return (
     <main className="ui-page ui-page--narrow">
@@ -354,13 +353,6 @@ export default function StatsPage() {
                   {fmtPts(insights.risk_profile.comp_avg_tipped_odds)}
                 </div>
               </UiCard>
-              <UiCard>
-                <div className="ui-kicker">Missed tips impact</div>
-                <div className="ui-value">{insights.missed_tips_impact.missed_tips}</div>
-                <div className="ui-meta">
-                  Potential lost: {fmtPts(insights.missed_tips_impact.potential_points_lost)} pts
-                </div>
-              </UiCard>
             </UiCardGrid>
           </>
         ) : null}
@@ -391,26 +383,6 @@ export default function StatsPage() {
               </div>
               <div className="ui-meta">
                 Tips: {insights.favourite_record.tips} • Points: {fmtPts(insights.favourite_record.points)}
-              </div>
-            </UiCard>
-
-            <UiCard>
-              <div className="ui-kicker">Contrarian edge</div>
-              <div
-                className="ui-value"
-                style={{
-                  color:
-                    contrarianDelta > 0 ? "rgb(22,163,74)" : contrarianDelta < 0 ? "rgb(185,28,28)" : "inherit",
-                }}
-              >
-                {fmtSigned(contrarianDelta)}
-              </div>
-              <div className="ui-meta">
-                Picks: {insights.contrarian_edge.contrarian_picks} • Rounds:{" "}
-                {insights.contrarian_edge.rounds_with_contrarian_pick}
-              </div>
-              <div className="ui-meta">
-                +{insights.contrarian_edge.gained_rounds} / -{insights.contrarian_edge.lost_rounds} rounds
               </div>
             </UiCard>
 
@@ -452,12 +424,6 @@ export default function StatsPage() {
                 Score: {fmtPts(insights.worst_round?.score ?? 0)} • Move:{" "}
                 {fmtSignedWhole(insights.worst_round?.movement ?? 0)}
               </div>
-            </UiCard>
-
-            <UiCard>
-              <div className="ui-kicker">Current round score</div>
-              <div className="ui-value">{fmtPts(snapshot.round_score)}</div>
-              <div className="ui-meta">Correct: {snapshot.correct_tips}</div>
             </UiCard>
 
             <UiCard>

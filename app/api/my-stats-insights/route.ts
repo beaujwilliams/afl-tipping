@@ -197,7 +197,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Provide a valid season" }, { status: 400 });
     }
 
-    const leaderboard = await getLeaderboardSnapshot({ season });
+    const leaderboard = await getLeaderboardSnapshot({ season, preferCached: true });
     const competitionId = String(leaderboard.competition_id ?? "").trim();
     const mySnapshot = (leaderboard.rows ?? []).find((row) => row.user_id === user.id) ?? null;
 

@@ -126,6 +126,32 @@ function movementLabel(value: number) {
   return "No change";
 }
 
+async function fetchWithAuthJson<T>(params: {
+  url: string;
+  token: string;
+  timeoutMs?: number;
+}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), params.timeoutMs ?? 15_000);
+
+  try {
+    const res = await fetch(params.url, {
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${params.token}` },
+      signal: controller.signal,
+    });
+    const body = (await res.json().catch(() => null)) as T | null;
+    return { res, body, timedOut: false as const };
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      return { res: null, body: null, timedOut: true as const };
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export default function StatsPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
@@ -192,45 +218,52 @@ export default function StatsPage() {
           return;
         }
 
-        const [insightsRes, teamStatsRes] = await Promise.all([
-          fetch(`/api/my-stats-insights?season=${encodeURIComponent(String(CURRENT_SEASON))}`, {
-            cache: "no-store",
-            headers: { Authorization: `Bearer ${token}` },
+        const [insightsResult, teamStatsResult] = await Promise.all([
+          fetchWithAuthJson<MyStatsInsightsResponse>({
+            url: `/api/my-stats-insights?season=${encodeURIComponent(String(CURRENT_SEASON))}`,
+            token,
           }),
-          fetch(`/api/profile-team-stats?season=${encodeURIComponent(String(CURRENT_SEASON))}`, {
-            cache: "no-store",
-            headers: { Authorization: `Bearer ${token}` },
+          fetchWithAuthJson<TeamStatsApiResponse>({
+            url: `/api/profile-team-stats?season=${encodeURIComponent(String(CURRENT_SEASON))}`,
+            token,
           }),
         ]);
 
-        const insightsBody = (await insightsRes.json().catch(() => null)) as
-          | MyStatsInsightsResponse
-          | null;
-        const teamStatsBody = (await teamStatsRes.json().catch(() => null)) as
-          | TeamStatsApiResponse
-          | null;
-
         if (!alive) return;
 
-        if (!insightsRes.ok || !insightsBody?.ok || !insightsBody?.insights) {
-          setStatsMsg(insightsBody?.error ?? "Could not load season stats.");
+        if (insightsResult.timedOut) {
+          setStatsMsg("Season stats are taking too long. Please refresh.");
+          setSnapshot(null);
+          setInsights(null);
+        } else if (
+          !insightsResult.res?.ok ||
+          !insightsResult.body?.ok ||
+          !insightsResult.body?.insights
+        ) {
+          setStatsMsg(insightsResult.body?.error ?? "Could not load season stats.");
           setSnapshot(null);
           setInsights(null);
         } else {
-          setSnapshot((insightsBody.snapshot as StatsSnapshot | null) ?? null);
-          setInsights(insightsBody.insights);
-          if (!insightsBody.snapshot) {
+          setSnapshot((insightsResult.body.snapshot as StatsSnapshot | null) ?? null);
+          setInsights(insightsResult.body.insights);
+          if (!insightsResult.body.snapshot) {
             setStatsMsg("No season stats yet.");
           }
         }
 
-        if (!teamStatsRes.ok || !teamStatsBody?.ok) {
-          setTeamStatsMsg(teamStatsBody?.error ?? "Could not load team breakdown.");
+        if (teamStatsResult.timedOut) {
+          setTeamStatsMsg("Team breakdown is taking too long. Please refresh.");
+          setTeamRows([]);
+          setTeamTotals(null);
+        } else if (!teamStatsResult.res?.ok || !teamStatsResult.body?.ok) {
+          setTeamStatsMsg(teamStatsResult.body?.error ?? "Could not load team breakdown.");
           setTeamRows([]);
           setTeamTotals(null);
         } else {
-          const nextRows = Array.isArray(teamStatsBody.rows) ? teamStatsBody.rows : [];
-          const nextTotals = teamStatsBody.totals ?? null;
+          const nextRows = Array.isArray(teamStatsResult.body.rows)
+            ? teamStatsResult.body.rows
+            : [];
+          const nextTotals = teamStatsResult.body.totals ?? null;
           setTeamRows(nextRows);
           setTeamTotals(nextTotals);
           if (!nextRows.length) {

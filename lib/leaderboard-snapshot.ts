@@ -824,6 +824,7 @@ export async function refreshLeaderboardSnapshot(params: {
 export async function getLeaderboardSnapshot(params: {
   season: number;
   competitionId?: string | null;
+  preferCached?: boolean;
   supabase?: ReturnType<typeof createServiceClient>;
 }) {
   const supabase = params.supabase ?? createServiceClient();
@@ -840,6 +841,10 @@ export async function getLeaderboardSnapshot(params: {
   });
 
   if (cached?.payload?.ok) {
+    if (params.preferCached) {
+      return cached.payload;
+    }
+
     const computedAtMs = cached.computed_at ? new Date(cached.computed_at).getTime() : NaN;
     const fresh =
       Number.isFinite(computedAtMs) &&

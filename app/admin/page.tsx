@@ -202,7 +202,7 @@ export default function AdminPage() {
 
           <div className="ui-admin-stack">
             <UiCard className="ui-admin-tool">
-              <UiButtonLink href="/admin/members" className="ui-admin-btn ui-admin-btn--full ui-admin-btn--alt">
+              <UiButtonLink href="/admin/members" className="ui-admin-btn ui-admin-btn--full">
                 Manage Members
               </UiButtonLink>
             </UiCard>

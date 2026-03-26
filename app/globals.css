@@ -565,6 +565,15 @@ button {
   padding: 12px 14px;
   border-radius: 10px;
   font-size: 16px;
+  background: var(--card);
+  border-color: var(--border);
+  color: var(--foreground);
+  transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
+.ui-admin-btn:hover:not(:disabled) {
+  background: var(--card-soft);
+  border-color: color-mix(in srgb, var(--foreground) 12%, transparent);
 }
 
 .ui-admin-btn--compact {
@@ -589,8 +598,9 @@ button {
 }
 
 .ui-admin-btn--alt {
-  background: var(--card-soft);
-  border-color: var(--foreground);
+  background: var(--card);
+  border-color: var(--border);
+  color: var(--foreground);
 }
 
 .ui-admin-gap-sm {

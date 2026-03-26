@@ -85,6 +85,12 @@ function fmtPct(value: number) {
   return `${Number(value ?? 0).toFixed(2)}%`;
 }
 
+function fmtSigned(value: number) {
+  const num = Number(value ?? 0);
+  if (num > 0) return `+${num.toFixed(2)}`;
+  return num.toFixed(2);
+}
+
 function fmtSignedWhole(value: number) {
   const num = Number(value ?? 0);
   if (num > 0) return `+${num}`;

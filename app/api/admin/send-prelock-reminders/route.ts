@@ -27,6 +27,7 @@ type MembershipRow = {
 
 type TipRow = {
   user_id: string;
+  match_id: string;
 };
 
 type ProfileWithEmailRow = {
@@ -511,7 +512,7 @@ export async function GET(req: Request) {
 
       const { data: tips, error: tErr } = await supabase
         .from("tips")
-        .select("user_id")
+        .select("user_id, match_id")
         .eq("competition_id", competitionId)
         .in("match_id", matchIds);
 
@@ -520,13 +521,21 @@ export async function GET(req: Request) {
         continue;
       }
 
-      const tippedSet = new Set<string>();
+      const tipMatchIdsByUser = new Map<string, Set<string>>();
       (tips as TipRow[] | null)?.forEach((t) => {
         const userId = String(t.user_id);
-        if (memberSet.has(userId)) tippedSet.add(userId);
+        if (!memberSet.has(userId)) return;
+        const matchId = String(t.match_id);
+        if (!tipMatchIdsByUser.has(userId)) {
+          tipMatchIdsByUser.set(userId, new Set<string>());
+        }
+        tipMatchIdsByUser.get(userId)!.add(matchId);
       });
 
-      const missingMemberIds = memberIds.filter((userId) => !tippedSet.has(userId));
+      const totalMatches = matchIds.length;
+      const missingMemberIds = memberIds.filter(
+        (userId) => (tipMatchIdsByUser.get(userId)?.size ?? 0) < totalMatches
+      );
 
       if (missingMemberIds.length === 0) {
         results.push({

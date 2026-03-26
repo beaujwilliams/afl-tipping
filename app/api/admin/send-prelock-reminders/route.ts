@@ -87,6 +87,21 @@ function formatMelbourne(isoUtc: string) {
   }).format(d);
 }
 
+function formatCountdownForSubject(lockTimeUtc: string) {
+  const lockMs = new Date(lockTimeUtc).getTime();
+  if (!Number.isFinite(lockMs)) return "soon";
+
+  const minutesUntilLock = Math.round((lockMs - Date.now()) / 60000);
+  if (minutesUntilLock <= 0) return "less than 1 minute";
+
+  if (minutesUntilLock < 60) {
+    return `about ${minutesUntilLock} ${minutesUntilLock === 1 ? "minute" : "minutes"}`;
+  }
+
+  const hoursUntilLock = Math.max(1, Math.round(minutesUntilLock / 60));
+  return `about ${hoursUntilLock} ${hoursUntilLock === 1 ? "hour" : "hours"}`;
+}
+
 function sleep(ms: number) {
   return new Promise<void>((resolve) => {
     setTimeout(resolve, Math.max(0, ms));
@@ -177,12 +192,13 @@ async function sendReminderEmail(params: {
   }
 
   const lockMelbourne = formatMelbourne(params.lockTimeUtc);
-  const subject = `AFL Tipping reminder: Round ${params.roundNumber} locks in about 3 hours`;
+  const countdown = formatCountdownForSubject(params.lockTimeUtc);
+  const subject = `AFL Tipping reminder: Round ${params.roundNumber} locks in ${countdown}`;
 
   const text = [
     `Hi ${params.displayName},`,
     "",
-    `Round ${params.roundNumber} (Season ${params.season}) is locking soon.`,
+    `Round ${params.roundNumber} (Season ${params.season}) locks in ${countdown}.`,
     `Lock time: ${lockMelbourne} (Melbourne time)`,
     "",
     "You still have missing tips for this round.",
@@ -195,7 +211,7 @@ async function sendReminderEmail(params: {
     <div style="font-family: Arial, Helvetica, sans-serif; line-height: 1.45; color: #111;">
       <p>Hi ${params.displayName},</p>
       <p>
-        <b>Round ${params.roundNumber}</b> (Season ${params.season}) is locking soon.<br />
+        <b>Round ${params.roundNumber}</b> (Season ${params.season}) locks in ${countdown}.<br />
         Lock time: <b>${lockMelbourne}</b> (Melbourne time)
       </p>
       <p>You still have missing tips for this round.</p>

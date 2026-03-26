@@ -60,3 +60,11 @@ Required GitHub settings:
 
 - Secret: `CRON_SECRET` (must match production `CRON_SECRET`)
 - Optional repository variable: `SITE_URL` (defaults to `https://www.complicatedtips.com`)
+
+## Signup Freeze + Next Season Interest
+
+- `NEXT_PUBLIC_SIGNUPS_OPEN=false` pauses in-app account creation and sends people to `/next-season`.
+- `NEXT_PUBLIC_CURRENT_SEASON=2026` controls current and next-season labels.
+- Public interest entries are stored in `public.next_season_interest` and managed at `/admin/interested-members`.
+- Run `db/migrations/20260326_next_season_interest.sql` before deploying.
+- For a hard lock, also disable new signups in Supabase Auth while the season is in progress.

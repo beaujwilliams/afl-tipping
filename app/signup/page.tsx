@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { validateUsername } from "@/lib/username";
+import NextSeasonInterestForm from "@/components/NextSeasonInterestForm";
+import { CURRENT_SEASON, NEXT_SEASON, SIGNUPS_OPEN } from "@/lib/season-config";
 
 const SIGNUP_COOLDOWN_MS = 60_000;
 const SIGNUP_COOLDOWN_KEY = "afl_last_signup_attempt_ms";
@@ -43,18 +45,20 @@ export default function SignupPage() {
   }, []);
 
   useEffect(() => {
+    if (!SIGNUPS_OPEN) return;
+
     let mounted = true;
 
     async function goIfLoggedIn() {
       const { data } = await supabaseBrowser.auth.getSession();
       if (!mounted) return;
-      if (data.session) window.location.href = "/round/2026";
+      if (data.session) window.location.href = `/round/${CURRENT_SEASON}`;
     }
 
     goIfLoggedIn();
 
     const { data: sub } = supabaseBrowser.auth.onAuthStateChange((_event, session) => {
-      if (session) window.location.href = "/round/2026";
+      if (session) window.location.href = `/round/${CURRENT_SEASON}`;
     });
 
     return () => {
@@ -67,6 +71,10 @@ export default function SignupPage() {
 
   async function createAccount(e: React.FormEvent) {
     e.preventDefault();
+    if (!SIGNUPS_OPEN) {
+      setMsg(`Signups are currently paused while season ${CURRENT_SEASON} is in progress.`);
+      return;
+    }
     if (!canSubmit) return;
 
     if (password !== confirmPassword) {
@@ -142,6 +150,30 @@ export default function SignupPage() {
     }
 
     setMsg("Account created. Check your email to confirm, then log in.");
+  }
+
+  if (!SIGNUPS_OPEN) {
+    return (
+      <main className="ui-page" style={{ maxWidth: 460 }}>
+        <h1 className="ui-title" style={{ fontSize: "clamp(2rem, 6vw, 2.4rem)" }}>
+          Signups Paused
+        </h1>
+        <div className="ui-caption" style={{ marginTop: 6 }}>
+          Season {CURRENT_SEASON} is already in progress, so new account creation is disabled.
+        </div>
+
+        <div className="ui-card ui-stack" style={{ marginTop: 16 }}>
+          <div className="ui-caption">
+            Register interest and we will notify you when season {NEXT_SEASON} signup opens.
+          </div>
+          <NextSeasonInterestForm season={NEXT_SEASON} />
+        </div>
+
+        <Link href="/login" className="ui-btn" style={{ width: "100%", padding: 12, marginTop: 12 }}>
+          Back to login
+        </Link>
+      </main>
+    );
   }
 
   return (

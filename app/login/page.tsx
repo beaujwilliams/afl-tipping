@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { UiButton, UiButtonLink } from "@/components/ui";
+import { CURRENT_SEASON, NEXT_SEASON, SIGNUPS_OPEN } from "@/lib/season-config";
 
 export default function LoginPage() {
   const postLoginHref = "/";
@@ -120,15 +121,28 @@ export default function LoginPage() {
           </Link>
         </div>
 
-        <div className="ui-caption" style={{ textAlign: "center", marginTop: 8 }}>
-          New here?
-        </div>
-        <UiButtonLink
-          href="/signup"
-          style={{ width: "100%", padding: 12, marginTop: 6 }}
-        >
-          Create account
-        </UiButtonLink>
+        {SIGNUPS_OPEN ? (
+          <>
+            <div className="ui-caption" style={{ textAlign: "center", marginTop: 8 }}>
+              New here?
+            </div>
+            <UiButtonLink
+              href="/signup"
+              style={{ width: "100%", padding: 12, marginTop: 6 }}
+            >
+              Create account
+            </UiButtonLink>
+          </>
+        ) : (
+          <div className="ui-card ui-stack ui-card-soft" style={{ marginTop: 8 }}>
+            <div className="ui-caption">
+              Season {CURRENT_SEASON} is in progress, so new account creation is paused.
+            </div>
+            <UiButtonLink href="/next-season" style={{ width: "100%", padding: 12 }}>
+              Register Interest For {NEXT_SEASON}
+            </UiButtonLink>
+          </div>
+        )}
 
         {displayMsg && (
           <p style={{ marginTop: 12 }} className="ui-caption">

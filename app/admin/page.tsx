@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { UiButton, UiButtonLink, UiCard } from "@/components/ui";
+import { NEXT_SEASON } from "@/lib/season-config";
 
 type ConfirmAction = {
   title: string;
@@ -195,6 +196,12 @@ export default function AdminPage() {
             <UiCard className="ui-admin-tool">
               <UiButtonLink href="/admin/members" className="ui-admin-btn ui-admin-btn--full">
                 Manage Members
+              </UiButtonLink>
+            </UiCard>
+
+            <UiCard className="ui-admin-tool">
+              <UiButtonLink href="/admin/interested-members" className="ui-admin-btn ui-admin-btn--full">
+                Interested Members ({NEXT_SEASON})
               </UiButtonLink>
             </UiCard>
           </div>

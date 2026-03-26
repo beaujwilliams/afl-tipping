@@ -284,6 +284,11 @@ export default function SeasonRoundsPageClient({
             const locked = lock ? nowMs >= lock : false;
 
             const status = statusByRoundId[r.id];
+            const totalMatches = Number(status?.total_matches ?? 0);
+            const completedMatches = Number(status?.completed_matches ?? 0);
+            const roundComplete =
+              Boolean(status?.round_complete) ||
+              (totalMatches > 0 && completedMatches >= totalMatches);
             const total = status?.total_players ?? null;
             const tipped = status?.tipped_players ?? null;
             const missingCount = status?.missing_count ?? null;
@@ -307,7 +312,7 @@ export default function SeasonRoundsPageClient({
               <div key={r.id}>
                 <Link
                   href={`/round/${season}/${r.round_number}`}
-                  className="ui-card ui-card-soft"
+                  className={`ui-card ui-card-soft ${roundComplete ? "season-round-card--complete" : ""}`}
                   style={{
                     display: "flex",
                     justifyContent: "space-between",
@@ -318,16 +323,19 @@ export default function SeasonRoundsPageClient({
                   }}
                 >
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    <div style={{ fontWeight: 950, fontSize: 18, letterSpacing: -0.2 }}>
+                    <div
+                      className="season-round-card__title"
+                      style={{ fontWeight: 950, fontSize: 18, letterSpacing: -0.2 }}
+                    >
                       Round {r.round_number}
                     </div>
 
-                    <div style={{ opacity: 0.75, fontSize: 12 }}>
+                    <div className="season-round-card__meta" style={{ opacity: 0.75, fontSize: 12 }}>
                       Locks: <span style={{ opacity: 0.95 }}>{fmtMelbourneShort(r.lock_time_utc)}</span>
                     </div>
 
                     {/* Tip status line */}
-                    <div style={{ opacity: 0.8, fontSize: 12 }}>
+                    <div className="season-round-card__tip-status" style={{ opacity: 0.8, fontSize: 12 }}>
                       {total === null || tipped === null ? (
                         <span style={{ opacity: 0.65 }}>Tip status loading…</span>
                       ) : (
@@ -347,8 +355,12 @@ export default function SeasonRoundsPageClient({
                   </div>
 
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <div className={`ui-badge ${locked ? "ui-badge--locked" : "ui-badge--open"}`}>
-                      {locked ? "LOCKED" : "OPEN"}
+                    <div
+                      className={`ui-badge ${
+                        roundComplete ? "ui-badge--warning" : locked ? "ui-badge--locked" : "ui-badge--open"
+                      }`}
+                    >
+                      {roundComplete ? "COMPLETE" : locked ? "LOCKED" : "OPEN"}
                     </div>
 
                     {/* Admin toggle button (does NOT navigate) */}

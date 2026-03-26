@@ -243,6 +243,27 @@ button {
   background: var(--card-soft);
 }
 
+.season-round-card--complete {
+  background: rgba(107, 114, 128, 0.1);
+  border-color: rgba(107, 114, 128, 0.28);
+}
+
+.season-round-card--complete .season-round-card__title {
+  opacity: 0.82;
+}
+
+.season-round-card--complete .season-round-card__meta,
+.season-round-card--complete .season-round-card__tip-status {
+  opacity: 0.7;
+}
+
+@media (prefers-color-scheme: dark) {
+  .season-round-card--complete {
+    background: rgba(148, 163, 184, 0.1);
+    border-color: rgba(148, 163, 184, 0.32);
+  }
+}
+
 .ui-card-grid {
   display: grid;
   gap: var(--space-3);

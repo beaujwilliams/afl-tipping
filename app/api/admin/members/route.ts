@@ -50,6 +50,7 @@ type MemberOut = {
   display_name: string | null;
   role: string | null;
   payment_status: string | null;
+  is_test_account: boolean;
   joined_at: string;
 };
 
@@ -58,6 +59,7 @@ type MembershipRow = {
   created_at: string;
   role: string | null;
   payment_status?: string | null;
+  is_test_account?: boolean | null;
 };
 
 type ProfileMemberRow = {
@@ -80,25 +82,46 @@ export async function GET(req: Request) {
     let members: MembershipRow[] | null = null;
     let mErr: { message: string } | null = null;
     let hasPaymentStatus = true;
+    let hasTestFlag = true;
 
-    const withPayment = await supabase
+    const withPaymentAndTest = await supabase
       .from("memberships")
-      .select("user_id, created_at, role, payment_status")
+      .select("user_id, created_at, role, payment_status, is_test_account")
       .eq("competition_id", competitionId)
       .order("created_at", { ascending: true });
 
-    if (withPayment.error && isMissingColumnError(withPayment.error.message, "payment_status")) {
-      hasPaymentStatus = false;
+    if (
+      withPaymentAndTest.error &&
+      (isMissingColumnError(withPaymentAndTest.error.message, "payment_status") ||
+        isMissingColumnError(withPaymentAndTest.error.message, "is_test_account"))
+    ) {
+      hasPaymentStatus = !isMissingColumnError(
+        withPaymentAndTest.error.message,
+        "payment_status"
+      );
+      hasTestFlag = !isMissingColumnError(
+        withPaymentAndTest.error.message,
+        "is_test_account"
+      );
+      const fallbackColumns = [
+        "user_id",
+        "created_at",
+        "role",
+        ...(hasPaymentStatus ? ["payment_status"] : []),
+        ...(hasTestFlag ? ["is_test_account"] : []),
+      ];
       const fallback = await supabase
         .from("memberships")
-        .select("user_id, created_at, role")
+        .select(fallbackColumns.join(", "))
         .eq("competition_id", competitionId)
         .order("created_at", { ascending: true });
-      members = (fallback.data as MembershipRow[] | null) ?? null;
+      members = (fallback.data as unknown as MembershipRow[] | null) ?? null;
       mErr = fallback.error ? { message: fallback.error.message } : null;
     } else {
-      members = (withPayment.data as MembershipRow[] | null) ?? null;
-      mErr = withPayment.error ? { message: withPayment.error.message } : null;
+      members = (withPaymentAndTest.data as unknown as MembershipRow[] | null) ?? null;
+      mErr = withPaymentAndTest.error
+        ? { message: withPaymentAndTest.error.message }
+        : null;
     }
 
     if (mErr) {
@@ -152,6 +175,7 @@ export async function GET(req: Request) {
         display_name: p?.display_name ?? null,
         role: m.role ?? null,
         payment_status: hasPaymentStatus ? m.payment_status ?? "pending" : "pending",
+        is_test_account: hasTestFlag ? Boolean(m.is_test_account) : false,
         joined_at: String(m.created_at),
       };
     });
@@ -181,6 +205,7 @@ export async function PATCH(req: Request) {
       display_name?: string;
       role?: string;
       payment_status?: string;
+      is_test_account?: boolean;
     };
 
     const user_id = body?.user_id?.trim();
@@ -192,9 +217,16 @@ export async function PATCH(req: Request) {
       typeof body?.payment_status === "string"
         ? body.payment_status.trim().toLowerCase()
         : undefined;
+    const is_test_account =
+      typeof body?.is_test_account === "boolean" ? body.is_test_account : undefined;
 
     if (!user_id) return NextResponse.json({ error: "Missing user_id" }, { status: 400 });
-    if (display_name === undefined && role === undefined && payment_status === undefined) {
+    if (
+      display_name === undefined &&
+      role === undefined &&
+      payment_status === undefined &&
+      is_test_account === undefined
+    ) {
       return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
     }
     if (role !== undefined && !["owner", "admin", "member"].includes(role)) {
@@ -230,12 +262,16 @@ export async function PATCH(req: Request) {
       }
     }
 
-    if (role !== undefined || payment_status !== undefined) {
-      if (payment_status !== undefined) {
+    if (role !== undefined || payment_status !== undefined || is_test_account !== undefined) {
+      if (payment_status !== undefined || is_test_account !== undefined) {
+        const checkColumns = [
+          ...(payment_status !== undefined ? ["payment_status"] : []),
+          ...(is_test_account !== undefined ? ["is_test_account"] : []),
+        ];
         // Check column availability before attempting update so we can return a clearer error.
         const check = await supabase
           .from("memberships")
-          .select("payment_status")
+          .select(checkColumns.join(", "))
           .eq("competition_id", competitionId)
           .limit(1);
 
@@ -249,11 +285,22 @@ export async function PATCH(req: Request) {
             { status: 500 }
           );
         }
+        if (check.error && isMissingColumnError(check.error.message, "is_test_account")) {
+          return NextResponse.json(
+            {
+              error: "Database is missing memberships.is_test_account",
+              details:
+                "Run db/migrations/20260326_memberships_is_test_account.sql and redeploy.",
+            },
+            { status: 500 }
+          );
+        }
       }
 
-      const update: { role?: string; payment_status?: string } = {};
+      const update: { role?: string; payment_status?: string; is_test_account?: boolean } = {};
       if (role !== undefined) update.role = role;
       if (payment_status !== undefined) update.payment_status = payment_status;
+      if (is_test_account !== undefined) update.is_test_account = is_test_account;
 
       const { error } = await supabase
         .from("memberships")

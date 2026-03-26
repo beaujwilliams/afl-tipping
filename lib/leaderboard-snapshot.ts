@@ -39,6 +39,7 @@ type TipRow = {
 type MembershipRow = {
   user_id: string;
   payment_status?: string | null;
+  is_test_account?: boolean | null;
 };
 
 type ProfileRow = {
@@ -389,39 +390,65 @@ export async function computeLeaderboardSnapshot(params: {
   }
 
   let memberships: MembershipRow[] = [];
-  const withPayment = await supabase
+  const withPaymentAndTest = await supabase
     .from("memberships")
-    .select("user_id, payment_status")
+    .select("user_id, payment_status, is_test_account")
     .eq("competition_id", competitionId);
 
-  if (withPayment.error && isMissingColumnError(withPayment.error.message, "payment_status")) {
+  if (
+    withPaymentAndTest.error &&
+    (isMissingColumnError(withPaymentAndTest.error.message, "payment_status") ||
+      isMissingColumnError(withPaymentAndTest.error.message, "is_test_account"))
+  ) {
+    const hasPaymentStatus = !isMissingColumnError(
+      withPaymentAndTest.error.message,
+      "payment_status"
+    );
+    const hasTestFlag = !isMissingColumnError(
+      withPaymentAndTest.error.message,
+      "is_test_account"
+    );
+    const fallbackColumns = [
+      "user_id",
+      ...(hasPaymentStatus ? ["payment_status"] : []),
+      ...(hasTestFlag ? ["is_test_account"] : []),
+    ];
     const fallback = await supabase
       .from("memberships")
-      .select("user_id")
+      .select(fallbackColumns.join(", "))
       .eq("competition_id", competitionId);
 
     if (fallback.error) {
       throw new Error(`Failed to read memberships: ${fallback.error.message}`);
     }
 
-    memberships = (fallback.data ?? []) as MembershipRow[];
-  } else if (withPayment.error) {
-    throw new Error(`Failed to read memberships: ${withPayment.error.message}`);
+    memberships = (fallback.data ?? []) as unknown as MembershipRow[];
+  } else if (withPaymentAndTest.error) {
+    throw new Error(`Failed to read memberships: ${withPaymentAndTest.error.message}`);
   } else {
-    memberships = (withPayment.data ?? []) as MembershipRow[];
+    memberships = (withPaymentAndTest.data ?? []) as unknown as MembershipRow[];
   }
 
-  const memberUserIds = new Set<string>(memberships.map((m) => String(m.user_id)));
+  const memberUserIds = new Set<string>(
+    memberships
+      .filter((m) => !Boolean(m.is_test_account))
+      .map((m) => String(m.user_id))
+  );
   const paymentStatusByUserId: Record<string, string | null> = {};
-  memberships.forEach((m) => {
-    paymentStatusByUserId[String(m.user_id)] = normalizePaymentStatus(m.payment_status ?? null);
-  });
+  memberships
+    .filter((m) => !Boolean(m.is_test_account))
+    .forEach((m) => {
+      paymentStatusByUserId[String(m.user_id)] = normalizePaymentStatus(
+        m.payment_status ?? null
+      );
+    });
 
   const tipUserIds = new Set<string>();
   const picksByUser = new Map<string, Map<string, string>>();
 
   for (const tip of tipRows) {
     const userId = String(tip.user_id);
+    if (!memberUserIds.has(userId)) continue;
     const matchId = String(tip.match_id);
     const pickedTeam = String(tip.picked_team ?? "").trim();
     if (!pickedTeam) continue;

@@ -10,6 +10,7 @@ type RoundRow = {
 type MembershipRow = {
   user_id: string;
   payment_status?: string | null;
+  is_test_account?: boolean | null;
 };
 
 type ProfileRow = {
@@ -143,31 +144,49 @@ async function computeRoundTipStatusAggregate(params: {
   const roundIds = roundList.map((r) => r.id);
 
   let members: MembershipRow[] = [];
-  const withPayment = await supabase
+  const withPaymentAndTest = await supabase
     .from("memberships")
-    .select("user_id, payment_status")
+    .select("user_id, payment_status, is_test_account")
     .eq("competition_id", params.competitionId);
 
-  if (withPayment.error && isMissingColumnError(withPayment.error.message, "payment_status")) {
+  if (
+    withPaymentAndTest.error &&
+    (isMissingColumnError(withPaymentAndTest.error.message, "payment_status") ||
+      isMissingColumnError(withPaymentAndTest.error.message, "is_test_account"))
+  ) {
+    const hasPaymentStatus = !isMissingColumnError(
+      withPaymentAndTest.error.message,
+      "payment_status"
+    );
+    const hasTestFlag = !isMissingColumnError(
+      withPaymentAndTest.error.message,
+      "is_test_account"
+    );
+    const fallbackColumns = [
+      "user_id",
+      ...(hasPaymentStatus ? ["payment_status"] : []),
+      ...(hasTestFlag ? ["is_test_account"] : []),
+    ];
     const fallback = await supabase
       .from("memberships")
-      .select("user_id")
+      .select(fallbackColumns.join(", "))
       .eq("competition_id", params.competitionId);
 
     if (fallback.error) {
       throw new Error(`Failed to read memberships: ${fallback.error.message}`);
     }
 
-    members = (fallback.data ?? []) as MembershipRow[];
-  } else if (withPayment.error) {
-    throw new Error(`Failed to read memberships: ${withPayment.error.message}`);
+    members = (fallback.data ?? []) as unknown as MembershipRow[];
+  } else if (withPaymentAndTest.error) {
+    throw new Error(`Failed to read memberships: ${withPaymentAndTest.error.message}`);
   } else {
-    members = (withPayment.data ?? []) as MembershipRow[];
+    members = (withPaymentAndTest.data ?? []) as unknown as MembershipRow[];
   }
 
-  const memberIds = members.map((m) => String(m.user_id));
+  const eligibleMembers = members.filter((m) => !Boolean(m.is_test_account));
+  const memberIds = eligibleMembers.map((m) => String(m.user_id));
   const paymentStatusByUserId = new Map<string, string | null>();
-  members.forEach((m) => {
+  eligibleMembers.forEach((m) => {
     paymentStatusByUserId.set(
       String(m.user_id),
       normalizePaymentStatus(m.payment_status ?? null)

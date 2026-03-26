@@ -23,6 +23,7 @@ type TipRow = {
 type MembershipRow = {
   user_id: string;
   payment_status?: string | null;
+  is_test_account?: boolean | null;
 };
 
 type OddsRow = {
@@ -165,49 +166,71 @@ export async function GET(req: Request) {
 
     const userIds = Array.from(new Set(tipRows.map((t) => String(t.user_id))));
 
+    const eligibleUserIds = new Set<string>();
     const nameByUserId: Record<string, string> = {};
     const paymentStatusByUserId: Record<string, string | null> = {};
     if (userIds.length) {
-      const { data: profiles, error: pErr } = await supabase
-        .from("profiles")
-        .select("id, display_name")
-        .in("id", userIds);
-
-      if (pErr) {
-        return NextResponse.json({ ok: false, error: pErr.message }, { status: 500 });
-      }
-
-      (profiles as ProfileRow[] | null)?.forEach((p) => {
-        nameByUserId[String(p.id)] = safeDisplayName(p.display_name);
-      });
-
-      const withPayment = await supabase
+      const withPaymentAndTest = await supabase
         .from("memberships")
-        .select("user_id, payment_status")
+        .select("user_id, payment_status, is_test_account")
         .eq("competition_id", competitionId)
         .in("user_id", userIds);
 
-      if (withPayment.error && isMissingColumnError(withPayment.error.message, "payment_status")) {
+      let membershipRows: MembershipRow[] = [];
+      if (
+        withPaymentAndTest.error &&
+        (isMissingColumnError(withPaymentAndTest.error.message, "payment_status") ||
+          isMissingColumnError(withPaymentAndTest.error.message, "is_test_account"))
+      ) {
+        const hasPaymentStatus = !isMissingColumnError(
+          withPaymentAndTest.error.message,
+          "payment_status"
+        );
+        const hasTestFlag = !isMissingColumnError(
+          withPaymentAndTest.error.message,
+          "is_test_account"
+        );
+        const fallbackColumns = [
+          "user_id",
+          ...(hasPaymentStatus ? ["payment_status"] : []),
+          ...(hasTestFlag ? ["is_test_account"] : []),
+        ];
         const fallback = await supabase
           .from("memberships")
-          .select("user_id")
+          .select(fallbackColumns.join(", "))
           .eq("competition_id", competitionId)
           .in("user_id", userIds);
 
         if (fallback.error) {
           return NextResponse.json({ ok: false, error: fallback.error.message }, { status: 500 });
         }
-
-        (fallback.data as MembershipRow[] | null)?.forEach((m) => {
-          paymentStatusByUserId[String(m.user_id)] = null;
-        });
-      } else if (withPayment.error) {
-        return NextResponse.json({ ok: false, error: withPayment.error.message }, { status: 500 });
+        membershipRows = (fallback.data ?? []) as unknown as MembershipRow[];
+      } else if (withPaymentAndTest.error) {
+        return NextResponse.json({ ok: false, error: withPaymentAndTest.error.message }, { status: 500 });
       } else {
-        (withPayment.data as MembershipRow[] | null)?.forEach((m) => {
-          paymentStatusByUserId[String(m.user_id)] = normalizePaymentStatus(
-            m.payment_status ?? null
-          );
+        membershipRows = (withPaymentAndTest.data ?? []) as unknown as MembershipRow[];
+      }
+
+      membershipRows.forEach((m) => {
+        if (Boolean(m.is_test_account)) return;
+        const uid = String(m.user_id);
+        eligibleUserIds.add(uid);
+        paymentStatusByUserId[uid] = normalizePaymentStatus(m.payment_status ?? null);
+      });
+
+      const eligibleIdList = Array.from(eligibleUserIds);
+      if (eligibleIdList.length > 0) {
+        const { data: profiles, error: pErr } = await supabase
+          .from("profiles")
+          .select("id, display_name")
+          .in("id", eligibleIdList);
+
+        if (pErr) {
+          return NextResponse.json({ ok: false, error: pErr.message }, { status: 500 });
+        }
+
+        (profiles as ProfileRow[] | null)?.forEach((p) => {
+          nameByUserId[String(p.id)] = safeDisplayName(p.display_name);
         });
       }
     }
@@ -266,6 +289,7 @@ export async function GET(req: Request) {
 
     for (const t of tipRows) {
       const uid = String(t.user_id);
+      if (!eligibleUserIds.has(uid)) continue;
       const mid = String(t.match_id);
       const pickedTeam = String(t.picked_team ?? "").trim();
       if (!pickedTeam || !matchById[mid]) continue;

@@ -24,6 +24,7 @@ type MatchRow = {
 
 type MembershipRow = {
   user_id: string;
+  is_test_account?: boolean | null;
 };
 
 type TipRow = {
@@ -74,6 +75,12 @@ function safeDisplayName(name: string | null | undefined, userId: string) {
   const n = String(name ?? "").trim();
   if (n) return n;
   return `${userId.slice(0, 8)}...`;
+}
+
+function isMissingColumnError(message: string, columnName: string) {
+  const m = String(message ?? "").toLowerCase();
+  const col = columnName.toLowerCase();
+  return m.includes(col) && (m.includes("column") || m.includes("does not exist"));
 }
 
 function formatMelbourne(isoUtc: string) {
@@ -495,21 +502,38 @@ export async function GET(req: Request) {
         continue;
       }
 
-      const { data: memberships, error: memErr } = await supabase
+      const withTestFlag = await supabase
         .from("memberships")
-        .select("user_id")
+        .select("user_id, is_test_account")
         .eq("competition_id", competitionId);
 
-      if (memErr) {
+      let memberRows: MembershipRow[] = [];
+      if (withTestFlag.error && isMissingColumnError(withTestFlag.error.message, "is_test_account")) {
+        const fallback = await supabase
+          .from("memberships")
+          .select("user_id")
+          .eq("competition_id", competitionId);
+        if (fallback.error) {
+          roundErrors.push({
+            round: r.round_number,
+            error: `Failed to load memberships: ${fallback.error.message}`,
+          });
+          continue;
+        }
+        memberRows = (fallback.data ?? []) as unknown as MembershipRow[];
+      } else if (withTestFlag.error) {
         roundErrors.push({
           round: r.round_number,
-          error: `Failed to load memberships: ${memErr.message}`,
+          error: `Failed to load memberships: ${withTestFlag.error.message}`,
         });
         continue;
+      } else {
+        memberRows = (withTestFlag.data ?? []) as unknown as MembershipRow[];
       }
 
-      const memberRows = (memberships ?? []) as MembershipRow[];
-      const memberIds = memberRows.map((m) => String(m.user_id));
+      const memberIds = memberRows
+        .filter((m) => !Boolean(m.is_test_account))
+        .map((m) => String(m.user_id));
       const memberSet = new Set(memberIds);
 
       if (memberIds.length === 0) {

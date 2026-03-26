@@ -10,6 +10,7 @@ type Member = {
   display_name: string | null;
   role: string | null;
   payment_status: string | null;
+  is_test_account: boolean;
   joined_at: string;
 };
 
@@ -21,6 +22,7 @@ type RowDraft = {
   display_name: string;
   role: MemberRole;
   payment_status: PaymentStatus;
+  is_test_account: boolean;
 };
 
 type MembersResponse = {
@@ -190,6 +192,7 @@ export default function AdminMembersPage() {
         display_name: m.display_name ?? "",
         role: normalizeRole(m.role),
         payment_status: normalizePaymentStatus(m.payment_status),
+        is_test_account: !!m.is_test_account,
       };
     });
     return out;
@@ -298,19 +301,26 @@ export default function AdminMembersPage() {
     let paid = 0;
     let pending = 0;
     let waived = 0;
+    let testAccounts = 0;
 
     members.forEach((m) => {
+      if (m.is_test_account) {
+        testAccounts += 1;
+        return;
+      }
       const status = normalizePaymentStatus(m.payment_status);
       if (status === "paid") paid += 1;
       else if (status === "waived") waived += 1;
       else pending += 1;
     });
 
+    const total = paid + pending + waived;
     return {
-      total: members.length,
+      total,
       paid,
       pending,
       waived,
+      testAccounts,
     };
   }, [members]);
 
@@ -327,7 +337,7 @@ export default function AdminMembersPage() {
 
   const filteredMembers = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    return members.filter((m) => {
+    const filtered = members.filter((m) => {
       const payment = normalizePaymentStatus(m.payment_status);
       if (paymentFilter !== "all" && payment !== paymentFilter) return false;
 
@@ -336,14 +346,29 @@ export default function AdminMembersPage() {
       const name = (m.display_name ?? "").toLowerCase();
       const email = (m.email ?? "").toLowerCase();
       const uid = m.user_id.toLowerCase();
+      const testToken = m.is_test_account ? "test" : "live";
       return (
         name.includes(needle) ||
         email.includes(needle) ||
         uid.includes(needle) ||
         role.includes(needle) ||
-        payment.includes(needle)
+        payment.includes(needle) ||
+        testToken.includes(needle)
       );
     });
+    filtered.sort((a, b) => {
+      const aTest = a.is_test_account ? 1 : 0;
+      const bTest = b.is_test_account ? 1 : 0;
+      if (bTest !== aTest) return bTest - aTest;
+
+      const aJoined = new Date(a.joined_at).getTime();
+      const bJoined = new Date(b.joined_at).getTime();
+      const aSafe = Number.isFinite(aJoined) ? aJoined : 0;
+      const bSafe = Number.isFinite(bJoined) ? bJoined : 0;
+      if (aSafe !== bSafe) return aSafe - bSafe;
+      return a.user_id.localeCompare(b.user_id);
+    });
+    return filtered;
   }, [members, search, paymentFilter]);
 
   function setDraftField(userId: string, patch: Partial<RowDraft>) {
@@ -353,6 +378,7 @@ export default function AdminMembersPage() {
         display_name: patch.display_name ?? prev[userId]?.display_name ?? "",
         role: patch.role ?? prev[userId]?.role ?? "member",
         payment_status: patch.payment_status ?? prev[userId]?.payment_status ?? "pending",
+        is_test_account: patch.is_test_account ?? prev[userId]?.is_test_account ?? false,
       },
     }));
   }
@@ -367,12 +393,14 @@ export default function AdminMembersPage() {
       display_name: member.display_name ?? "",
       role: normalizeRole(member.role),
       payment_status: normalizePaymentStatus(member.payment_status),
+      is_test_account: !!member.is_test_account,
     };
 
     const hasPatchField =
       patch?.display_name !== undefined ||
       patch?.role !== undefined ||
-      patch?.payment_status !== undefined;
+      patch?.payment_status !== undefined ||
+      patch?.is_test_account !== undefined;
     if (patch && !hasPatchField) return;
 
     setSavingMemberId(userId);
@@ -383,16 +411,19 @@ export default function AdminMembersPage() {
       display_name?: string;
       role?: MemberRole;
       payment_status?: PaymentStatus;
+      is_test_account?: boolean;
     } = { user_id: userId };
 
     if (patch) {
       if (patch.display_name !== undefined) body.display_name = patch.display_name;
       if (patch.role !== undefined) body.role = patch.role;
       if (patch.payment_status !== undefined) body.payment_status = patch.payment_status;
+      if (patch.is_test_account !== undefined) body.is_test_account = patch.is_test_account;
     } else {
       body.display_name = draft.display_name;
       body.role = draft.role;
       body.payment_status = draft.payment_status;
+      body.is_test_account = draft.is_test_account;
     }
 
     const res = await fetch("/api/admin/members", {
@@ -436,6 +467,12 @@ export default function AdminMembersPage() {
                   : patch
                     ? m.payment_status
                     : draft.payment_status,
+              is_test_account:
+                patch?.is_test_account !== undefined
+                  ? patch.is_test_account
+                  : patch
+                    ? m.is_test_account
+                    : draft.is_test_account,
             }
           : m
       )
@@ -772,20 +809,24 @@ export default function AdminMembersPage() {
         }}
       >
         <div style={cardStyle}>
-          <div style={{ fontSize: 12, opacity: 0.7 }}>Total ({fmtDollars(amounts.total)})</div>
+          <div style={{ fontSize: 12, opacity: 0.7 }}>Total live ({fmtDollars(amounts.total)})</div>
           <div style={{ marginTop: 4, fontWeight: 900, fontSize: 24 }}>{counts.total}</div>
         </div>
         <div style={cardStyle}>
-          <div style={{ fontSize: 12, opacity: 0.7 }}>Paid ({fmtDollars(amounts.paid)})</div>
+          <div style={{ fontSize: 12, opacity: 0.7 }}>Paid live ({fmtDollars(amounts.paid)})</div>
           <div style={{ marginTop: 4, fontWeight: 900, fontSize: 24, color: "#065f46" }}>{counts.paid}</div>
         </div>
         <div style={cardStyle}>
-          <div style={{ fontSize: 12, opacity: 0.7 }}>Pending ({fmtDollars(amounts.pending)})</div>
+          <div style={{ fontSize: 12, opacity: 0.7 }}>Pending live ({fmtDollars(amounts.pending)})</div>
           <div style={{ marginTop: 4, fontWeight: 900, fontSize: 24, color: "#991b1b" }}>{counts.pending}</div>
         </div>
         <div style={cardStyle}>
-          <div style={{ fontSize: 12, opacity: 0.7 }}>Waived ({fmtDollars(amounts.waived)})</div>
+          <div style={{ fontSize: 12, opacity: 0.7 }}>Waived live ({fmtDollars(amounts.waived)})</div>
           <div style={{ marginTop: 4, fontWeight: 900, fontSize: 24, color: "#5b21b6" }}>{counts.waived}</div>
+        </div>
+        <div style={cardStyle}>
+          <div style={{ fontSize: 12, opacity: 0.7 }}>Test accounts</div>
+          <div style={{ marginTop: 4, fontWeight: 900, fontSize: 24, color: "#92400e" }}>{counts.testAccounts}</div>
         </div>
       </div>
 
@@ -837,13 +878,14 @@ export default function AdminMembersPage() {
             <div style={{ padding: 16, opacity: 0.75 }}>No matching members.</div>
           ) : (
             <UiTableScroll>
-              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1080 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1160 }}>
                 <thead>
                   <tr style={{ background: "var(--card-soft)", textAlign: "left", fontSize: 12 }}>
                     <UiTableHeadCell>Name</UiTableHeadCell>
                     <UiTableHeadCell>Email</UiTableHeadCell>
                     <UiTableHeadCell>Role</UiTableHeadCell>
                     <UiTableHeadCell>Payment</UiTableHeadCell>
+                    <UiTableHeadCell>Test</UiTableHeadCell>
                     <UiTableHeadCell>Actions</UiTableHeadCell>
                     <UiTableHeadCell>Joined</UiTableHeadCell>
                   </tr>
@@ -854,6 +896,7 @@ export default function AdminMembersPage() {
                       display_name: m.display_name ?? "",
                       role: normalizeRole(m.role),
                       payment_status: normalizePaymentStatus(m.payment_status),
+                      is_test_account: !!m.is_test_account,
                     };
 
                     const saving = savingMemberId === m.user_id;
@@ -914,6 +957,21 @@ export default function AdminMembersPage() {
                                 champion
                               </span>
                             )}
+                            {draft.is_test_account && (
+                              <span
+                                style={{
+                                  fontSize: 11,
+                                  fontWeight: 800,
+                                  borderRadius: 999,
+                                  padding: "2px 8px",
+                                  background: "rgba(251, 191, 36, 0.16)",
+                                  color: "rgb(146, 64, 14)",
+                                  border: "1px solid rgba(245, 158, 11, 0.35)",
+                                }}
+                              >
+                                test
+                              </span>
+                            )}
                           </div>
                         </td>
                         <td style={{ padding: 12, borderTop: "1px solid var(--border)", fontSize: 13 }}>
@@ -966,6 +1024,31 @@ export default function AdminMembersPage() {
                             <option value="pending">pending</option>
                             <option value="waived">waived</option>
                           </select>
+                        </td>
+                        <td style={{ padding: 12, borderTop: "1px solid var(--border)" }}>
+                          <label
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 8,
+                              cursor: saving || removing ? "not-allowed" : "pointer",
+                              opacity: saving || removing ? 0.7 : 1,
+                              fontWeight: 700,
+                              fontSize: 13,
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              disabled={saving || removing}
+                              checked={draft.is_test_account}
+                              onChange={(e) => {
+                                const is_test_account = e.target.checked;
+                                setDraftField(m.user_id, { is_test_account });
+                                void saveMember(m.user_id, { is_test_account });
+                              }}
+                            />
+                            {draft.is_test_account ? "Test" : "Live"}
+                          </label>
                         </td>
                         <td style={{ padding: 12, borderTop: "1px solid var(--border)" }}>
                           <div style={{ display: "flex", gap: 8 }}>

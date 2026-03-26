@@ -15,6 +15,7 @@ const MIN_SEND_SPACING_MS = 1100;
 type MembershipRow = {
   user_id: string;
   payment_status: string | null;
+  is_test_account?: boolean | null;
 };
 
 type ExistingReminderRow = {
@@ -305,14 +306,39 @@ export async function GET(req: Request) {
       );
     }
 
-    const memberships = await supabase
+    const withPaymentAndTest = await supabase
       .from("memberships")
-      .select("user_id, payment_status")
+      .select("user_id, payment_status, is_test_account")
       .eq("competition_id", competitionId);
 
-    if (memberships.error) {
+    let membershipRows: MembershipRow[] = [];
+    if (
+      withPaymentAndTest.error &&
+      isMissingColumnError(withPaymentAndTest.error.message, "is_test_account")
+    ) {
+      const fallback = await supabase
+        .from("memberships")
+        .select("user_id, payment_status")
+        .eq("competition_id", competitionId);
+      if (fallback.error) {
+        if (isMissingColumnError(fallback.error.message, "payment_status")) {
+          return NextResponse.json(
+            {
+              error: "Database is missing memberships.payment_status",
+              hint: "Apply migration db/migrations/20260307_memberships_payment_status.sql",
+            },
+            { status: 500 }
+          );
+        }
+        return NextResponse.json(
+          { error: "Failed to read memberships", details: fallback.error.message },
+          { status: 500 }
+        );
+      }
+      membershipRows = (fallback.data ?? []) as unknown as MembershipRow[];
+    } else if (withPaymentAndTest.error) {
       if (
-        isMissingColumnError(memberships.error.message, "payment_status")
+        isMissingColumnError(withPaymentAndTest.error.message, "payment_status")
       ) {
         return NextResponse.json(
           {
@@ -323,14 +349,19 @@ export async function GET(req: Request) {
         );
       }
       return NextResponse.json(
-        { error: "Failed to read memberships", details: memberships.error.message },
+        { error: "Failed to read memberships", details: withPaymentAndTest.error.message },
         { status: 500 }
       );
+    } else {
+      membershipRows = (withPaymentAndTest.data ?? []) as unknown as MembershipRow[];
     }
 
-    const membershipRows = (memberships.data ?? []) as MembershipRow[];
     const pendingUserIds = membershipRows
-      .filter((m) => normalizePaymentStatus(m.payment_status) === "pending")
+      .filter(
+        (m) =>
+          !Boolean(m.is_test_account) &&
+          normalizePaymentStatus(m.payment_status) === "pending"
+      )
       .map((m) => String(m.user_id));
 
     if (pendingUserIds.length === 0) {

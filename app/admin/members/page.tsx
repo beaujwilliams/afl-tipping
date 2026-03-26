@@ -885,7 +885,7 @@ export default function AdminMembersPage() {
                     <UiTableHeadCell>Email</UiTableHeadCell>
                     <UiTableHeadCell>Role</UiTableHeadCell>
                     <UiTableHeadCell>Payment</UiTableHeadCell>
-                    <UiTableHeadCell>Test</UiTableHeadCell>
+                    <UiTableHeadCell>Test Acc</UiTableHeadCell>
                     <UiTableHeadCell>Actions</UiTableHeadCell>
                     <UiTableHeadCell>Joined</UiTableHeadCell>
                   </tr>
@@ -1026,19 +1026,18 @@ export default function AdminMembersPage() {
                           </select>
                         </td>
                         <td style={{ padding: 12, borderTop: "1px solid var(--border)" }}>
-                          <label
+                          <div
                             style={{
-                              display: "inline-flex",
+                              display: "flex",
                               alignItems: "center",
-                              gap: 8,
-                              cursor: saving || removing ? "not-allowed" : "pointer",
+                              justifyContent: "center",
                               opacity: saving || removing ? 0.7 : 1,
-                              fontWeight: 700,
-                              fontSize: 13,
                             }}
                           >
                             <input
                               type="checkbox"
+                              aria-label="Test account"
+                              title="Test account"
                               disabled={saving || removing}
                               checked={draft.is_test_account}
                               onChange={(e) => {
@@ -1046,9 +1045,13 @@ export default function AdminMembersPage() {
                                 setDraftField(m.user_id, { is_test_account });
                                 void saveMember(m.user_id, { is_test_account });
                               }}
+                              style={{
+                                cursor: saving || removing ? "not-allowed" : "pointer",
+                                width: 16,
+                                height: 16,
+                              }}
                             />
-                            {draft.is_test_account ? "Test" : "Live"}
-                          </label>
+                          </div>
                         </td>
                         <td style={{ padding: 12, borderTop: "1px solid var(--border)" }}>
                           <div style={{ display: "flex", gap: 8 }}>

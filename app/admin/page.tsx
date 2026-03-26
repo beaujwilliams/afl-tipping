@@ -141,15 +141,6 @@ export default function AdminPage() {
     });
   }
 
-  function openPaymentReminderConfirm() {
-    setConfirmAction({
-      title: "Send payment reminders now?",
-      body: "This will email pending members who have not already been sent this reminder this season.",
-      confirmLabel: "Yes, send payment reminders",
-      path: `/api/admin/send-payment-reminders?season=${season}`,
-    });
-  }
-
   function closeConfirm() {
     if (isRunning) return;
     setConfirmAction(null);
@@ -205,21 +196,6 @@ export default function AdminPage() {
               <UiButtonLink href="/admin/members" className="ui-admin-btn ui-admin-btn--full">
                 Manage Members
               </UiButtonLink>
-            </UiCard>
-
-            <UiCard className="ui-admin-tool">
-              <div className="ui-admin-subtitle">Payment reminders (manual)</div>
-              <div className="ui-admin-summary">
-                Send payment reminder emails to members with payment status <b>pending</b>.
-              </div>
-              <UiButton
-                disabled={isRunning}
-                onClick={openPaymentReminderConfirm}
-                className="ui-admin-btn ui-admin-btn--full"
-                style={{ marginTop: 10 }}
-              >
-                Send Payment Pending Reminders
-              </UiButton>
             </UiCard>
           </div>
         </UiCard>

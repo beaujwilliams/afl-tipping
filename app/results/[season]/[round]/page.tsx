@@ -348,9 +348,9 @@ export default function RoundResultsDetailPage() {
     return matches.filter((m) => !!String(m.winner_team ?? "").trim()).length;
   }, [matches]);
 
-  const tipsPlaced = useMemo(() => {
-    return matches.reduce((acc, m) => acc + Number(m.total_tips ?? 0), 0);
-  }, [matches]);
+  const submittedTipsters = useMemo(() => {
+    return players.filter((p) => Number(p.total_tips ?? 0) > 0).length;
+  }, [players]);
 
   const myRoundRow = useMemo(() => {
     if (!currentUserId) return null;
@@ -527,8 +527,10 @@ export default function RoundResultsDetailPage() {
             </UiCard>
 
             <UiCard soft>
-              <div className="ui-kicker">Total tips</div>
-              <div style={{ marginTop: 5, fontSize: 22, fontWeight: 900 }}>{tipsPlaced}</div>
+              <div className="ui-kicker">Submitted</div>
+              <div style={{ marginTop: 5, fontSize: 22, fontWeight: 900 }}>
+                {submittedTipsters}/{players.length}
+              </div>
             </UiCard>
           </UiCardGrid>
 

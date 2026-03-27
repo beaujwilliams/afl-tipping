@@ -12,40 +12,6 @@ type ConfirmAction = {
   path: string;
 };
 
-type ScoringAutomationRun = {
-  id: string;
-  job_kind: string;
-  scope: "active" | "full";
-  run_status: "success" | "failed";
-  sync_ok: boolean;
-  sync_updated: number;
-  leaderboard_recalc_ran: boolean;
-  leaderboard_recalc_ok: boolean | null;
-  started_at_utc: string;
-  finished_at_utc: string;
-  details: unknown;
-};
-
-type ScoringRunsResponse = {
-  ok?: boolean;
-  error?: string;
-  details?: string;
-  hint?: string;
-  runs?: ScoringAutomationRun[];
-};
-
-function fmtMelbourneShort(iso: string) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return new Intl.DateTimeFormat("en-AU", {
-    timeZone: "Australia/Melbourne",
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(d);
-}
-
 export default function AdminPage() {
   const [season, setSeason] = useState<number>(2026);
   const [recapRound, setRecapRound] = useState<number>(1);
@@ -53,9 +19,6 @@ export default function AdminPage() {
   const [result, setResult] = useState<unknown>(null);
   const [loading, setLoading] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
-  const [scoringRuns, setScoringRuns] = useState<ScoringAutomationRun[]>([]);
-  const [scoringRunsLoading, setScoringRunsLoading] = useState<boolean>(false);
-  const [scoringRunsMsg, setScoringRunsMsg] = useState<string>("Loading recent 15-minute checks...");
   const isRunning = loading !== null;
 
   useEffect(() => {
@@ -70,11 +33,6 @@ export default function AdminPage() {
       alive = false;
     };
   }, []);
-
-  useEffect(() => {
-    void loadScoringRunLogs(season);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [season]);
 
   async function getToken() {
     const { data } = await supabaseBrowser.auth.getSession();
@@ -91,49 +49,6 @@ export default function AdminPage() {
 
     const json = await res.json().catch(() => ({}));
     return { ok: res.ok, status: res.status, json };
-  }
-
-  async function loadScoringRunLogs(targetSeason: number) {
-    try {
-      setScoringRunsLoading(true);
-      setScoringRunsMsg("Loading recent 15-minute checks...");
-
-      const token = await getToken();
-      if (!token) {
-        setScoringRuns([]);
-        setScoringRunsMsg("Not authenticated.");
-        return;
-      }
-
-      const res = await fetch(
-        `/api/admin/scoring-automation-runs?season=${encodeURIComponent(
-          String(targetSeason)
-        )}&job_kind=scoring_15m&limit=25`,
-        {
-          cache: "no-store",
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
-
-      const json = (await res.json().catch(() => null)) as ScoringRunsResponse | null;
-      if (!res.ok || !json?.ok) {
-        const parts = [json?.error ?? "Could not load scoring run log."];
-        if (json?.details) parts.push(json.details);
-        if (json?.hint) parts.push(json.hint);
-        setScoringRuns([]);
-        setScoringRunsMsg(parts.join(" - "));
-        return;
-      }
-
-      const rows = Array.isArray(json.runs) ? json.runs : [];
-      setScoringRuns(rows);
-      setScoringRunsMsg(rows.length ? "" : "No 15-minute checks recorded yet.");
-    } catch {
-      setScoringRuns([]);
-      setScoringRunsMsg("Could not load scoring run log.");
-    } finally {
-      setScoringRunsLoading(false);
-    }
   }
 
   async function run(path: string) {
@@ -368,15 +283,37 @@ export default function AdminPage() {
 
               <div className="ui-admin-automation-list">
                 <div className="ui-admin-automation-item">
-                  <div className="ui-admin-automation-title">Scoring sync + leaderboard refresh</div>
-                  <div className="ui-admin-summary ui-admin-summary--tight">
-                    GitHub Actions runs every <b>15 minutes</b> and calls scoring automation in <code>active</code> mode (locked rounds with unfinished matches only).
-                  </div>
-                  <div className="ui-admin-summary ui-admin-summary--tight">
-                    A second GitHub Actions pass runs <b>once daily</b> in <code>full</code> mode as a season-wide safety sync.
-                  </div>
-                  <div className="ui-admin-summary ui-admin-summary--tight">
-                    Leaderboard recalc is only triggered when sync detects updates (<code>updated &gt; 0</code>).
+                  <div
+                    className="ui-row-wrap"
+                    style={{ justifyContent: "space-between", alignItems: "stretch", gap: 12 }}
+                  >
+                    <div style={{ display: "grid", gap: 6, flex: "1 1 360px" }}>
+                      <div className="ui-admin-automation-title">
+                        Scoring sync &amp; leaderboard refresh
+                      </div>
+                      <div className="ui-admin-summary ui-admin-summary--tight">
+                        Every <b>15 minutes</b>, we check only rounds that are already locked and still have unfinished matches.
+                      </div>
+                      <div className="ui-admin-summary ui-admin-summary--tight">
+                        If new final results are found, scores are updated and the leaderboard is recalculated automatically.
+                      </div>
+                      <div className="ui-admin-summary ui-admin-summary--tight">
+                        A <b>daily full-season safety pass</b> runs once overnight to catch any late corrections.
+                      </div>
+                    </div>
+
+                    <UiCard className="ui-admin-tool ui-admin-tool--nested" style={{ minWidth: 230, maxWidth: 270 }}>
+                      <div className="ui-admin-subtitle">Run log</div>
+                      <div className="ui-admin-summary ui-admin-summary--tight">
+                        View 15-minute checks, success/failure, and whether scores + leaderboard updated.
+                      </div>
+                      <UiButtonLink
+                        href={`/admin/scoring-sync?season=${encodeURIComponent(String(season))}`}
+                        className="ui-admin-btn ui-admin-btn--full"
+                      >
+                        Open Scoring Log
+                      </UiButtonLink>
+                    </UiCard>
                   </div>
                 </div>
 
@@ -421,44 +358,6 @@ export default function AdminPage() {
                 </div>
               </div>
 
-              <div className="ui-admin-tool ui-admin-tool--nested">
-                <div className="ui-row-wrap" style={{ justifyContent: "space-between", gap: 8 }}>
-                  <div className="ui-admin-subtitle">Recent 15-minute scoring checks</div>
-                  <UiButton
-                    disabled={isRunning || scoringRunsLoading}
-                    onClick={() => void loadScoringRunLogs(season)}
-                    className="ui-admin-btn ui-admin-btn--compact"
-                  >
-                    {scoringRunsLoading ? "Refreshing..." : "Refresh log"}
-                  </UiButton>
-                </div>
-
-                {scoringRunsMsg && (
-                  <div className="ui-admin-summary">{scoringRunsMsg}</div>
-                )}
-
-                {scoringRuns.length > 0 && (
-                  <div className="ui-admin-stack">
-                    {scoringRuns.map((run) => {
-                      const updatedScores = run.sync_updated > 0;
-                      const leaderboardSynced = run.leaderboard_recalc_ran && run.leaderboard_recalc_ok === true;
-                      return (
-                        <details key={run.id} className="ui-admin-tool ui-admin-tool--nested">
-                          <summary style={{ cursor: "pointer", fontWeight: 700 }}>
-                            {fmtMelbourneShort(run.started_at_utc)} - {run.run_status === "success" ? "Success" : "Failed"} - Updated scores {updatedScores ? "Yes" : "No"} - Leaderboard synced {leaderboardSynced ? "Yes" : "No"}
-                          </summary>
-                          <div className="ui-admin-summary ui-admin-summary--tight">
-                            Finished {fmtMelbourneShort(run.finished_at_utc)}.
-                          </div>
-                          <pre className="ui-admin-result-pre">
-                            {JSON.stringify(run.details, null, 2)}
-                          </pre>
-                        </details>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
             </UiCard>
 
             <div className="ui-admin-maintenance-grid">

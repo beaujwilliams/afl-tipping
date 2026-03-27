@@ -1,12 +1,40 @@
-name: Pre-lock reminders (manual)
+name: Pre-lock reminders + scoring tick
 
 on:
+  schedule:
+    # Runs every 15 minutes.
+    # - Scoring sync runs every tick.
+    # - Pre-lock reminders run every second tick (30 minutes) inside the script.
+    - cron: "*/15 * * * *"
   workflow_dispatch:
 
 jobs:
-  send-reminders:
+  site-automation-tick:
     runs-on: ubuntu-latest
     steps:
+      - name: Trigger 15-minute scoring automation
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SEASON: "2026"
+        run: |
+          set -euo pipefail
+
+          BASE_URL="${SITE_URL:-https://www.complicatedtips.com}"
+          BASE_URL="${BASE_URL%/}"
+
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "Missing GitHub secret: CRON_SECRET"
+            exit 1
+          fi
+
+          URL="${BASE_URL}/api/admin/run-scoring-automation?season=${SEASON}&scope=active&job_kind=scoring_15m"
+          echo "Calling ${URL}"
+
+          curl -fsS \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${URL}"
+
       - name: Trigger pre-lock reminder endpoint
         env:
           SITE_URL: ${{ vars.SITE_URL }}
@@ -17,6 +45,12 @@ jobs:
 
           BASE_URL="${SITE_URL:-https://www.complicatedtips.com}"
           BASE_URL="${BASE_URL%/}"
+          MINUTE="$(date -u +%M)"
+
+          if [ $((10#${MINUTE} % 30)) -ne 0 ]; then
+            echo "Skipping reminder send on minute ${MINUTE}; reminders run every 30 minutes."
+            exit 0
+          fi
 
           if [ -z "${CRON_SECRET:-}" ]; then
             echo "Missing GitHub secret: CRON_SECRET"

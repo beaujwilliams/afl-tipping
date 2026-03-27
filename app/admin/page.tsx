@@ -292,13 +292,13 @@ export default function AdminPage() {
                         Scoring sync &amp; leaderboard refresh
                       </div>
                       <div className="ui-admin-summary ui-admin-summary--tight">
-                        <b>Vercel Cron</b> runs every <b>15 minutes</b> and checks only rounds that are already locked and still have unfinished matches.
+                        Every <b>15 minutes</b>, we check only rounds that are already locked and still have unfinished matches.
                       </div>
                       <div className="ui-admin-summary ui-admin-summary--tight">
                         If new final results are found, scores are updated and the leaderboard is recalculated automatically.
                       </div>
                       <div className="ui-admin-summary ui-admin-summary--tight">
-                        A <b>daily full-season safety pass</b> also runs via Vercel Cron once overnight to catch any late corrections.
+                        A <b>daily full-season safety pass</b> runs once overnight to catch any late corrections.
                       </div>
                     </div>
 
@@ -320,7 +320,7 @@ export default function AdminPage() {
                 <div className="ui-admin-automation-item">
                   <div className="ui-admin-automation-title">Tip reminders</div>
                   <div className="ui-admin-summary ui-admin-summary--tight">
-                    <b>Vercel Cron</b> runs reminder sends every 30 minutes and only in the configured 3-hour pre-lock window.
+                    Automation ticks every 15 minutes; reminder sends run every 30 minutes and only in the configured 3-hour pre-lock window.
                   </div>
                   <div className="ui-admin-summary ui-admin-summary--tight">
                     Manual override is available in <b>Tip lists</b> for the current open round via <b>Send reminders now</b>.

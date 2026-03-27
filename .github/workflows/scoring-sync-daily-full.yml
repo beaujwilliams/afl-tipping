@@ -1,6 +1,9 @@
-name: Scoring sync (manual full-season pass)
+name: Scoring sync (daily full-season pass)
 
 on:
+  schedule:
+    # Daily full-season safety pass (about 02:16-03:16 Melbourne depending DST).
+    - cron: "16 16 * * *"
   workflow_dispatch:
     inputs:
       season:

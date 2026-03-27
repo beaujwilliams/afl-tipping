@@ -1,16 +1,1 @@
-{
-  "crons": [
-    {
-      "path": "/api/cron/scoring-15m",
-      "schedule": "*/15 * * * *"
-    },
-    {
-      "path": "/api/cron/prelock-reminders-30m",
-      "schedule": "*/30 * * * *"
-    },
-    {
-      "path": "/api/cron/scoring-daily-full",
-      "schedule": "16 16 * * *"
-    }
-  ]
-}
+{}

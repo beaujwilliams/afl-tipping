@@ -35,21 +35,24 @@ The easiest way to deploy your Next.js app is to use the [Vercel Platform](https
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
 
+Note: Vercel Hobby only supports daily cron jobs. High-frequency automations in this repo run via GitHub Actions.
+
 ## Scheduled Pre-lock Reminders
 
-Pre-lock reminders are scheduled via Vercel Cron:
+This repo includes a GitHub Actions workflow at `.github/workflows/prelock-reminders.yml` that runs every 15 minutes.
 
-- `*/30 * * * *` -> `/api/cron/prelock-reminders-30m`
+Behavior:
 
-The cron endpoint forwards to:
+- Every tick runs active scoring sync:
+  - `/api/admin/run-scoring-automation?season=2026&scope=active&job_kind=scoring_15m`
+- Reminder sends run every second tick (effectively every 30 minutes):
+  - `/api/admin/send-prelock-reminders?season=2026&hours_before_lock=3&window_minutes=30`
+- Reminder route deduplicates sends per user/round.
 
-`/api/admin/send-prelock-reminders?season=2026&hours_before_lock=3&window_minutes=30`
+Required GitHub settings:
 
-The reminder route only sends to members who have not tipped, and deduplicates sends per user/round.
-
-Required Vercel setting:
-
-- Environment variable: `CRON_SECRET` (must match production `CRON_SECRET`)
+- Secret: `CRON_SECRET` (must match production `CRON_SECRET`)
+- Optional repository variable: `SITE_URL` (defaults to `https://www.complicatedtips.com`)
 
 ## Scheduled Odds Snapshot
 
@@ -66,15 +69,11 @@ Required GitHub settings:
 
 ## Scheduled Scoring Sync + Leaderboard Refresh
 
-Scoring automation is scheduled via Vercel Cron:
+Scoring automation runs through GitHub Actions:
 
-- `*/15 * * * *` -> `/api/cron/scoring-15m`
-- `16 16 * * *` -> `/api/cron/scoring-daily-full` (daily full-season safety pass)
-
-The cron endpoints forward to:
-
-- `/api/admin/run-scoring-automation?season=2026&scope=active&job_kind=scoring_15m`
-- `/api/admin/run-scoring-automation?season=2026&scope=full&job_kind=scoring_daily_full`
+- Active scoring runs every 15 minutes via `.github/workflows/prelock-reminders.yml`.
+- Full-season safety pass runs once daily via `.github/workflows/scoring-sync-daily-full.yml` and calls:
+  - `/api/admin/run-scoring-automation?season=2026&scope=full&job_kind=scoring_daily_full`
 
 Behavior:
 
@@ -82,9 +81,10 @@ Behavior:
 - Full run scope is a safety pass across the season.
 - Leaderboard recalc only runs when `sync-results.updated > 0`.
 
-Required Vercel setting:
+Required GitHub settings:
 
-- Environment variable: `CRON_SECRET` (must match production `CRON_SECRET`)
+- Secret: `CRON_SECRET` (must match production `CRON_SECRET`)
+- Optional repository variable: `SITE_URL` (defaults to `https://www.complicatedtips.com`)
 
 ## Signup Freeze + Next Season Interest
 

@@ -21,6 +21,7 @@ export type HomeLeaderboardRow = {
   user_id: string;
   rank: number;
   total_points: number;
+  round_score: number;
   movement: number;
   behind_leader: number;
   payment_status?: string | null;
@@ -59,6 +60,32 @@ function fmtMelbourneShort(iso: string | null) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(d);
+}
+
+function fmtMelbourneLockLine(iso: string | null) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+
+  const weekday = new Intl.DateTimeFormat("en-AU", {
+    timeZone: "Australia/Melbourne",
+    weekday: "short",
+  }).format(d);
+  const dayMonth = new Intl.DateTimeFormat("en-AU", {
+    timeZone: "Australia/Melbourne",
+    day: "2-digit",
+    month: "short",
+  }).format(d);
+  const time = new Intl.DateTimeFormat("en-AU", {
+    timeZone: "Australia/Melbourne",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  })
+    .format(d)
+    .toLowerCase();
+
+  return `${weekday}, ${dayMonth} at ${time}`;
 }
 
 function msToCountdown(ms: number) {
@@ -197,6 +224,8 @@ export default function HomePageClient({
   const primaryTipsEntered = primaryTipRound?.my_tips ?? 0;
   const primaryTipsLeft = Math.max(primaryTipsPossible - primaryTipsEntered, 0);
   const showUpToDateTile = !!(currentRound && !locked && tipsLeft === 0);
+  const liveModeNextLockRound = nextOpenRound ?? primaryTipRound;
+  const liveModeNextLockLine = fmtMelbourneLockLine(liveModeNextLockRound?.lock_time_utc ?? null);
 
   const reminders = useMemo(() => {
     const items: DashboardReminder[] = [];
@@ -297,10 +326,8 @@ export default function HomePageClient({
             </div>
 
             <div className="dashboard-hero-title">
-              {liveRound && nextOpenRound
-                ? `Round ${liveRound.round_number} is live. Round ${nextOpenRound.round_number} closes in ${primaryRoundCountdown}.`
-                : liveRound
-                ? `Round ${liveRound.round_number} is live.`
+              {liveRound
+                ? `Round ${liveRound.round_number} is live`
                 : primaryTipRound && !primaryRoundLocked
                 ? `Round ${primaryTipRound.round_number} closes in ${primaryRoundCountdown}.`
                 : primaryTipRound
@@ -308,7 +335,14 @@ export default function HomePageClient({
                 : "No round loaded."}
             </div>
 
-            {primaryTipRound && (
+            {liveRound && (
+              <div className="dashboard-hero-meta">
+                {liveModeNextLockLine
+                  ? `Next tips lock: ${liveModeNextLockLine} (Melbourne)`
+                  : "Next tips lock: TBC (Melbourne)"}
+              </div>
+            )}
+            {!liveRound && primaryTipRound && (
               <div className="dashboard-hero-meta">
                 {primaryRoundLocked
                   ? `Locked ${fmtMelbourneShort(primaryTipRound.lock_time_utc)}`
@@ -317,64 +351,72 @@ export default function HomePageClient({
             )}
 
             <UiCardGrid columns={3} className="dashboard-hero-stats">
-              <UiCard className="dashboard-mini-card">
-                <div className="ui-kicker">Next lock</div>
-                <div className="ui-value">
-                  {primaryRoundLocked ? "Closed" : primaryRoundCountdown ?? "-"}
-                </div>
-                <div className="ui-meta">
-                  {primaryTipRound ? fmtMelbourneShort(primaryTipRound.lock_time_utc) : "No round"}
-                </div>
-              </UiCard>
-              <UiCard className="dashboard-mini-card">
-                <div className="ui-kicker">Unfinished round</div>
-                <div className="ui-value">
-                  {lockedRoundStillLive && liveRound ? `Round ${liveRound.round_number}` : "None"}
-                </div>
-                <div className="ui-meta">
-                  {lockedRoundStillLive && liveRound
-                    ? `${liveRound.completed_matches}/${liveRound.total_matches} games complete`
-                    : "No live round right now"}
-                </div>
-              </UiCard>
-              {showUpToDateTile ? (
-                <UiCard tone="success" className="dashboard-mini-card">
-                  <div className="ui-kicker">Up to date</div>
-                  <div className="ui-value">All set</div>
-                  <div className="ui-meta">You&apos;re all up to date on your tips.</div>
-                </UiCard>
+              {lockedRoundStillLive && liveRound ? (
+                <>
+                  <UiCard className="dashboard-mini-card">
+                    <div className="ui-kicker">Round progress</div>
+                    <div className="ui-value">
+                      {liveRound.completed_matches}/{liveRound.total_matches}
+                    </div>
+                    <div className="ui-meta">{liveRoundProgressPct}% games scored</div>
+                  </UiCard>
+                  <UiCard className="dashboard-mini-card">
+                    <div className="ui-kicker">Your round score</div>
+                    <div className="ui-value">{me ? fmtPts(me.round_score) : "-"}</div>
+                    <div className="ui-meta">
+                      Live round {liveRound.round_number} points so far
+                    </div>
+                  </UiCard>
+                  <UiCard className="dashboard-mini-card">
+                    <div className="ui-kicker">Live ladder</div>
+                    <div className="ui-value">{me ? `#${me.rank}` : "-"}</div>
+                    <div className="ui-meta">
+                      {me
+                        ? `${movementText(me.movement)} • ${
+                            me.behind_leader <= 0
+                              ? "Leader right now"
+                              : `${fmtPts(me.behind_leader)} behind leader`
+                          }`
+                        : "Waiting for latest ladder"}
+                    </div>
+                  </UiCard>
+                </>
               ) : (
-                <UiCard className="dashboard-mini-card">
-                  <div className="ui-kicker">Round progress</div>
-                  <div className="ui-value">{primaryTipsEntered}/{primaryTipsPossible || 0}</div>
-                  <div className="ui-meta">
-                    {primaryTipRound
-                      ? `${primaryTipsLeft} ${pluralize(primaryTipsLeft, "tip", "tips")} left for Round ${primaryTipRound.round_number}`
-                      : "Nothing due"}
-                  </div>
-                </UiCard>
+                <>
+                  <UiCard className="dashboard-mini-card">
+                    <div className="ui-kicker">Next lock</div>
+                    <div className="ui-value">
+                      {primaryRoundLocked ? "Closed" : primaryRoundCountdown ?? "-"}
+                    </div>
+                    <div className="ui-meta">
+                      {primaryTipRound ? fmtMelbourneShort(primaryTipRound.lock_time_utc) : "No round"}
+                    </div>
+                  </UiCard>
+                  <UiCard className="dashboard-mini-card">
+                    <div className="ui-kicker">Unfinished round</div>
+                    <div className="ui-value">None</div>
+                    <div className="ui-meta">No live round right now</div>
+                  </UiCard>
+                  {showUpToDateTile ? (
+                    <UiCard tone="success" className="dashboard-mini-card">
+                      <div className="ui-kicker">Up to date</div>
+                      <div className="ui-value">All set</div>
+                      <div className="ui-meta">You&apos;re all up to date on your tips.</div>
+                    </UiCard>
+                  ) : (
+                    <UiCard className="dashboard-mini-card">
+                      <div className="ui-kicker">Round progress</div>
+                      <div className="ui-value">{primaryTipsEntered}/{primaryTipsPossible || 0}</div>
+                      <div className="ui-meta">
+                        {primaryTipRound
+                          ? `${primaryTipsLeft} ${pluralize(primaryTipsLeft, "tip", "tips")} left for Round ${primaryTipRound.round_number}`
+                          : "Nothing due"}
+                      </div>
+                    </UiCard>
+                  )}
+                </>
               )}
             </UiCardGrid>
-
-            {lockedRoundStillLive && liveRound && (
-              <div className="dashboard-live-strip">
-                <div className="ui-row-between">
-                  <div>
-                    <div className="ui-kicker">Round in progress</div>
-                    <div className="ui-meta">
-                      {liveRound.completed_matches}/{liveRound.total_matches} games scored so far
-                    </div>
-                  </div>
-                  <div className="dashboard-live-percent">{liveRoundProgressPct}%</div>
-                </div>
-                <div className="dashboard-progress">
-                  <div
-                    className="dashboard-progress-fill"
-                    style={{ width: `${liveRoundProgressPct}%` }}
-                  />
-                </div>
-              </div>
-            )}
 
             <div className="dashboard-action-row">
               {primaryTipRound && !lockedRoundStillLive && (

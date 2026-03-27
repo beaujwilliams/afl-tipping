@@ -40,14 +40,54 @@ export async function getUserIdFromBearer(req: Request): Promise<string | null> 
 export async function getDefaultCompetitionId(
   supabase = createServiceClient()
 ): Promise<string | null> {
-  const { data: comp, error } = await supabase
+  const { data: comps, error: compErr } = await supabase
     .from("competitions")
-    .select("id")
-    .limit(1)
-    .single();
+    .select("id");
 
-  if (error || !comp?.id) return null;
-  return String(comp.id);
+  if (compErr || !comps?.length) return null;
+
+  const competitionIds = Array.from(
+    new Set(comps.map((c) => String(c.id)).filter(Boolean))
+  );
+  if (competitionIds.length === 0) return null;
+  if (competitionIds.length === 1) return competitionIds[0];
+
+  const counts: Record<string, { members: number; rounds: number }> = {};
+  for (const id of competitionIds) {
+    counts[id] = { members: 0, rounds: 0 };
+  }
+
+  const { data: membershipRows } = await supabase
+    .from("memberships")
+    .select("competition_id")
+    .in("competition_id", competitionIds);
+
+  for (const row of membershipRows ?? []) {
+    const id = String((row as { competition_id?: string }).competition_id ?? "");
+    if (!counts[id]) continue;
+    counts[id].members += 1;
+  }
+
+  const { data: roundRows } = await supabase
+    .from("rounds")
+    .select("competition_id")
+    .in("competition_id", competitionIds);
+
+  for (const row of roundRows ?? []) {
+    const id = String((row as { competition_id?: string }).competition_id ?? "");
+    if (!counts[id]) continue;
+    counts[id].rounds += 1;
+  }
+
+  return competitionIds.sort((a, b) => {
+    const memberDiff = (counts[b]?.members ?? 0) - (counts[a]?.members ?? 0);
+    if (memberDiff !== 0) return memberDiff;
+
+    const roundDiff = (counts[b]?.rounds ?? 0) - (counts[a]?.rounds ?? 0);
+    if (roundDiff !== 0) return roundDiff;
+
+    return a.localeCompare(b);
+  })[0] ?? null;
 }
 
 export async function getPreferredAdminCompetitionIdForUser(params: {

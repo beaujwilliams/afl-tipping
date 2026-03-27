@@ -61,6 +61,26 @@ Required GitHub settings:
 - Secret: `CRON_SECRET` (must match production `CRON_SECRET`)
 - Optional repository variable: `SITE_URL` (defaults to `https://www.complicatedtips.com`)
 
+## Scheduled Scoring Sync + Leaderboard Refresh
+
+This repo includes two GitHub Actions workflows:
+
+- `.github/workflows/scoring-sync-15m.yml` runs every 15 minutes and calls:
+  - `/api/admin/run-scoring-automation?season=2026&scope=active&job_kind=scoring_15m`
+- `.github/workflows/scoring-sync-daily-full.yml` runs once daily and calls:
+  - `/api/admin/run-scoring-automation?season=2026&scope=full&job_kind=scoring_daily_full`
+
+Behavior:
+
+- Active run scope targets locked rounds that still have unfinished matches.
+- Full run scope is a safety pass across the season.
+- Leaderboard recalc only runs when `sync-results.updated > 0`.
+
+Required GitHub settings:
+
+- Secret: `CRON_SECRET` (must match production `CRON_SECRET`)
+- Optional repository variable: `SITE_URL` (defaults to `https://www.complicatedtips.com`)
+
 ## Signup Freeze + Next Season Interest
 
 - `NEXT_PUBLIC_SIGNUPS_OPEN=false` pauses in-app account creation and sends people to `/next-season`.

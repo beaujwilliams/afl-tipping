@@ -41,7 +41,9 @@ export async function GET(req: Request) {
     `/api/admin/snapshot-odds-all-due?season=${season}&limit=1${secretQS}`
   );
 
-  const sync_results = await call(`/api/admin/sync-results?season=${season}${secretQS}`);
+  const sync_results = await call(
+    `/api/admin/sync-results?season=${season}&scope=active${secretQS}`
+  );
 
   // ✅ Only recalc if sync-results succeeded (saves compute + avoids stale/partial updates)
   const syncOk =
@@ -49,13 +51,29 @@ export async function GET(req: Request) {
     sync_results.status < 300 &&
     (sync_results.json?.ok === true || sync_results.json?.success === true);
 
-  const recalc_leaderboard = syncOk
+  const syncUpdated =
+    typeof sync_results.json?.updated === "number"
+      ? sync_results.json.updated
+      : Number(sync_results.json?.updated ?? 0);
+  const shouldRecalc = syncOk && Number.isFinite(syncUpdated) && syncUpdated > 0;
+
+  const recalc_leaderboard = shouldRecalc
     ? await call(`/api/admin/recalc-leaderboard?season=${season}${secretQS}`)
-    : { status: 412, json: { ok: false, error: "Skipped recalc because sync-results failed" } };
+    : {
+      status: 412,
+      json: {
+        ok: false,
+        error: syncOk
+          ? "Skipped recalc because sync-results.updated was 0"
+          : "Skipped recalc because sync-results failed",
+      },
+    };
 
   return NextResponse.json({
     ok: true,
     season,
+    sync_updated: Number.isFinite(syncUpdated) ? syncUpdated : 0,
+    recalc_triggered: shouldRecalc,
     steps: {
       prelock_reminders,
       snapshot_next_due,

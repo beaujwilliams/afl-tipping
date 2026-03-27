@@ -1,0 +1,41 @@
+name: Scoring sync (daily full-season pass)
+
+on:
+  schedule:
+    # Daily full-season safety pass (about 02:16-03:16 Melbourne depending DST).
+    - cron: "16 16 * * *"
+  workflow_dispatch:
+    inputs:
+      season:
+        description: "Season year"
+        required: false
+        default: "2026"
+
+jobs:
+  scoring-sync-full:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger full-season scoring automation
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SEASON_INPUT: ${{ github.event.inputs.season }}
+          SEASON_DEFAULT: "2026"
+        run: |
+          set -euo pipefail
+
+          BASE_URL="${SITE_URL:-https://www.complicatedtips.com}"
+          BASE_URL="${BASE_URL%/}"
+          SEASON="${SEASON_INPUT:-$SEASON_DEFAULT}"
+
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "Missing GitHub secret: CRON_SECRET"
+            exit 1
+          fi
+
+          URL="${BASE_URL}/api/admin/run-scoring-automation?season=${SEASON}&scope=full&job_kind=scoring_daily_full"
+          echo "Calling ${URL}"
+
+          curl -fsS \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${URL}"

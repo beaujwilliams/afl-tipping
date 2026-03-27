@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { requireAdminOrCron } from "@/lib/admin-auth";
+import {
+  requireAdminOrCron,
+  resolveCompetitionIdForAdminRequest,
+} from "@/lib/admin-auth";
 import { createServiceClient } from "@/lib/supabase-server";
 import { invalidateLeaderboardSnapshotCache } from "@/lib/leaderboard-snapshot";
 import { invalidateRoundTipStatusCache } from "@/lib/round-tip-status-data";
@@ -20,11 +23,15 @@ type SquiggleGame = {
 
 type MatchLookupRow = {
   id: string;
+  round_id: string;
+  squiggle_game_id: number | null;
   winner_team: string | null;
 };
 
-type RoundCompetitionRow = {
-  competition_id: string;
+type RoundRow = {
+  id: string;
+  round_number: number;
+  lock_time_utc: string | null;
 };
 
 function pickGameId(g: SquiggleGame) {
@@ -54,8 +61,138 @@ export async function GET(req: Request) {
 
     const url = new URL(req.url);
     const season = Number(url.searchParams.get("season") ?? "2026");
+    const scopeParam = String(url.searchParams.get("scope") ?? "").trim().toLowerCase();
+    const forceFull = url.searchParams.get("force_full") === "1";
+    const scope = forceFull ? "full" : scopeParam === "active" ? "active" : "full";
 
     const supabase = createServiceClient();
+    const competitionId =
+      gate.mode === "bearer"
+        ? gate.competitionId
+        : await resolveCompetitionIdForAdminRequest(req, supabase);
+
+    if (!competitionId) {
+      return NextResponse.json(
+        { ok: false, season, error: "No competition found" },
+        { status: 404 }
+      );
+    }
+
+    const roundsQuery = await supabase
+      .from("rounds")
+      .select("id, round_number, lock_time_utc")
+      .eq("competition_id", competitionId)
+      .eq("season", season)
+      .order("round_number", { ascending: true });
+
+    if (roundsQuery.error) {
+      return NextResponse.json(
+        { ok: false, season, error: "Failed to load rounds", details: roundsQuery.error.message },
+        { status: 500 }
+      );
+    }
+
+    const roundRows = (roundsQuery.data ?? []) as RoundRow[];
+    const roundIds = roundRows.map((r) => String(r.id));
+
+    if (roundIds.length === 0) {
+      return NextResponse.json({
+        ok: true,
+        season,
+        competition_id: competitionId,
+        scope,
+        roundsTargeted: [],
+        roundsTargetedCount: 0,
+        fetchAttempt: null,
+        gamesFetched: 0,
+        consideredFinal: 0,
+        updated: 0,
+        skipped: {
+          skippedNoGameId: 0,
+          skippedNoWinner: 0,
+          noDbMatch: 0,
+          alreadySet: 0,
+          skippedApiErrorRow: 0,
+        },
+        updateErrors: [],
+        note: "No rounds found for this season and competition.",
+      });
+    }
+
+    const matchesQuery = await supabase
+      .from("matches")
+      .select("id, round_id, squiggle_game_id, winner_team")
+      .in("round_id", roundIds);
+
+    if (matchesQuery.error) {
+      return NextResponse.json(
+        { ok: false, season, error: "Failed to load matches", details: matchesQuery.error.message },
+        { status: 500 }
+      );
+    }
+
+    const matchRows = (matchesQuery.data ?? []) as MatchLookupRow[];
+    const matchesByRoundId = new Map<string, MatchLookupRow[]>();
+    for (const match of matchRows) {
+      const roundId = String(match.round_id);
+      const list = matchesByRoundId.get(roundId) ?? [];
+      list.push(match);
+      matchesByRoundId.set(roundId, list);
+    }
+
+    const nowMs = Date.now();
+    const activeRoundIds = roundRows
+      .filter((round) => {
+        const lockMs = round.lock_time_utc ? new Date(round.lock_time_utc).getTime() : NaN;
+        if (!Number.isFinite(lockMs) || lockMs > nowMs) return false;
+        const roundMatches = matchesByRoundId.get(String(round.id)) ?? [];
+        return roundMatches.some((m) => !String(m.winner_team ?? "").trim());
+      })
+      .map((round) => String(round.id));
+
+    const targetRoundIds = scope === "active" ? activeRoundIds : roundIds;
+    const targetRoundSet = new Set<string>(targetRoundIds);
+    const targetRoundNumbers = roundRows
+      .filter((round) => targetRoundSet.has(String(round.id)))
+      .map((round) => Number(round.round_number));
+
+    if (targetRoundIds.length === 0) {
+      return NextResponse.json({
+        ok: true,
+        season,
+        competition_id: competitionId,
+        scope,
+        roundsTargeted: [],
+        roundsTargetedCount: 0,
+        activeRoundsDetected: roundRows
+          .filter((round) => activeRoundIds.includes(String(round.id)))
+          .map((round) => Number(round.round_number)),
+        fetchAttempt: null,
+        gamesFetched: 0,
+        consideredFinal: 0,
+        updated: 0,
+        skipped: {
+          skippedNoGameId: 0,
+          skippedNoWinner: 0,
+          noDbMatch: 0,
+          alreadySet: 0,
+          skippedApiErrorRow: 0,
+        },
+        updateErrors: [],
+        note:
+          scope === "active"
+            ? "No locked unfinished rounds detected. Nothing to sync."
+            : "No target rounds detected. Nothing to sync.",
+      });
+    }
+
+    const targetMatchesByGameId = new Map<string, MatchLookupRow>();
+    const targetMatches = matchRows.filter((m) => targetRoundSet.has(String(m.round_id)));
+    for (const match of targetMatches) {
+      const gameIdNumber = Number(match.squiggle_game_id ?? NaN);
+      if (!Number.isFinite(gameIdNumber)) continue;
+      targetMatchesByGameId.set(String(gameIdNumber), match);
+    }
 
     const gamesUrl = `https://api.squiggle.com.au/?q=games;year=${season};complete=100;format=json`;
 
@@ -131,24 +268,13 @@ export async function GET(req: Request) {
         continue;
       }
 
-      consideredFinal++;
-
-      const { data: matchRow, error: findErr } = await supabase
-        .from("matches")
-        .select("id, winner_team")
-        .eq("squiggle_game_id", Number(gameId))
-        .maybeSingle();
-
-      if (findErr) {
-        updateErrors.push({ gameId, step: "find", message: findErr.message, code: findErr.code });
-        continue;
-      }
-
-      const match = (matchRow as MatchLookupRow | null) ?? null;
+      const match = targetMatchesByGameId.get(gameId) ?? null;
       if (!match?.id) {
         skipped.noDbMatch++;
         continue;
       }
+
+      consideredFinal++;
 
       if (String(match.winner_team ?? "") === winner) {
         skipped.alreadySet++;
@@ -168,39 +294,34 @@ export async function GET(req: Request) {
       updated++;
     }
 
-    if (consideredFinal > 0) {
-      const { data: rounds } = await supabase
-        .from("rounds")
-        .select("competition_id")
-        .eq("season", season);
-
-      const competitionIds = Array.from(
-        new Set((rounds ?? []).map((row) => String((row as RoundCompetitionRow).competition_id)))
-      );
-
-      await Promise.all(
-        competitionIds.map(async (competitionId) => {
-          try {
-            await invalidateRoundTipStatusCache({
-              competitionId,
-              season,
-              supabase,
-            });
-            await invalidateLeaderboardSnapshotCache({
-              competitionId,
-              season,
-              supabase,
-            });
-          } catch (cacheErr) {
-            console.warn("cache invalidation failed after sync-results", cacheErr);
-          }
-        })
-      );
+    if (updated > 0) {
+      try {
+        await invalidateRoundTipStatusCache({
+          competitionId,
+          season,
+          supabase,
+        });
+        await invalidateLeaderboardSnapshotCache({
+          competitionId,
+          season,
+          supabase,
+        });
+      } catch (cacheErr) {
+        console.warn("cache invalidation failed after sync-results", cacheErr);
+      }
     }
 
     return NextResponse.json({
       ok: true,
       season,
+      competition_id: competitionId,
+      scope,
+      roundsTargeted: targetRoundNumbers,
+      roundsTargetedCount: targetRoundNumbers.length,
+      activeRoundsDetected: roundRows
+        .filter((round) => activeRoundIds.includes(String(round.id)))
+        .map((round) => Number(round.round_number)),
+      targetMatchesCount: targetMatches.length,
       fetchAttempt: {
         url: gamesUrl,
         httpStatus: resp.status,
@@ -217,7 +338,10 @@ export async function GET(req: Request) {
         firstGameKeys,
         firstGameIdGuess,
       },
-      note: "Uses complete=100 so all returned games are treated as finals. Uses matches.squiggle_game_id to find matches.",
+      note:
+        scope === "active"
+          ? "Active scope: locked + unfinished rounds only. Recalc should run only when updated > 0."
+          : "Full scope: all rounds in season for this competition.",
     });
   } catch (e: unknown) {
     return NextResponse.json(

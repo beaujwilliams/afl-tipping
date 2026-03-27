@@ -11,6 +11,6 @@ export async function GET(req: Request) {
 
   return forwardCronToAdmin(
     req,
-    `/api/admin/send-prelock-reminders?season=${season}&hours_before_lock=3&window_minutes=10&window_direction=before`
+    `/api/admin/run-scoring-automation?season=${season}&scope=active&job_kind=scoring_15m`
   );
 }

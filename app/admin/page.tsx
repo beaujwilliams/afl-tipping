@@ -292,20 +292,20 @@ export default function AdminPage() {
                         Scoring sync &amp; leaderboard refresh
                       </div>
                       <div className="ui-admin-summary ui-admin-summary--tight">
-                        Every <b>15 minutes</b>, we check only rounds that are already locked and still have unfinished matches.
+                        External cron runs every <b>5 minutes</b>, but checks only rounds that are already locked and still have unfinished matches.
                       </div>
                       <div className="ui-admin-summary ui-admin-summary--tight">
                         If new final results are found, scores are updated and the leaderboard is recalculated automatically.
                       </div>
                       <div className="ui-admin-summary ui-admin-summary--tight">
-                        A <b>daily full-season safety pass</b> runs once overnight to catch any late corrections.
+                        A separate <b>daily full-season safety pass</b> runs once overnight to catch any late corrections.
                       </div>
                     </div>
 
                     <UiCard className="ui-admin-tool ui-admin-tool--nested" style={{ minWidth: 230, maxWidth: 270 }}>
                       <div className="ui-admin-subtitle">Run log</div>
                       <div className="ui-admin-summary ui-admin-summary--tight">
-                        View 15-minute checks, success/failure, and whether scores + leaderboard updated.
+                        View active checks, success/failure, and whether scores + leaderboard updated.
                       </div>
                       <UiButtonLink
                         href={`/admin/scoring-sync?season=${encodeURIComponent(String(season))}`}
@@ -320,7 +320,7 @@ export default function AdminPage() {
                 <div className="ui-admin-automation-item">
                   <div className="ui-admin-automation-title">Tip reminders</div>
                   <div className="ui-admin-summary ui-admin-summary--tight">
-                    Automation ticks every 15 minutes; reminder sends run every 30 minutes and only in the configured 3-hour pre-lock window.
+                    External cron runs every <b>10 minutes</b> and sends reminder emails in the 10-minute lead-up to <b>3 hours before lock</b>.
                   </div>
                   <div className="ui-admin-summary ui-admin-summary--tight">
                     Manual override is available in <b>Tip lists</b> for the current open round via <b>Send reminders now</b>.

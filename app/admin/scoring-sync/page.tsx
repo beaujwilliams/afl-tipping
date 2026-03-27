@@ -52,7 +52,7 @@ function toYesNo(value: boolean) {
 
 function runTypeLabel(run: ScoringAutomationRun, fallback: string) {
   if (run.job_kind === "scoring_15m" || run.scope === "active") {
-    return "15-minute active round";
+    return "Active round check";
   }
   if (run.job_kind === "scoring_daily_full" || run.scope === "full") {
     return "Full parse";
@@ -192,7 +192,7 @@ export default function ScoringSyncLogPage() {
           <UiCard soft className="ui-admin-section">
             <div className="ui-admin-subtitle">Run history</div>
             <div className="ui-admin-summary">
-              Includes both <b>15-minute active round</b> runs and <b>Full parse</b> runs.
+              Includes both <b>Active round check</b> runs and <b>Full parse</b> runs.
             </div>
             {runsMsg ? (
               <div className="ui-admin-summary">{runsMsg}</div>
@@ -215,7 +215,10 @@ export default function ScoringSyncLogPage() {
                         const updatedScores = run.sync_updated > 0;
                         const leaderboardSynced =
                           run.leaderboard_recalc_ran && run.leaderboard_recalc_ok === true;
-                        const runType = runTypeLabel(run, run.scope === "full" ? "Full parse" : "15-minute active round");
+                        const runType = runTypeLabel(
+                          run,
+                          run.scope === "full" ? "Full parse" : "Active round check"
+                        );
                         const isOpen = openRunId === run.id;
                         return (
                           <tr key={run.id}>

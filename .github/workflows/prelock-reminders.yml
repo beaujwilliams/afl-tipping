@@ -1,18 +1,13 @@
-name: Pre-lock reminders + scoring tick
+name: Site automation tick (manual)
 
 on:
-  schedule:
-    # Runs every 15 minutes.
-    # - Scoring sync runs every tick.
-    # - Pre-lock reminders run every second tick (30 minutes) inside the script.
-    - cron: "*/15 * * * *"
   workflow_dispatch:
 
 jobs:
-  site-automation-tick:
+  run-manual-automation-tick:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger 15-minute scoring automation
+      - name: Trigger active scoring automation
         env:
           SITE_URL: ${{ vars.SITE_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
@@ -45,19 +40,12 @@ jobs:
 
           BASE_URL="${SITE_URL:-https://www.complicatedtips.com}"
           BASE_URL="${BASE_URL%/}"
-          MINUTE="$(date -u +%M)"
-
-          if [ $((10#${MINUTE} % 30)) -ne 0 ]; then
-            echo "Skipping reminder send on minute ${MINUTE}; reminders run every 30 minutes."
-            exit 0
-          fi
-
           if [ -z "${CRON_SECRET:-}" ]; then
             echo "Missing GitHub secret: CRON_SECRET"
             exit 1
           fi
 
-          URL="${BASE_URL}/api/admin/send-prelock-reminders?season=${SEASON}&hours_before_lock=3&window_minutes=30"
+          URL="${BASE_URL}/api/admin/send-prelock-reminders?season=${SEASON}&hours_before_lock=3&window_minutes=10&window_direction=before"
           echo "Calling ${URL}"
 
           curl -fsS \

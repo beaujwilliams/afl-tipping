@@ -6,7 +6,8 @@ import {
 } from "@/lib/admin-auth";
 const DEFAULT_SEASON = 2026;
 const DEFAULT_REMINDER_HOURS = 3;
-const DEFAULT_WINDOW_MINUTES = 30;
+const DEFAULT_WINDOW_MINUTES = 10;
+const DEFAULT_WINDOW_DIRECTION = "before";
 const REMINDER_TYPE = "missing_tips_3h";
 const RESEND_RATE_LIMIT_RETRY_ATTEMPTS = 3;
 const MIN_SEND_SPACING_MS = 1100;
@@ -325,6 +326,11 @@ export async function GET(req: Request) {
     const windowMinutes = Number(
       url.searchParams.get("window_minutes") || String(DEFAULT_WINDOW_MINUTES)
     );
+    const windowDirection = String(
+      url.searchParams.get("window_direction") || DEFAULT_WINDOW_DIRECTION
+    )
+      .trim()
+      .toLowerCase();
 
     if (!Number.isFinite(season) || season < 2000 || season > 2100) {
       return NextResponse.json(
@@ -350,6 +356,17 @@ export async function GET(req: Request) {
     if (!Number.isFinite(windowMinutes) || windowMinutes < 0) {
       return NextResponse.json(
         { error: "window_minutes must be zero or positive" },
+        { status: 400 }
+      );
+    }
+
+    if (
+      windowDirection !== "around" &&
+      windowDirection !== "before" &&
+      windowDirection !== "after"
+    ) {
+      return NextResponse.json(
+        { error: "window_direction must be one of: around, before, after" },
         { status: 400 }
       );
     }
@@ -429,8 +446,19 @@ export async function GET(req: Request) {
     const nowMs = Date.now();
     const targetMs = reminderHours * 60 * 60 * 1000;
     const windowMs = windowMinutes * 60 * 1000;
-    const windowStartMs = nowMs + targetMs - windowMs;
-    const windowEndMs = nowMs + targetMs + windowMs;
+    const targetAtMs = nowMs + targetMs;
+    const windowStartMs =
+      windowDirection === "before"
+        ? targetAtMs
+        : windowDirection === "after"
+          ? targetAtMs - windowMs
+          : targetAtMs - windowMs;
+    const windowEndMs =
+      windowDirection === "before"
+        ? targetAtMs + windowMs
+        : windowDirection === "after"
+          ? targetAtMs
+          : targetAtMs + windowMs;
 
     const targetedRounds: RoundRow[] = [];
     const skippedNotDue: number[] = [];
@@ -796,6 +824,7 @@ export async function GET(req: Request) {
       reminder_type: REMINDER_TYPE,
       reminder_hours_before_lock: reminderHours,
       reminder_window_minutes: windowMinutes,
+      reminder_window_direction: windowDirection,
       force_resend_override_window_minutes: FORCE_RESEND_WITHIN_MINUTES,
       dry_run: dryRun,
       force_round: forceRound,

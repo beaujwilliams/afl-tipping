@@ -309,6 +309,9 @@ export default function AppLayoutChrome({ children }: { children: React.ReactNod
   }, [isAdmin, unreadAnnouncements]);
 
   const mobileOpenItems = openMenu === "tipping" ? tippingItems : infoItems;
+  const unreadAnnouncementsLabel = `${unreadAnnouncements} new announcement${
+    unreadAnnouncements === 1 ? "" : "s"
+  }`;
 
   function clearHoverCloseTimer() {
     if (!hoverCloseTimerRef.current) return;
@@ -532,6 +535,41 @@ export default function AppLayoutChrome({ children }: { children: React.ReactNod
           </div>
         </div>
       </header>
+
+      {isMobile && unreadAnnouncements > 0 && (
+        <div
+          style={{
+            position: "sticky",
+            top: 0,
+            zIndex: 80,
+            borderBottom: "1px solid rgba(239, 68, 68, 0.3)",
+            background: "var(--background)",
+            padding: "8px 16px",
+          }}
+        >
+          <div style={{ maxWidth: 1000, margin: "0 auto" }}>
+            <Link
+              href="/announcements"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+                borderRadius: 999,
+                border: "1px solid rgba(239, 68, 68, 0.45)",
+                background: "rgba(239, 68, 68, 0.14)",
+                color: "rgb(185, 28, 28)",
+                fontWeight: 800,
+                fontSize: 14,
+                padding: "10px 12px",
+              }}
+            >
+              <span>{unreadAnnouncementsLabel}</span>
+              <span style={{ fontSize: 12, opacity: 0.9 }}>View</span>
+            </Link>
+          </div>
+        </div>
+      )}
 
       <main style={{ maxWidth: 1000, margin: "40px auto", padding: 16 }}>{children}</main>
     </>

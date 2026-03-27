@@ -446,7 +446,9 @@ export default function LeaderboardPage() {
   const [groupActionMsg, setGroupActionMsg] = useState("");
   const [loadingGroups, setLoadingGroups] = useState(true);
   const [creatingGroup, setCreatingGroup] = useState(false);
+  const [invitingMembers, setInvitingMembers] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
+  const [inviteTargetGroupId, setInviteTargetGroupId] = useState<string | null>(null);
   const [selectedNewInviteUserIds, setSelectedNewInviteUserIds] = useState<string[]>([]);
   const [submittingNewGroup, setSubmittingNewGroup] = useState(false);
   const [selectedExistingInviteUserIds, setSelectedExistingInviteUserIds] = useState<string[]>([]);
@@ -645,6 +647,7 @@ export default function LeaderboardPage() {
       setNewGroupName("");
       setSelectedNewInviteUserIds([]);
       setCreatingGroup(false);
+      setInvitingMembers(false);
       setGroupActionMsg("Group created.");
 
       await loadGroups();
@@ -661,7 +664,7 @@ export default function LeaderboardPage() {
   }
 
   async function inviteToSelectedGroup() {
-    if (!selectedGroupId || selectedExistingInviteUserIds.length === 0) {
+    if (!inviteTargetGroupId || selectedExistingInviteUserIds.length === 0) {
       setGroupActionMsg("Select at least one member to invite.");
       return;
     }
@@ -676,7 +679,7 @@ export default function LeaderboardPage() {
       }
 
       const response = await fetch(
-        `/api/leaderboard-groups/${encodeURIComponent(selectedGroupId)}/invites`,
+        `/api/leaderboard-groups/${encodeURIComponent(inviteTargetGroupId)}/invites`,
         {
           method: "POST",
           headers: {
@@ -813,6 +816,21 @@ export default function LeaderboardPage() {
         : `/leaderboard/${season}`;
     router.replace(nextUrl, { scroll: false });
   }, [currentGroupQuery, router, season, selectedGroupId, viewMode]);
+
+  useEffect(() => {
+    if (!invitingMembers) return;
+    setInviteTargetGroupId((prev) => {
+      if (prev && groups.some((group) => group.id === prev)) return prev;
+      if (selectedGroupId && groups.some((group) => group.id === selectedGroupId)) {
+        return selectedGroupId;
+      }
+      return groups[0]?.id ?? null;
+    });
+  }, [groups, invitingMembers, selectedGroupId]);
+
+  useEffect(() => {
+    setSelectedExistingInviteUserIds([]);
+  }, [inviteTargetGroupId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1062,10 +1080,14 @@ export default function LeaderboardPage() {
   const newGroupCandidateMembers = memberDirectory.filter(
     (member) => member.user_id !== currentUserId
   );
-  const selectedGroupMemberIds = new Set(selectedGroup?.member_user_ids ?? []);
+  const inviteTargetGroup = useMemo(
+    () => groups.find((group) => group.id === inviteTargetGroupId) ?? null,
+    [groups, inviteTargetGroupId]
+  );
+  const inviteTargetGroupMemberIds = new Set(inviteTargetGroup?.member_user_ids ?? []);
   const existingGroupInviteCandidates = memberDirectory.filter((member) => {
     if (member.user_id === currentUserId) return false;
-    if (selectedGroupMemberIds.has(member.user_id)) return false;
+    if (inviteTargetGroupMemberIds.has(member.user_id)) return false;
     return true;
   });
 
@@ -1216,14 +1238,47 @@ export default function LeaderboardPage() {
 
               {viewMode === "groups" && (
                 <div style={{ display: "grid", gap: 10 }}>
-                  <div className="ui-row-between">
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 8,
+                      flexWrap: "wrap",
+                    }}
+                  >
                     <strong>My private groups</strong>
-                    <UiButton
-                      pill
-                      onClick={() => setCreatingGroup((prev) => !prev)}
-                    >
-                      {creatingGroup ? "Cancel" : "Create group"}
-                    </UiButton>
+                    <div className="ui-row-wrap">
+                      {groups.length > 0 && (
+                        <UiButton
+                          pill
+                          onClick={() => {
+                            setCreatingGroup(false);
+                            setInvitingMembers((prev) => {
+                              const next = !prev;
+                              if (next) {
+                                setInviteTargetGroupId(selectedGroupId ?? groups[0]?.id ?? null);
+                                setSelectedExistingInviteUserIds([]);
+                                setGroupActionMsg("");
+                              }
+                              return next;
+                            });
+                          }}
+                        >
+                          {invitingMembers ? "Cancel invite" : "Invite more members"}
+                        </UiButton>
+                      )}
+                      <UiButton
+                        pill
+                        onClick={() => {
+                          setInvitingMembers(false);
+                          setSelectedExistingInviteUserIds([]);
+                          setCreatingGroup((prev) => !prev);
+                        }}
+                      >
+                        {creatingGroup ? "Cancel" : "Create group"}
+                      </UiButton>
+                    </div>
                   </div>
 
                   {groups.length === 0 ? (
@@ -1333,7 +1388,7 @@ export default function LeaderboardPage() {
                     </div>
                   )}
 
-                  {selectedGroup && (
+                  {invitingMembers && groups.length > 0 && (
                     <div
                       style={{
                         border: "1px solid var(--border)",
@@ -1343,7 +1398,27 @@ export default function LeaderboardPage() {
                         gap: 8,
                       }}
                     >
-                      <strong>Invite members to {selectedGroup.name}</strong>
+                      <strong>Invite more members</strong>
+                      <div style={{ display: "grid", gap: 6 }}>
+                        <label htmlFor="group-invite-target" className="ui-caption">
+                          Private leaderboard
+                        </label>
+                        <select
+                          id="group-invite-target"
+                          className="ui-input"
+                          value={inviteTargetGroupId ?? ""}
+                          onChange={(event) => {
+                            setInviteTargetGroupId(event.target.value || null);
+                            setSelectedExistingInviteUserIds([]);
+                          }}
+                        >
+                          {groups.map((group) => (
+                            <option key={`invite-target-${group.id}`} value={group.id}>
+                              {group.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                       <div
                         style={{
                           border: "1px solid var(--border)",
@@ -1355,7 +1430,8 @@ export default function LeaderboardPage() {
                           gap: 6,
                         }}
                       >
-                        {existingGroupInviteCandidates.map((member) => (
+                        {inviteTargetGroup &&
+                          existingGroupInviteCandidates.map((member) => (
                           <label
                             key={`existing-group-member-${member.user_id}`}
                             style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}
@@ -1375,14 +1451,16 @@ export default function LeaderboardPage() {
                           </label>
                         ))}
                         {existingGroupInviteCandidates.length === 0 && (
-                          <span className="ui-caption">No additional members available.</span>
+                          <span className="ui-caption">
+                            No additional members available for {inviteTargetGroup?.name ?? "this group"}.
+                          </span>
                         )}
                       </div>
                       <div className="ui-row-wrap">
                         <UiButton
                           pill
                           onClick={inviteToSelectedGroup}
-                          disabled={sendingGroupInvites}
+                          disabled={sendingGroupInvites || !inviteTargetGroup}
                         >
                           {sendingGroupInvites ? "Sending..." : "Send invites"}
                         </UiButton>

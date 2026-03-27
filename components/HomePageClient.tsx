@@ -377,7 +377,7 @@ export default function HomePageClient({
             )}
 
             <div className="dashboard-action-row">
-              {primaryTipRound && (
+              {primaryTipRound && !lockedRoundStillLive && (
                 <UiButtonLink
                   href={`/round/${CURRENT_SEASON}/${primaryTipRound.round_number}`}
                   className="dashboard-primary-link"
@@ -387,7 +387,7 @@ export default function HomePageClient({
               )}
               {lockedRoundStillLive && liveRound && (
                 <UiButtonLink href={`/results/${CURRENT_SEASON}/${liveRound.round_number}`}>
-                  Follow live results
+                  Follow round results
                 </UiButtonLink>
               )}
               {!lockedRoundStillLive && latestCompletedRound && (

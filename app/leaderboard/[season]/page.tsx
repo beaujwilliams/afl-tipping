@@ -454,6 +454,7 @@ export default function LeaderboardPage() {
   const [selectedExistingInviteUserIds, setSelectedExistingInviteUserIds] = useState<string[]>([]);
   const [sendingGroupInvites, setSendingGroupInvites] = useState(false);
   const [deletingGroup, setDeletingGroup] = useState(false);
+  const [hasSyncedGroupFromQuery, setHasSyncedGroupFromQuery] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   function applyLeaderboardData(json: LeaderboardResponse) {
@@ -848,16 +849,21 @@ export default function LeaderboardPage() {
     loadGroups();
   }, [season]);
 
+  useEffect(() => {
+    setHasSyncedGroupFromQuery(false);
+  }, [season]);
+
   const currentGroupQuery = String(searchParams.get("group") ?? "").trim();
 
   useEffect(() => {
     if (loadingGroups) return;
     if (viewMode !== "groups") return;
 
-    if (currentGroupQuery) {
+    if (!hasSyncedGroupFromQuery && currentGroupQuery) {
       const matched = groups.find((group) => group.id === currentGroupQuery);
       if (matched) {
-        if (selectedGroupId !== matched.id) setSelectedGroupId(matched.id);
+        setSelectedGroupId(matched.id);
+        setHasSyncedGroupFromQuery(true);
         return;
       }
     }
@@ -868,22 +874,37 @@ export default function LeaderboardPage() {
       }
       return groups[0]?.id ?? null;
     });
-  }, [currentGroupQuery, groups, loadingGroups, selectedGroupId, viewMode]);
+    if (!hasSyncedGroupFromQuery) {
+      setHasSyncedGroupFromQuery(true);
+    }
+  }, [currentGroupQuery, groups, hasSyncedGroupFromQuery, loadingGroups, viewMode]);
 
   useEffect(() => {
-    const expectedQuery =
-      viewMode === "groups" && selectedGroupId
-        ? `group=${encodeURIComponent(selectedGroupId)}`
-        : "";
-    const currentQuery = currentGroupQuery ? `group=${encodeURIComponent(currentGroupQuery)}` : "";
-    if (expectedQuery === currentQuery) return;
+    if (loadingGroups) return;
 
-    const nextUrl =
-      expectedQuery.length > 0
-        ? `/leaderboard/${season}?${expectedQuery}`
-        : `/leaderboard/${season}`;
-    router.replace(nextUrl, { scroll: false });
-  }, [currentGroupQuery, router, season, selectedGroupId, viewMode]);
+    if (viewMode !== "groups") {
+      if (!currentGroupQuery) return;
+      router.replace(`/leaderboard/${season}`, { scroll: false });
+      return;
+    }
+
+    if (!hasSyncedGroupFromQuery) return;
+    if (!selectedGroupId) return;
+    if (currentGroupQuery === selectedGroupId) return;
+
+    router.replace(
+      `/leaderboard/${season}?group=${encodeURIComponent(selectedGroupId)}`,
+      { scroll: false }
+    );
+  }, [
+    currentGroupQuery,
+    hasSyncedGroupFromQuery,
+    loadingGroups,
+    router,
+    season,
+    selectedGroupId,
+    viewMode,
+  ]);
 
   useEffect(() => {
     if (!invitingMembers) return;

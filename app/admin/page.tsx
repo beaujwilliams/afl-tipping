@@ -320,7 +320,7 @@ export default function AdminPage() {
                 <div className="ui-admin-automation-item">
                   <div className="ui-admin-automation-title">Tip reminders</div>
                   <div className="ui-admin-summary ui-admin-summary--tight">
-                    GitHub Actions runs every 30 minutes and only sends in the configured 3-hour pre-lock window.
+                    Automation ticks every 15 minutes; reminder sends run every 30 minutes and only in the configured 3-hour pre-lock window.
                   </div>
                   <div className="ui-admin-summary ui-admin-summary--tight">
                     Manual override is available in <b>Tip lists</b> for the current open round via <b>Send reminders now</b>.

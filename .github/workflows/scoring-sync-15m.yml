@@ -1,9 +1,6 @@
-name: Scoring sync (15m active rounds)
+name: Scoring sync (manual active rounds)
 
 on:
-  schedule:
-    # Runs every 15 minutes. Endpoint no-ops when there is no locked unfinished round.
-    - cron: "*/15 * * * *"
   workflow_dispatch:
     inputs:
       season:

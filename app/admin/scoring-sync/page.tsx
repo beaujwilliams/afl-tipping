@@ -6,6 +6,8 @@ import { UiButton, UiButtonLink, UiCard } from "@/components/ui";
 
 type ScoringAutomationRun = {
   id: string;
+  job_kind: string;
+  scope: "active" | "full";
   run_status: "success" | "failed";
   sync_updated: number;
   leaderboard_recalc_ran: boolean;
@@ -38,6 +40,16 @@ function fmtMelbourne(iso: string) {
 
 function toYesNo(value: boolean) {
   return value ? "Yes" : "No";
+}
+
+function runTypeLabel(run: ScoringAutomationRun, fallback: string) {
+  if (run.job_kind === "scoring_15m" || run.scope === "active") {
+    return "15-minute active round";
+  }
+  if (run.job_kind === "scoring_daily_full" || run.scope === "full") {
+    return "Full parse";
+  }
+  return fallback;
 }
 
 export default function ScoringSyncLogPage() {
@@ -166,12 +178,12 @@ export default function ScoringSyncLogPage() {
         <>
           <UiCard soft className="ui-admin-section">
             <div className="ui-row-wrap" style={{ justifyContent: "space-between", gap: 10 }}>
-              <div style={{ display: "grid", gap: 6 }}>
-                <div className="ui-admin-subtitle">What this log shows</div>
-                <div className="ui-admin-summary ui-admin-summary--tight">
-                  Date/time, success/failed, updated scores (yes/no), and leaderboard sync (yes/no).
+                <div style={{ display: "grid", gap: 6 }}>
+                  <div className="ui-admin-subtitle">What this log shows</div>
+                  <div className="ui-admin-summary ui-admin-summary--tight">
+                    Date/time, run type, success/failed, updated scores (yes/no), and leaderboard sync (yes/no).
+                  </div>
                 </div>
-              </div>
               <div className="ui-row-wrap ui-admin-gap-sm">
                 <input
                   type="number"
@@ -203,10 +215,11 @@ export default function ScoringSyncLogPage() {
                   const updatedScores = run.sync_updated > 0;
                   const leaderboardSynced =
                     run.leaderboard_recalc_ran && run.leaderboard_recalc_ok === true;
+                  const runType = runTypeLabel(run, "15-minute active round");
                   return (
                     <details key={run.id} className="ui-admin-tool ui-admin-tool--nested">
                       <summary style={{ cursor: "pointer", fontWeight: 700 }}>
-                        {fmtMelbourne(run.started_at_utc)} - {run.run_status === "success" ? "Success" : "Failed"} - Updated scores {toYesNo(updatedScores)} - Leaderboard synced {toYesNo(leaderboardSynced)}
+                        {fmtMelbourne(run.started_at_utc)} - {runType} - {run.run_status === "success" ? "Success" : "Failed"} - Updated scores {toYesNo(updatedScores)} - Leaderboard synced {toYesNo(leaderboardSynced)}
                       </summary>
                       <div className="ui-admin-summary ui-admin-summary--tight">
                         Finished {fmtMelbourne(run.finished_at_utc)}.
@@ -234,10 +247,11 @@ export default function ScoringSyncLogPage() {
                   const updatedScores = run.sync_updated > 0;
                   const leaderboardSynced =
                     run.leaderboard_recalc_ran && run.leaderboard_recalc_ok === true;
+                  const runType = runTypeLabel(run, "Full parse");
                   return (
                     <details key={run.id} className="ui-admin-tool ui-admin-tool--nested">
                       <summary style={{ cursor: "pointer", fontWeight: 700 }}>
-                        {fmtMelbourne(run.started_at_utc)} - {run.run_status === "success" ? "Success" : "Failed"} - Updated scores {toYesNo(updatedScores)} - Leaderboard synced {toYesNo(leaderboardSynced)}
+                        {fmtMelbourne(run.started_at_utc)} - {runType} - {run.run_status === "success" ? "Success" : "Failed"} - Updated scores {toYesNo(updatedScores)} - Leaderboard synced {toYesNo(leaderboardSynced)}
                       </summary>
                       <div className="ui-admin-summary ui-admin-summary--tight">
                         Finished {fmtMelbourne(run.finished_at_utc)}.

@@ -472,11 +472,8 @@ export default function LeaderboardPage() {
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [invitingMembers, setInvitingMembers] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
-  const [inviteTargetGroupId, setInviteTargetGroupId] = useState<string | null>(null);
   const [selectedNewInviteUserIds, setSelectedNewInviteUserIds] = useState<string[]>([]);
   const [submittingNewGroup, setSubmittingNewGroup] = useState(false);
-  const [selectedExistingInviteUserIds, setSelectedExistingInviteUserIds] = useState<string[]>([]);
-  const [sendingGroupInvites, setSendingGroupInvites] = useState(false);
   const [inviteActionUserId, setInviteActionUserId] = useState<string | null>(null);
   const [deletingGroup, setDeletingGroup] = useState(false);
   const [hasSyncedGroupFromQuery, setHasSyncedGroupFromQuery] = useState(false);
@@ -698,33 +695,6 @@ export default function LeaderboardPage() {
     }
   }
 
-  async function inviteToSelectedGroup() {
-    if (!inviteTargetGroupId || selectedExistingInviteUserIds.length === 0) {
-      setGroupActionMsg("Select at least one member to invite.");
-      return;
-    }
-
-    setSendingGroupInvites(true);
-    setGroupActionMsg("");
-    try {
-      const result = await sendInvitesToGroup(inviteTargetGroupId, selectedExistingInviteUserIds);
-      if (!result.ok) {
-        setGroupActionMsg(result.errorMessage || "Could not send group invites.");
-        return;
-      }
-
-      if (result.invitedCount > 0) {
-        setGroupActionMsg(`Sent ${result.invitedCount} invite${result.invitedCount === 1 ? "" : "s"}.`);
-      } else {
-        setGroupActionMsg("No new invites were needed.");
-      }
-      setSelectedExistingInviteUserIds([]);
-      await loadGroups();
-    } finally {
-      setSendingGroupInvites(false);
-    }
-  }
-
   async function sendInvitesToGroup(groupId: string, userIds: string[]) {
     try {
       const { data: auth } = await supabaseBrowser.auth.getSession();
@@ -916,7 +886,6 @@ export default function LeaderboardPage() {
       setInvitingMembers(false);
       setCreatingGroup(false);
       setSelectedNewInviteUserIds([]);
-      setSelectedExistingInviteUserIds([]);
       await loadGroups();
       setSelectedGroupId((prev) => (prev === groupToDelete.id ? null : prev));
     } catch {
@@ -1047,21 +1016,6 @@ export default function LeaderboardPage() {
     selectedGroupId,
     viewMode,
   ]);
-
-  useEffect(() => {
-    if (!invitingMembers) return;
-    setInviteTargetGroupId((prev) => {
-      if (prev && groups.some((group) => group.id === prev)) return prev;
-      if (selectedGroupId && groups.some((group) => group.id === selectedGroupId)) {
-        return selectedGroupId;
-      }
-      return groups[0]?.id ?? null;
-    });
-  }, [groups, invitingMembers, selectedGroupId]);
-
-  useEffect(() => {
-    setSelectedExistingInviteUserIds([]);
-  }, [inviteTargetGroupId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1311,16 +1265,6 @@ export default function LeaderboardPage() {
   const newGroupCandidateMembers = memberDirectory.filter(
     (member) => member.user_id !== currentUserId
   );
-  const inviteTargetGroup = useMemo(
-    () => groups.find((group) => group.id === inviteTargetGroupId) ?? null,
-    [groups, inviteTargetGroupId]
-  );
-  const inviteTargetGroupMemberIds = new Set(inviteTargetGroup?.member_user_ids ?? []);
-  const existingGroupInviteCandidates = memberDirectory.filter((member) => {
-    if (member.user_id === currentUserId) return false;
-    if (inviteTargetGroupMemberIds.has(member.user_id)) return false;
-    return true;
-  });
   const selectedGroupInviteStatusByUserId = useMemo(() => {
     const byUserId = new Map<string, GroupInviteStatus>();
     if (!selectedGroupId) return byUserId;
@@ -1538,27 +1482,23 @@ export default function LeaderboardPage() {
                     {groups.length > 0 && (
                       <UiButton
                         pill
+                        disabled={
+                          !selectedGroupId ||
+                          !groups.some((group) => group.id === selectedGroupId && group.is_creator)
+                        }
                         onClick={() => {
                           setCreatingGroup(false);
-                          setInvitingMembers((prev) => {
-                            const next = !prev;
-                            if (next) {
-                              setInviteTargetGroupId(selectedGroupId ?? groups[0]?.id ?? null);
-                              setSelectedExistingInviteUserIds([]);
-                              setGroupActionMsg("");
-                            }
-                            return next;
-                          });
+                          setInvitingMembers((prev) => !prev);
+                          setGroupActionMsg("");
                         }}
                       >
-                        {invitingMembers ? "Cancel invite" : "Invite more members"}
+                        Invite
                       </UiButton>
                     )}
                     <UiButton
                       pill
                       onClick={() => {
                         setInvitingMembers(false);
-                        setSelectedExistingInviteUserIds([]);
                         setCreatingGroup((prev) => !prev);
                       }}
                     >
@@ -1672,87 +1612,7 @@ export default function LeaderboardPage() {
                   </div>
                 )}
 
-                {invitingMembers && groups.length > 0 && (
-                  <div
-                    style={{
-                      border: "1px solid var(--border)",
-                      borderRadius: 12,
-                      padding: 12,
-                      display: "grid",
-                      gap: 8,
-                    }}
-                  >
-                    <strong>Invite more members</strong>
-                    <div style={{ display: "grid", gap: 6 }}>
-                      <label htmlFor="group-invite-target" className="ui-caption">
-                        Private leaderboard
-                      </label>
-                      <select
-                        id="group-invite-target"
-                        className="ui-input"
-                        value={inviteTargetGroupId ?? ""}
-                        onChange={(event) => {
-                          setInviteTargetGroupId(event.target.value || null);
-                          setSelectedExistingInviteUserIds([]);
-                        }}
-                      >
-                        {groups.map((group) => (
-                          <option key={`invite-target-${group.id}`} value={group.id}>
-                            {group.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div
-                      style={{
-                        border: "1px solid var(--border)",
-                        borderRadius: 10,
-                        maxHeight: 150,
-                        overflow: "auto",
-                        padding: 8,
-                        display: "grid",
-                        gap: 6,
-                      }}
-                    >
-                      {inviteTargetGroup &&
-                        existingGroupInviteCandidates.map((member) => (
-                          <label
-                            key={`existing-group-member-${member.user_id}`}
-                            style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={selectedExistingInviteUserIds.includes(member.user_id)}
-                              onChange={() =>
-                                toggleUserInList(
-                                  member.user_id,
-                                  selectedExistingInviteUserIds,
-                                  setSelectedExistingInviteUserIds
-                                )
-                              }
-                            />
-                            <span>{member.display_name}</span>
-                          </label>
-                        ))}
-                      {existingGroupInviteCandidates.length === 0 && (
-                        <span className="ui-caption">
-                          No additional members available for {inviteTargetGroup?.name ?? "this group"}.
-                        </span>
-                      )}
-                    </div>
-                    <div className="ui-row-wrap">
-                      <UiButton
-                        pill
-                        onClick={inviteToSelectedGroup}
-                        disabled={sendingGroupInvites || !inviteTargetGroup}
-                      >
-                        {sendingGroupInvites ? "Sending..." : "Send invites"}
-                      </UiButton>
-                    </div>
-                  </div>
-                )}
-
-                {selectedGroup?.is_creator && creatorInviteOverviewRows.length > 0 && (
+                {invitingMembers && selectedGroup?.is_creator && (
                   <div
                     style={{
                       border: "1px solid var(--border)",
@@ -1763,19 +1623,22 @@ export default function LeaderboardPage() {
                     }}
                   >
                     <div className="ui-row-between">
-                      <strong>Group invite status</strong>
+                      <strong>Invite</strong>
                       <span className="ui-caption">{selectedGroup.name}</span>
                     </div>
-                    <div
-                      style={{
-                        border: "1px solid var(--border)",
-                        borderRadius: 10,
-                        maxHeight: isMobile ? 260 : 320,
-                        overflow: "auto",
-                        display: "grid",
-                      }}
-                    >
-                      {creatorInviteOverviewRows.map((member) => {
+                    {creatorInviteOverviewRows.length === 0 ? (
+                      <span className="ui-caption">No members available.</span>
+                    ) : (
+                      <div
+                        style={{
+                          border: "1px solid var(--border)",
+                          borderRadius: 10,
+                          maxHeight: isMobile ? 260 : 320,
+                          overflow: "auto",
+                          display: "grid",
+                        }}
+                      >
+                        {creatorInviteOverviewRows.map((member) => {
                         const isBusy = inviteActionUserId === member.user_id;
                         const canInvite =
                           member.statusKey === "not_invited" ||
@@ -1809,68 +1672,69 @@ export default function LeaderboardPage() {
                         };
                         const badgeStyle = badgeStyles[member.statusTone];
 
-                        return (
-                          <div
-                            key={`invite-status-${member.user_id}`}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "space-between",
-                              gap: 10,
-                              padding: "8px 10px",
-                              borderBottom: "1px solid var(--border)",
-                              flexWrap: isMobile ? "wrap" : "nowrap",
-                            }}
-                          >
-                            <div style={{ display: "grid", gap: 2 }}>
-                              <div style={{ fontWeight: 600 }}>{member.display_name}</div>
-                              <div className="ui-caption">{member.statusMeta}</div>
-                            </div>
+                          return (
                             <div
+                              key={`invite-status-${member.user_id}`}
                               style={{
                                 display: "flex",
                                 alignItems: "center",
-                                justifyContent: "flex-end",
-                                gap: 8,
-                                flexWrap: "wrap",
+                                justifyContent: "space-between",
+                                gap: 10,
+                                padding: "8px 10px",
+                                borderBottom: "1px solid var(--border)",
+                                flexWrap: isMobile ? "wrap" : "nowrap",
                               }}
                             >
-                              <span
+                              <div style={{ display: "grid", gap: 2 }}>
+                                <div style={{ fontWeight: 600 }}>{member.display_name}</div>
+                                <div className="ui-caption">{member.statusMeta}</div>
+                              </div>
+                              <div
                                 style={{
-                                  fontSize: 12,
-                                  fontWeight: 700,
-                                  padding: "4px 10px",
-                                  borderRadius: 999,
-                                  border: `1px solid ${badgeStyle.borderColor}`,
-                                  color: badgeStyle.color,
-                                  background: badgeStyle.background,
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "flex-end",
+                                  gap: 8,
+                                  flexWrap: "wrap",
                                 }}
                               >
-                                {member.statusLabel}
-                              </span>
-                              {canInvite && (
-                                <UiButton
-                                  pill
-                                  disabled={isBusy}
-                                  onClick={() => inviteSingleMemberToSelectedGroup(member.user_id)}
+                                <span
+                                  style={{
+                                    fontSize: 12,
+                                    fontWeight: 700,
+                                    padding: "4px 10px",
+                                    borderRadius: 999,
+                                    border: `1px solid ${badgeStyle.borderColor}`,
+                                    color: badgeStyle.color,
+                                    background: badgeStyle.background,
+                                  }}
                                 >
-                                  {isBusy ? "Sending..." : "Invite"}
-                                </UiButton>
-                              )}
-                              {canRescind && (
-                                <UiButton
-                                  pill
-                                  disabled={isBusy}
-                                  onClick={() => rescindInviteFromSelectedGroup(member.user_id)}
-                                >
-                                  {isBusy ? "Working..." : "Rescind"}
-                                </UiButton>
-                              )}
+                                  {member.statusLabel}
+                                </span>
+                                {canInvite && (
+                                  <UiButton
+                                    pill
+                                    disabled={isBusy}
+                                    onClick={() => inviteSingleMemberToSelectedGroup(member.user_id)}
+                                  >
+                                    {isBusy ? "Sending..." : "Invite"}
+                                  </UiButton>
+                                )}
+                                {canRescind && (
+                                  <UiButton
+                                    pill
+                                    disabled={isBusy}
+                                    onClick={() => rescindInviteFromSelectedGroup(member.user_id)}
+                                  >
+                                    {isBusy ? "Working..." : "Rescind"}
+                                  </UiButton>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                          );
+                        })}
+                      </div>
+                    )}
                     <p className="ui-caption" style={{ margin: 0 }}>
                       Member = in group, Pending = not actioned, Declined = invite rejected, Not
                       invited = no invite sent.

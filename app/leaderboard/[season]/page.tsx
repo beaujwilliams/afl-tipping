@@ -453,6 +453,7 @@ export default function LeaderboardPage() {
   const [submittingNewGroup, setSubmittingNewGroup] = useState(false);
   const [selectedExistingInviteUserIds, setSelectedExistingInviteUserIds] = useState<string[]>([]);
   const [sendingGroupInvites, setSendingGroupInvites] = useState(false);
+  const [deletingGroup, setDeletingGroup] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   function applyLeaderboardData(json: LeaderboardResponse) {
@@ -712,6 +713,73 @@ export default function LeaderboardPage() {
       setGroupActionMsg("Could not send group invites.");
     } finally {
       setSendingGroupInvites(false);
+    }
+  }
+
+  async function deleteSelectedGroup() {
+    if (!selectedGroupId) {
+      setGroupActionMsg("Select a private group to delete.");
+      return;
+    }
+
+    const groupToDelete = groups.find((group) => group.id === selectedGroupId) ?? null;
+    if (!groupToDelete) {
+      setGroupActionMsg("Could not find that group.");
+      return;
+    }
+    if (!groupToDelete.is_creator) {
+      setGroupActionMsg("Only the group creator can delete this group.");
+      return;
+    }
+
+    const firstConfirm = window.confirm(
+      `Delete "${groupToDelete.name}" for all members?\n\nThis cannot be undone.`
+    );
+    if (!firstConfirm) return;
+
+    const secondConfirm = window.confirm(
+      `Final confirmation:\nDelete "${groupToDelete.name}" permanently?`
+    );
+    if (!secondConfirm) return;
+
+    setDeletingGroup(true);
+    setGroupActionMsg("");
+    try {
+      const { data: auth } = await supabaseBrowser.auth.getSession();
+      if (!auth.session) {
+        window.location.href = "/login";
+        return;
+      }
+
+      const response = await fetch(
+        `/api/leaderboard-groups/${encodeURIComponent(groupToDelete.id)}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${auth.session.access_token}`,
+          },
+        }
+      );
+      const json = (await response.json().catch(() => null)) as
+        | { ok?: boolean; error?: string }
+        | null;
+
+      if (!response.ok || !json?.ok) {
+        setGroupActionMsg(json?.error || "Could not delete group.");
+        return;
+      }
+
+      setGroupActionMsg(`Deleted "${groupToDelete.name}".`);
+      setInvitingMembers(false);
+      setCreatingGroup(false);
+      setSelectedNewInviteUserIds([]);
+      setSelectedExistingInviteUserIds([]);
+      await loadGroups();
+      setSelectedGroupId((prev) => (prev === groupToDelete.id ? null : prev));
+    } catch {
+      setGroupActionMsg("Could not delete group.");
+    } finally {
+      setDeletingGroup(false);
     }
   }
 
@@ -1217,6 +1285,12 @@ export default function LeaderboardPage() {
                 >
                   <strong>My private groups</strong>
                   <div className="ui-row-wrap">
+                    {selectedGroupId &&
+                      groups.some((group) => group.id === selectedGroupId && group.is_creator) && (
+                        <UiButton pill onClick={deleteSelectedGroup} disabled={deletingGroup}>
+                          {deletingGroup ? "Deleting..." : "Delete group"}
+                        </UiButton>
+                      )}
                     {groups.length > 0 && (
                       <UiButton
                         pill

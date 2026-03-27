@@ -229,12 +229,11 @@ export default function ScoringSyncLogPage() {
             <div className="ui-admin-summary">
               Includes both <b>Active round check</b> runs and <b>Full parse</b> runs.
             </div>
-            <div className="ui-row-wrap ui-admin-gap-sm" style={{ marginTop: 12 }}>
+            <div className="ui-scoring-filter-grid">
               <select
                 value={runTypeFilter}
                 onChange={(e) => setRunTypeFilter(e.target.value as RunTypeFilter)}
                 className="ui-input"
-                style={{ minWidth: 200 }}
               >
                 <option value="all">Run type: All</option>
                 <option value="active">Run type: Active</option>
@@ -244,7 +243,6 @@ export default function ScoringSyncLogPage() {
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
                 className="ui-input"
-                style={{ minWidth: 180 }}
               >
                 <option value="all">Status: All</option>
                 <option value="success">Status: Success</option>
@@ -254,7 +252,6 @@ export default function ScoringSyncLogPage() {
                 value={updatedScoresFilter}
                 onChange={(e) => setUpdatedScoresFilter(e.target.value as YesNoFilter)}
                 className="ui-input"
-                style={{ minWidth: 200 }}
               >
                 <option value="all">Updated scores: All</option>
                 <option value="yes">Updated scores: Yes</option>
@@ -264,7 +261,6 @@ export default function ScoringSyncLogPage() {
                 value={leaderboardFilter}
                 onChange={(e) => setLeaderboardFilter(e.target.value as YesNoFilter)}
                 className="ui-input"
-                style={{ minWidth: 220 }}
               >
                 <option value="all">Leaderboard synced: All</option>
                 <option value="yes">Leaderboard synced: Yes</option>

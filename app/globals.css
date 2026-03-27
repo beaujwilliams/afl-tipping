@@ -696,7 +696,29 @@ button {
   font-weight: 800;
 }
 
+.ui-scoring-filter-grid {
+  margin-top: 12px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.ui-scoring-filter-grid .ui-input {
+  width: 100%;
+  min-width: 0;
+}
+
+@media (max-width: 980px) {
+  .ui-scoring-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 640px) {
+  .ui-scoring-filter-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .ui-admin-page {
     margin: 24px auto;
   }

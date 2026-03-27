@@ -1093,345 +1093,311 @@ export default function LeaderboardPage() {
 
   return (
     <main className="ui-page ui-page--wide">
-      <h1 className="ui-title">Leaderboard • {season}</h1>
+      <div className="ui-page-header">
+        <h1 className="ui-title">Leaderboard • {season}</h1>
+        <div
+          role="group"
+          aria-label="Leaderboard mode"
+          style={{
+            display: "inline-flex",
+            border: "1px solid var(--border)",
+            borderRadius: 999,
+            overflow: "hidden",
+            background: "var(--card)",
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              setViewMode("overall");
+              setInvitingMembers(false);
+              setCreatingGroup(false);
+            }}
+            style={{
+              appearance: "none",
+              border: "none",
+              padding: "6px 12px",
+              cursor: "pointer",
+              fontSize: 13,
+              fontWeight: 700,
+              background: viewMode === "overall" ? "var(--foreground)" : "transparent",
+              color: viewMode === "overall" ? "var(--background)" : "var(--foreground)",
+            }}
+            aria-pressed={viewMode === "overall"}
+          >
+            Overall
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setViewMode("groups");
+              if (!selectedGroupId && groups.length > 0) {
+                setSelectedGroupId(groups[0].id);
+              }
+            }}
+            style={{
+              appearance: "none",
+              border: "none",
+              padding: "6px 12px",
+              cursor: "pointer",
+              fontSize: 13,
+              fontWeight: 700,
+              background: viewMode === "groups" ? "var(--foreground)" : "transparent",
+              color: viewMode === "groups" ? "var(--background)" : "var(--foreground)",
+            }}
+            aria-pressed={viewMode === "groups"}
+          >
+            My Groups
+          </button>
+        </div>
+      </div>
 
       {msg && <p className="ui-caption ui-mt-4">{msg}</p>}
 
       {!msg && (
         <>
-          <UiCard className="ui-mt-3">
-            <div style={{ padding: 16, display: "grid", gap: 12 }}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: 10,
-                  flexWrap: "wrap",
-                }}
-              >
-                <div style={{ display: "grid", gap: 4 }}>
-                  <h2 style={{ margin: 0, fontSize: 24, lineHeight: 1.1 }}>Leaderboard view</h2>
-                  <p className="ui-caption" style={{ margin: 0 }}>
-                    Switch between the full ladder and your private group boards.
-                  </p>
+          {loadingGroups && (
+            <p className="ui-caption ui-mt-2">Loading private groups...</p>
+          )}
+          {!loadingGroups && groupMsg && (
+            <p className="ui-caption ui-mt-2" style={{ color: "rgb(185,28,28)" }}>
+              {groupMsg}
+            </p>
+          )}
+          {!loadingGroups && groupActionMsg && (
+            <p className="ui-caption ui-mt-2">{groupActionMsg}</p>
+          )}
+
+          {pendingInviteCount > 0 && (
+            <UiCard className="ui-mt-3">
+              <div style={{ padding: 14, display: "grid", gap: 8 }}>
+                <div className="ui-row-between">
+                  <strong>
+                    You have {pendingInviteCount} group invite{pendingInviteCount === 1 ? "" : "s"}
+                  </strong>
+                  <span className="ui-caption">Handle invites to clear the badge.</span>
                 </div>
-
-                <div
-                  role="group"
-                  aria-label="Leaderboard mode"
-                  style={{
-                    display: "inline-flex",
-                    border: "1px solid var(--border)",
-                    borderRadius: 999,
-                    overflow: "hidden",
-                    background: "var(--card)",
-                  }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setViewMode("overall");
-                    }}
-                    style={{
-                      appearance: "none",
-                      border: "none",
-                      padding: "6px 12px",
-                      cursor: "pointer",
-                      fontSize: 13,
-                      fontWeight: 700,
-                      background: viewMode === "overall" ? "var(--foreground)" : "transparent",
-                      color: viewMode === "overall" ? "var(--background)" : "var(--foreground)",
-                    }}
-                    aria-pressed={viewMode === "overall"}
-                  >
-                    Overall
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setViewMode("groups");
-                      if (!selectedGroupId && groups.length > 0) {
-                        setSelectedGroupId(groups[0].id);
-                      }
-                    }}
-                    style={{
-                      appearance: "none",
-                      border: "none",
-                      padding: "6px 12px",
-                      cursor: "pointer",
-                      fontSize: 13,
-                      fontWeight: 700,
-                      background: viewMode === "groups" ? "var(--foreground)" : "transparent",
-                      color: viewMode === "groups" ? "var(--background)" : "var(--foreground)",
-                    }}
-                    aria-pressed={viewMode === "groups"}
-                  >
-                    My Groups
-                  </button>
-                </div>
-              </div>
-
-              {loadingGroups && (
-                <p className="ui-caption" style={{ margin: 0 }}>
-                  Loading private groups...
-                </p>
-              )}
-              {!loadingGroups && groupMsg && (
-                <p className="ui-caption" style={{ margin: 0, color: "rgb(185,28,28)" }}>
-                  {groupMsg}
-                </p>
-              )}
-              {!loadingGroups && groupActionMsg && (
-                <p className="ui-caption" style={{ margin: 0 }}>
-                  {groupActionMsg}
-                </p>
-              )}
-
-              {pendingInviteCount > 0 && (
-                <div
-                  style={{
-                    border: "1px solid var(--border)",
-                    borderRadius: 12,
-                    padding: 12,
-                    display: "grid",
-                    gap: 8,
-                    background: "var(--card)",
-                  }}
-                >
-                  <div className="ui-row-between">
-                    <strong>You have {pendingInviteCount} group invite{pendingInviteCount === 1 ? "" : "s"}</strong>
-                    <span className="ui-caption">Handle invites to clear the badge.</span>
-                  </div>
-                  {pendingInvites.map((invite) => (
-                    <div
-                      key={invite.id}
-                      style={{
-                        borderTop: "1px solid var(--border)",
-                        paddingTop: 8,
-                        display: "grid",
-                        gap: 6,
-                      }}
-                    >
-                      <div style={{ fontWeight: 700 }}>{invite.group_name}</div>
-                      <div className="ui-caption">
-                        Invited by {invite.invited_by_display_name}
-                      </div>
-                      <div className="ui-row-wrap">
-                        <UiButton
-                          pill
-                          onClick={() => respondToInvite(invite.id, "accept")}
-                        >
-                          Accept
-                        </UiButton>
-                        <UiButton
-                          pill
-                          onClick={() => respondToInvite(invite.id, "decline")}
-                        >
-                          Decline
-                        </UiButton>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {viewMode === "groups" && (
-                <div style={{ display: "grid", gap: 10 }}>
+                {pendingInvites.map((invite) => (
                   <div
+                    key={invite.id}
                     style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      gap: 8,
-                      flexWrap: "wrap",
+                      borderTop: "1px solid var(--border)",
+                      paddingTop: 8,
+                      display: "grid",
+                      gap: 6,
                     }}
                   >
-                    <strong>My private groups</strong>
+                    <div style={{ fontWeight: 700 }}>{invite.group_name}</div>
+                    <div className="ui-caption">Invited by {invite.invited_by_display_name}</div>
                     <div className="ui-row-wrap">
-                      {groups.length > 0 && (
-                        <UiButton
-                          pill
-                          onClick={() => {
-                            setCreatingGroup(false);
-                            setInvitingMembers((prev) => {
-                              const next = !prev;
-                              if (next) {
-                                setInviteTargetGroupId(selectedGroupId ?? groups[0]?.id ?? null);
-                                setSelectedExistingInviteUserIds([]);
-                                setGroupActionMsg("");
-                              }
-                              return next;
-                            });
-                          }}
-                        >
-                          {invitingMembers ? "Cancel invite" : "Invite more members"}
-                        </UiButton>
-                      )}
-                      <UiButton
-                        pill
-                        onClick={() => {
-                          setInvitingMembers(false);
-                          setSelectedExistingInviteUserIds([]);
-                          setCreatingGroup((prev) => !prev);
-                        }}
-                      >
-                        {creatingGroup ? "Cancel" : "Create group"}
+                      <UiButton pill onClick={() => respondToInvite(invite.id, "accept")}>
+                        Accept
+                      </UiButton>
+                      <UiButton pill onClick={() => respondToInvite(invite.id, "decline")}>
+                        Decline
                       </UiButton>
                     </div>
                   </div>
+                ))}
+              </div>
+            </UiCard>
+          )}
 
-                  {groups.length === 0 ? (
-                    <p className="ui-caption" style={{ margin: 0 }}>
-                      You are not in any private groups yet. Create one to start a friends-only board.
-                    </p>
-                  ) : (
-                    <div
-                      style={{
-                        display: "grid",
-                        gap: 6,
-                        gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))",
-                      }}
-                    >
-                      {groups.map((group) => {
-                        const selected = selectedGroupId === group.id;
-                        return (
-                          <button
-                            key={group.id}
-                            type="button"
-                            onClick={() => {
-                              setSelectedGroupId(group.id);
-                              setViewMode("groups");
-                            }}
-                            style={{
-                              textAlign: "left",
-                              border: "1px solid var(--border)",
-                              borderRadius: 12,
-                              padding: 10,
-                              background: selected ? "var(--card-soft)" : "var(--card)",
-                              cursor: "pointer",
-                              display: "grid",
-                              gap: 3,
-                            }}
-                          >
-                            <span style={{ fontWeight: 800 }}>{group.name}</span>
-                            <span className="ui-caption">
-                              {group.member_count} members
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {creatingGroup && (
-                    <div
-                      style={{
-                        border: "1px solid var(--border)",
-                        borderRadius: 12,
-                        padding: 12,
-                        display: "grid",
-                        gap: 8,
-                        background: "var(--card)",
-                      }}
-                    >
-                      <strong>Create a private group</strong>
-                      <input
-                        className="ui-input"
-                        placeholder="Group name"
-                        value={newGroupName}
-                        onChange={(event) => setNewGroupName(event.target.value)}
-                        maxLength={80}
-                      />
-                      <p className="ui-caption" style={{ margin: 0 }}>
-                        Invite members (optional)
-                      </p>
-                      <div
-                        style={{
-                          border: "1px solid var(--border)",
-                          borderRadius: 10,
-                          maxHeight: 180,
-                          overflow: "auto",
-                          padding: 8,
-                          display: "grid",
-                          gap: 6,
+          {viewMode === "groups" && (
+            <UiCard className="ui-mt-3">
+              <div style={{ padding: 14, display: "grid", gap: 10 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 8,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <strong>My private groups</strong>
+                  <div className="ui-row-wrap">
+                    {groups.length > 0 && (
+                      <UiButton
+                        pill
+                        onClick={() => {
+                          setCreatingGroup(false);
+                          setInvitingMembers((prev) => {
+                            const next = !prev;
+                            if (next) {
+                              setInviteTargetGroupId(selectedGroupId ?? groups[0]?.id ?? null);
+                              setSelectedExistingInviteUserIds([]);
+                              setGroupActionMsg("");
+                            }
+                            return next;
+                          });
                         }}
                       >
-                        {newGroupCandidateMembers.map((member) => (
-                          <label
-                            key={`new-group-member-${member.user_id}`}
-                            style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={selectedNewInviteUserIds.includes(member.user_id)}
-                              onChange={() =>
-                                toggleUserInList(
-                                  member.user_id,
-                                  selectedNewInviteUserIds,
-                                  setSelectedNewInviteUserIds
-                                )
-                              }
-                            />
-                            <span>{member.display_name}</span>
-                          </label>
-                        ))}
-                        {newGroupCandidateMembers.length === 0 && (
-                          <span className="ui-caption">No members available to invite.</span>
-                        )}
-                      </div>
-                      <div className="ui-row-wrap">
-                        <UiButton pill onClick={createGroup} disabled={submittingNewGroup}>
-                          {submittingNewGroup ? "Creating..." : "Create group"}
-                        </UiButton>
-                      </div>
-                    </div>
-                  )}
-
-                  {invitingMembers && groups.length > 0 && (
-                    <div
-                      style={{
-                        border: "1px solid var(--border)",
-                        borderRadius: 12,
-                        padding: 12,
-                        display: "grid",
-                        gap: 8,
+                        {invitingMembers ? "Cancel invite" : "Invite more members"}
+                      </UiButton>
+                    )}
+                    <UiButton
+                      pill
+                      onClick={() => {
+                        setInvitingMembers(false);
+                        setSelectedExistingInviteUserIds([]);
+                        setCreatingGroup((prev) => !prev);
                       }}
                     >
-                      <strong>Invite more members</strong>
-                      <div style={{ display: "grid", gap: 6 }}>
-                        <label htmlFor="group-invite-target" className="ui-caption">
-                          Private leaderboard
-                        </label>
-                        <select
-                          id="group-invite-target"
-                          className="ui-input"
-                          value={inviteTargetGroupId ?? ""}
-                          onChange={(event) => {
-                            setInviteTargetGroupId(event.target.value || null);
-                            setSelectedExistingInviteUserIds([]);
+                      {creatingGroup ? "Cancel" : "Create group"}
+                    </UiButton>
+                  </div>
+                </div>
+
+                {groups.length === 0 ? (
+                  <p className="ui-caption" style={{ margin: 0 }}>
+                    You are not in any private groups yet. Create one to start a friends-only board.
+                  </p>
+                ) : (
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: 6,
+                      gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))",
+                    }}
+                  >
+                    {groups.map((group) => {
+                      const selected = selectedGroupId === group.id;
+                      return (
+                        <button
+                          key={group.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedGroupId(group.id);
+                            setViewMode("groups");
+                          }}
+                          style={{
+                            textAlign: "left",
+                            border: "1px solid var(--border)",
+                            borderRadius: 12,
+                            padding: 10,
+                            background: selected ? "var(--card-soft)" : "var(--card)",
+                            cursor: "pointer",
+                            display: "grid",
+                            gap: 3,
                           }}
                         >
-                          {groups.map((group) => (
-                            <option key={`invite-target-${group.id}`} value={group.id}>
-                              {group.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div
-                        style={{
-                          border: "1px solid var(--border)",
-                          borderRadius: 10,
-                          maxHeight: 150,
-                          overflow: "auto",
-                          padding: 8,
-                          display: "grid",
-                          gap: 6,
+                          <span style={{ fontWeight: 800 }}>{group.name}</span>
+                          <span className="ui-caption">{group.member_count} members</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {creatingGroup && (
+                  <div
+                    style={{
+                      border: "1px solid var(--border)",
+                      borderRadius: 12,
+                      padding: 12,
+                      display: "grid",
+                      gap: 8,
+                      background: "var(--card)",
+                    }}
+                  >
+                    <strong>Create a private group</strong>
+                    <input
+                      className="ui-input"
+                      placeholder="Group name"
+                      value={newGroupName}
+                      onChange={(event) => setNewGroupName(event.target.value)}
+                      maxLength={80}
+                    />
+                    <p className="ui-caption" style={{ margin: 0 }}>
+                      Invite members (optional)
+                    </p>
+                    <div
+                      style={{
+                        border: "1px solid var(--border)",
+                        borderRadius: 10,
+                        maxHeight: 180,
+                        overflow: "auto",
+                        padding: 8,
+                        display: "grid",
+                        gap: 6,
+                      }}
+                    >
+                      {newGroupCandidateMembers.map((member) => (
+                        <label
+                          key={`new-group-member-${member.user_id}`}
+                          style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedNewInviteUserIds.includes(member.user_id)}
+                            onChange={() =>
+                              toggleUserInList(
+                                member.user_id,
+                                selectedNewInviteUserIds,
+                                setSelectedNewInviteUserIds
+                              )
+                            }
+                          />
+                          <span>{member.display_name}</span>
+                        </label>
+                      ))}
+                      {newGroupCandidateMembers.length === 0 && (
+                        <span className="ui-caption">No members available to invite.</span>
+                      )}
+                    </div>
+                    <div className="ui-row-wrap">
+                      <UiButton pill onClick={createGroup} disabled={submittingNewGroup}>
+                        {submittingNewGroup ? "Creating..." : "Create group"}
+                      </UiButton>
+                    </div>
+                  </div>
+                )}
+
+                {invitingMembers && groups.length > 0 && (
+                  <div
+                    style={{
+                      border: "1px solid var(--border)",
+                      borderRadius: 12,
+                      padding: 12,
+                      display: "grid",
+                      gap: 8,
+                    }}
+                  >
+                    <strong>Invite more members</strong>
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <label htmlFor="group-invite-target" className="ui-caption">
+                        Private leaderboard
+                      </label>
+                      <select
+                        id="group-invite-target"
+                        className="ui-input"
+                        value={inviteTargetGroupId ?? ""}
+                        onChange={(event) => {
+                          setInviteTargetGroupId(event.target.value || null);
+                          setSelectedExistingInviteUserIds([]);
                         }}
                       >
-                        {inviteTargetGroup &&
-                          existingGroupInviteCandidates.map((member) => (
+                        {groups.map((group) => (
+                          <option key={`invite-target-${group.id}`} value={group.id}>
+                            {group.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div
+                      style={{
+                        border: "1px solid var(--border)",
+                        borderRadius: 10,
+                        maxHeight: 150,
+                        overflow: "auto",
+                        padding: 8,
+                        display: "grid",
+                        gap: 6,
+                      }}
+                    >
+                      {inviteTargetGroup &&
+                        existingGroupInviteCandidates.map((member) => (
                           <label
                             key={`existing-group-member-${member.user_id}`}
                             style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}
@@ -1450,27 +1416,26 @@ export default function LeaderboardPage() {
                             <span>{member.display_name}</span>
                           </label>
                         ))}
-                        {existingGroupInviteCandidates.length === 0 && (
-                          <span className="ui-caption">
-                            No additional members available for {inviteTargetGroup?.name ?? "this group"}.
-                          </span>
-                        )}
-                      </div>
-                      <div className="ui-row-wrap">
-                        <UiButton
-                          pill
-                          onClick={inviteToSelectedGroup}
-                          disabled={sendingGroupInvites || !inviteTargetGroup}
-                        >
-                          {sendingGroupInvites ? "Sending..." : "Send invites"}
-                        </UiButton>
-                      </div>
+                      {existingGroupInviteCandidates.length === 0 && (
+                        <span className="ui-caption">
+                          No additional members available for {inviteTargetGroup?.name ?? "this group"}.
+                        </span>
+                      )}
                     </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </UiCard>
+                    <div className="ui-row-wrap">
+                      <UiButton
+                        pill
+                        onClick={inviteToSelectedGroup}
+                        disabled={sendingGroupInvites || !inviteTargetGroup}
+                      >
+                        {sendingGroupInvites ? "Sending..." : "Send invites"}
+                      </UiButton>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </UiCard>
+          )}
 
           <UiTableShell className="ui-mt-3">
             {scopedRows.length === 0 ? (

@@ -34,6 +34,8 @@ type ScoringRunsResponse = {
 };
 
 type RunTypeFilter = "all" | "active" | "full";
+type StatusFilter = "all" | "success" | "failed";
+type YesNoFilter = "all" | "yes" | "no";
 
 function fmtMelbourne(iso: string) {
   const d = new Date(iso);
@@ -65,6 +67,9 @@ function runTypeLabel(run: ScoringAutomationRun, fallback: string) {
 export default function ScoringSyncLogPage() {
   const [season, setSeason] = useState<number>(2026);
   const [runTypeFilter, setRunTypeFilter] = useState<RunTypeFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [updatedScoresFilter, setUpdatedScoresFilter] = useState<YesNoFilter>("all");
+  const [leaderboardFilter, setLeaderboardFilter] = useState<YesNoFilter>("all");
   const [status, setStatus] = useState<string>("Checking login...");
   const [loading, setLoading] = useState<boolean>(false);
   const [runs, setRuns] = useState<ScoringAutomationRun[]>([]);
@@ -105,11 +110,6 @@ export default function ScoringSyncLogPage() {
       season: String(season),
       limit: "80",
     });
-    if (runTypeFilter === "active") {
-      params.set("job_kind", "scoring_15m");
-    } else if (runTypeFilter === "full") {
-      params.set("job_kind", "scoring_daily_full");
-    }
 
     const res = await fetch(
       `/api/admin/scoring-automation-runs?${params.toString()}`,
@@ -159,7 +159,31 @@ export default function ScoringSyncLogPage() {
     if (status) return;
     void refreshLogs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, season, runTypeFilter]);
+  }, [status, season]);
+
+  const filteredRuns = runs.filter((run) => {
+    const isActive = run.job_kind === "scoring_15m" || run.scope === "active";
+    const isFull = run.job_kind === "scoring_daily_full" || run.scope === "full";
+    const updatedScores = run.sync_updated > 0;
+    const leaderboardSynced =
+      run.leaderboard_recalc_ran && run.leaderboard_recalc_ok === true;
+
+    if (runTypeFilter === "active" && !isActive) return false;
+    if (runTypeFilter === "full" && !isFull) return false;
+    if (statusFilter !== "all" && run.run_status !== statusFilter) return false;
+    if (updatedScoresFilter === "yes" && !updatedScores) return false;
+    if (updatedScoresFilter === "no" && updatedScores) return false;
+    if (leaderboardFilter === "yes" && !leaderboardSynced) return false;
+    if (leaderboardFilter === "no" && leaderboardSynced) return false;
+
+    return true;
+  });
+
+  const resolvedRunsMsg =
+    runsMsg ||
+    (runs.length > 0 && filteredRuns.length === 0
+      ? "No runs match current filters."
+      : "");
 
   return (
     <main className="ui-page ui-page--narrow ui-admin-page">
@@ -189,16 +213,6 @@ export default function ScoringSyncLogPage() {
                   onChange={(e) => setSeason(Number(e.target.value))}
                   className="ui-input ui-admin-input-season"
                 />
-                <select
-                  value={runTypeFilter}
-                  onChange={(e) => setRunTypeFilter(e.target.value as RunTypeFilter)}
-                  className="ui-input"
-                  style={{ minWidth: 210 }}
-                >
-                  <option value="all">All run types</option>
-                  <option value="active">Active round check</option>
-                  <option value="full">Full parse</option>
-                </select>
                 <UiButton
                   disabled={loading}
                   onClick={() => void refreshLogs()}
@@ -215,8 +229,50 @@ export default function ScoringSyncLogPage() {
             <div className="ui-admin-summary">
               Includes both <b>Active round check</b> runs and <b>Full parse</b> runs.
             </div>
-            {runsMsg ? (
-              <div className="ui-admin-summary">{runsMsg}</div>
+            <div className="ui-row-wrap ui-admin-gap-sm" style={{ marginTop: 12 }}>
+              <select
+                value={runTypeFilter}
+                onChange={(e) => setRunTypeFilter(e.target.value as RunTypeFilter)}
+                className="ui-input"
+                style={{ minWidth: 200 }}
+              >
+                <option value="all">Run type: All</option>
+                <option value="active">Run type: Active</option>
+                <option value="full">Run type: Full parse</option>
+              </select>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+                className="ui-input"
+                style={{ minWidth: 180 }}
+              >
+                <option value="all">Status: All</option>
+                <option value="success">Status: Success</option>
+                <option value="failed">Status: Failed</option>
+              </select>
+              <select
+                value={updatedScoresFilter}
+                onChange={(e) => setUpdatedScoresFilter(e.target.value as YesNoFilter)}
+                className="ui-input"
+                style={{ minWidth: 200 }}
+              >
+                <option value="all">Updated scores: All</option>
+                <option value="yes">Updated scores: Yes</option>
+                <option value="no">Updated scores: No</option>
+              </select>
+              <select
+                value={leaderboardFilter}
+                onChange={(e) => setLeaderboardFilter(e.target.value as YesNoFilter)}
+                className="ui-input"
+                style={{ minWidth: 220 }}
+              >
+                <option value="all">Leaderboard synced: All</option>
+                <option value="yes">Leaderboard synced: Yes</option>
+                <option value="no">Leaderboard synced: No</option>
+              </select>
+            </div>
+            {resolvedRunsMsg ? (
+              <div className="ui-admin-summary">{resolvedRunsMsg}</div>
             ) : (
               <UiTableShell style={{ marginTop: 12 }}>
                 <UiTableScroll>
@@ -232,7 +288,7 @@ export default function ScoringSyncLogPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {runs.map((run) => {
+                      {filteredRuns.map((run) => {
                         const updatedScores = run.sync_updated > 0;
                         const leaderboardSynced =
                           run.leaderboard_recalc_ran && run.leaderboard_recalc_ok === true;

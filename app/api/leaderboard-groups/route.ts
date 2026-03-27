@@ -15,6 +15,16 @@ type InviteRow = {
   created_at: string;
 };
 
+type GroupInviteStatusRow = {
+  group_id: string;
+  invited_user_id: string;
+  invited_by_user_id: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  handled_at: string | null;
+};
+
 type GroupRow = {
   id: string;
   name: string;
@@ -151,9 +161,10 @@ export async function GET(req: Request) {
 
     let groups: GroupRow[] = [];
     let groupMembers: GroupMembershipRow[] = [];
+    let groupInviteStatuses: GroupInviteStatusRow[] = [];
 
     if (combinedGroupIds.length > 0) {
-      const [groupResult, memberResult] = await Promise.all([
+      const [groupResult, memberResult, groupInviteResult] = await Promise.all([
         supabase
           .from("leaderboard_groups")
           .select("id, name, season, competition_id, created_by_user_id, created_at")
@@ -164,6 +175,14 @@ export async function GET(req: Request) {
           .from("leaderboard_group_members")
           .select("group_id, user_id")
           .in("group_id", combinedGroupIds),
+        supabase
+          .from("leaderboard_group_invites")
+          .select(
+            "group_id, invited_user_id, invited_by_user_id, status, created_at, updated_at, handled_at"
+          )
+          .in("group_id", combinedGroupIds)
+          .order("updated_at", { ascending: false })
+          .order("created_at", { ascending: false }),
       ]);
 
       if (groupResult.error) {
@@ -188,15 +207,40 @@ export async function GET(req: Request) {
         );
       }
 
+      if (groupInviteResult.error) {
+        const errCode =
+          "code" in groupInviteResult.error ? String(groupInviteResult.error.code ?? "") : "";
+        if (isMissingLeaderboardGroupsTableError(groupInviteResult.error.message, errCode)) {
+          return setupRequiredResponse();
+        }
+        return NextResponse.json(
+          { error: "Failed to load group invites", details: groupInviteResult.error.message },
+          { status: 500 }
+        );
+      }
+
       groups = (groupResult.data ?? []) as GroupRow[];
       groupMembers = (memberResult.data ?? []) as GroupMembershipRow[];
+      groupInviteStatuses = (groupInviteResult.data ?? []) as GroupInviteStatusRow[];
     }
+
+    const latestInviteByGroupAndUser = new Map<string, GroupInviteStatusRow>();
+    groupInviteStatuses.forEach((inviteRow) => {
+      const groupId = String(inviteRow.group_id);
+      const invitedUserId = String(inviteRow.invited_user_id);
+      const dedupeKey = `${groupId}::${invitedUserId}`;
+      if (!latestInviteByGroupAndUser.has(dedupeKey)) {
+        latestInviteByGroupAndUser.set(dedupeKey, inviteRow);
+      }
+    });
+    const latestGroupInviteStatuses = Array.from(latestInviteByGroupAndUser.values());
 
     const profileUserIds = Array.from(
       new Set(
         [
           ...groups.map((group) => String(group.created_by_user_id)),
           ...inviteRows.map((invite) => String(invite.invited_by_user_id)),
+          ...latestGroupInviteStatuses.map((invite) => String(invite.invited_by_user_id)),
         ].filter((id) => id.length > 0)
       )
     );
@@ -283,6 +327,20 @@ export async function GET(req: Request) {
       pending_invites: pendingInvites,
       groups: myGroups,
       member_directory: memberDirectory,
+      group_invite_statuses: latestGroupInviteStatuses.map((invite) => {
+        const invitedByUserId = String(invite.invited_by_user_id);
+        return {
+          group_id: String(invite.group_id),
+          invited_user_id: String(invite.invited_user_id),
+          invited_by_user_id: invitedByUserId,
+          invited_by_display_name:
+            profileNameById.get(invitedByUserId) ?? safeDisplayName(null, invitedByUserId),
+          status: String(invite.status),
+          created_at: String(invite.created_at),
+          updated_at: String(invite.updated_at),
+          handled_at: invite.handled_at ? String(invite.handled_at) : null,
+        };
+      }),
     });
   } catch (error: unknown) {
     const details = error instanceof Error ? error.message : "Unknown error";

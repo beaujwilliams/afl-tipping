@@ -74,6 +74,17 @@ type GroupInvite = {
   created_at: string;
 };
 
+type GroupInviteStatus = {
+  group_id: string;
+  invited_user_id: string;
+  invited_by_user_id: string;
+  invited_by_display_name: string;
+  status: "pending" | "accepted" | "declined";
+  created_at: string;
+  updated_at: string;
+  handled_at: string | null;
+};
+
 type MemberDirectoryEntry = {
   user_id: string;
   display_name: string;
@@ -126,6 +137,18 @@ function movementColor(movement: number) {
   if (movement > 0) return "#17803d";
   if (movement < 0) return "#b42318";
   return "var(--muted)";
+}
+
+function fmtInviteTimestamp(iso: string | null | undefined) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString("en-AU", {
+    day: "2-digit",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function numericSortValue(row: LeaderboardRow, key: NumericSortKey) {
@@ -440,6 +463,7 @@ export default function LeaderboardPage() {
   );
   const [groups, setGroups] = useState<LeaderboardGroup[]>([]);
   const [pendingInvites, setPendingInvites] = useState<GroupInvite[]>([]);
+  const [groupInviteStatuses, setGroupInviteStatuses] = useState<GroupInviteStatus[]>([]);
   const [memberDirectory, setMemberDirectory] = useState<MemberDirectoryEntry[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [groupMsg, setGroupMsg] = useState("");
@@ -453,6 +477,7 @@ export default function LeaderboardPage() {
   const [submittingNewGroup, setSubmittingNewGroup] = useState(false);
   const [selectedExistingInviteUserIds, setSelectedExistingInviteUserIds] = useState<string[]>([]);
   const [sendingGroupInvites, setSendingGroupInvites] = useState(false);
+  const [inviteActionUserId, setInviteActionUserId] = useState<string | null>(null);
   const [deletingGroup, setDeletingGroup] = useState(false);
   const [hasSyncedGroupFromQuery, setHasSyncedGroupFromQuery] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -515,16 +540,21 @@ export default function LeaderboardPage() {
     groups?: LeaderboardGroup[];
     pending_invites?: GroupInvite[];
     member_directory?: MemberDirectoryEntry[];
+    group_invite_statuses?: GroupInviteStatus[];
   }) {
     const nextGroups = Array.isArray(json.groups) ? json.groups : [];
     const nextInvites = Array.isArray(json.pending_invites) ? json.pending_invites : [];
     const nextMemberDirectory = Array.isArray(json.member_directory)
       ? json.member_directory
       : [];
+    const nextInviteStatuses = Array.isArray(json.group_invite_statuses)
+      ? json.group_invite_statuses
+      : [];
 
     setGroups(nextGroups);
     setPendingInvites(nextInvites);
     setMemberDirectory(nextMemberDirectory);
+    setGroupInviteStatuses(nextInviteStatuses);
   }
 
   async function loadGroups() {
@@ -547,6 +577,7 @@ export default function LeaderboardPage() {
             groups?: LeaderboardGroup[];
             pending_invites?: GroupInvite[];
             member_directory?: MemberDirectoryEntry[];
+            group_invite_statuses?: GroupInviteStatus[];
           }
         | null;
 
@@ -555,6 +586,7 @@ export default function LeaderboardPage() {
         setGroups([]);
         setPendingInvites([]);
         setMemberDirectory([]);
+        setGroupInviteStatuses([]);
         return;
       }
 
@@ -565,6 +597,7 @@ export default function LeaderboardPage() {
       setGroups([]);
       setPendingInvites([]);
       setMemberDirectory([]);
+      setGroupInviteStatuses([]);
     } finally {
       setLoadingGroups(false);
     }
@@ -674,14 +707,38 @@ export default function LeaderboardPage() {
     setSendingGroupInvites(true);
     setGroupActionMsg("");
     try {
-      const { data: auth } = await supabaseBrowser.auth.getSession();
-      if (!auth.session) {
-        window.location.href = "/login";
+      const result = await sendInvitesToGroup(inviteTargetGroupId, selectedExistingInviteUserIds);
+      if (!result.ok) {
+        setGroupActionMsg(result.errorMessage || "Could not send group invites.");
         return;
       }
 
+      if (result.invitedCount > 0) {
+        setGroupActionMsg(`Sent ${result.invitedCount} invite${result.invitedCount === 1 ? "" : "s"}.`);
+      } else {
+        setGroupActionMsg("No new invites were needed.");
+      }
+      setSelectedExistingInviteUserIds([]);
+      await loadGroups();
+    } finally {
+      setSendingGroupInvites(false);
+    }
+  }
+
+  async function sendInvitesToGroup(groupId: string, userIds: string[]) {
+    try {
+      const { data: auth } = await supabaseBrowser.auth.getSession();
+      if (!auth.session) {
+        window.location.href = "/login";
+        return {
+          ok: false as const,
+          invitedCount: 0,
+          errorMessage: "Not authenticated.",
+        };
+      }
+
       const response = await fetch(
-        `/api/leaderboard-groups/${encodeURIComponent(inviteTargetGroupId)}/invites`,
+        `/api/leaderboard-groups/${encodeURIComponent(groupId)}/invites`,
         {
           method: "POST",
           headers: {
@@ -689,31 +746,116 @@ export default function LeaderboardPage() {
             Authorization: `Bearer ${auth.session.access_token}`,
           },
           body: JSON.stringify({
-            invite_user_ids: selectedExistingInviteUserIds,
+            invite_user_ids: userIds,
           }),
         }
       );
+
       const json = (await response.json().catch(() => null)) as
         | { ok?: boolean; error?: string; invited_count?: number }
         | null;
 
       if (!response.ok || !json?.ok) {
-        setGroupActionMsg(json?.error || "Could not send group invites.");
+        return {
+          ok: false as const,
+          invitedCount: 0,
+          errorMessage: json?.error || "Could not send group invites.",
+        };
+      }
+
+      return {
+        ok: true as const,
+        invitedCount: Number(json.invited_count ?? 0),
+        errorMessage: "",
+      };
+    } catch {
+      return {
+        ok: false as const,
+        invitedCount: 0,
+        errorMessage: "Could not send group invites.",
+      };
+    }
+  }
+
+  async function inviteSingleMemberToSelectedGroup(userId: string) {
+    if (!selectedGroupId) {
+      setGroupActionMsg("Select a private group first.");
+      return;
+    }
+
+    setInviteActionUserId(userId);
+    setGroupActionMsg("");
+    try {
+      const result = await sendInvitesToGroup(selectedGroupId, [userId]);
+      if (!result.ok) {
+        setGroupActionMsg(result.errorMessage || "Could not send group invite.");
         return;
       }
 
-      const invitedCount = Number(json.invited_count ?? 0);
-      if (invitedCount > 0) {
-        setGroupActionMsg(`Sent ${invitedCount} invite${invitedCount === 1 ? "" : "s"}.`);
+      const displayName =
+        memberDirectory.find((member) => member.user_id === userId)?.display_name ?? "Member";
+      if (result.invitedCount > 0) {
+        setGroupActionMsg(`Invite sent to ${displayName}.`);
       } else {
-        setGroupActionMsg("No new invites were needed.");
+        setGroupActionMsg(`${displayName} already has an active invite or is already in the group.`);
       }
-      setSelectedExistingInviteUserIds([]);
+      await loadGroups();
+    } finally {
+      setInviteActionUserId(null);
+    }
+  }
+
+  async function rescindInviteFromSelectedGroup(userId: string) {
+    if (!selectedGroupId) {
+      setGroupActionMsg("Select a private group first.");
+      return;
+    }
+    const targetGroup = groups.find((group) => group.id === selectedGroupId) ?? null;
+    if (!targetGroup?.is_creator) {
+      setGroupActionMsg("Only the group creator can rescind invites.");
+      return;
+    }
+
+    setInviteActionUserId(userId);
+    setGroupActionMsg("");
+    try {
+      const { data: auth } = await supabaseBrowser.auth.getSession();
+      if (!auth.session) {
+        window.location.href = "/login";
+        return;
+      }
+
+      const response = await fetch(
+        `/api/leaderboard-groups/${encodeURIComponent(selectedGroupId)}/invites/${encodeURIComponent(userId)}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${auth.session.access_token}`,
+          },
+        }
+      );
+
+      const json = (await response.json().catch(() => null)) as
+        | { ok?: boolean; rescinded?: boolean; error?: string }
+        | null;
+
+      if (!response.ok || !json?.ok) {
+        setGroupActionMsg(json?.error || "Could not rescind invite.");
+        return;
+      }
+
+      const displayName =
+        memberDirectory.find((member) => member.user_id === userId)?.display_name ?? "Member";
+      if (json.rescinded) {
+        setGroupActionMsg(`Invite rescinded for ${displayName}.`);
+      } else {
+        setGroupActionMsg(`No pending invite found for ${displayName}.`);
+      }
       await loadGroups();
     } catch {
-      setGroupActionMsg("Could not send group invites.");
+      setGroupActionMsg("Could not rescind invite.");
     } finally {
-      setSendingGroupInvites(false);
+      setInviteActionUserId(null);
     }
   }
 
@@ -1179,6 +1321,87 @@ export default function LeaderboardPage() {
     if (inviteTargetGroupMemberIds.has(member.user_id)) return false;
     return true;
   });
+  const selectedGroupInviteStatusByUserId = useMemo(() => {
+    const byUserId = new Map<string, GroupInviteStatus>();
+    if (!selectedGroupId) return byUserId;
+    groupInviteStatuses.forEach((inviteStatus) => {
+      if (inviteStatus.group_id !== selectedGroupId) return;
+      if (!byUserId.has(inviteStatus.invited_user_id)) {
+        byUserId.set(inviteStatus.invited_user_id, inviteStatus);
+      }
+    });
+    return byUserId;
+  }, [groupInviteStatuses, selectedGroupId]);
+  const creatorInviteOverviewRows = useMemo(() => {
+    const statusWeight: Record<string, number> = {
+      pending: 1,
+      declined: 2,
+      not_invited: 3,
+      accepted: 4,
+      member: 5,
+    };
+
+    return memberDirectory
+      .filter((member) => member.user_id !== currentUserId)
+      .map((member) => {
+        const invite = selectedGroupInviteStatusByUserId.get(member.user_id);
+        const isMember = selectedGroupUserIdSet.has(member.user_id);
+
+        let statusKey: "pending" | "declined" | "not_invited" | "member" | "accepted" =
+          "not_invited";
+        if (isMember) {
+          statusKey = "member";
+        } else if (invite?.status === "pending") {
+          statusKey = "pending";
+        } else if (invite?.status === "declined") {
+          statusKey = "declined";
+        } else if (invite?.status === "accepted") {
+          statusKey = "accepted";
+        }
+
+        let statusLabel = "Not invited";
+        let statusTone: "default" | "success" | "danger" | "info" = "default";
+        if (statusKey === "member") {
+          statusLabel = "Member";
+          statusTone = "success";
+        } else if (statusKey === "pending") {
+          statusLabel = "Pending";
+          statusTone = "info";
+        } else if (statusKey === "declined") {
+          statusLabel = "Declined";
+          statusTone = "danger";
+        } else if (statusKey === "accepted") {
+          statusLabel = "Accepted";
+          statusTone = "success";
+        }
+
+        const statusAt = fmtInviteTimestamp(invite?.updated_at ?? invite?.created_at ?? null);
+        let statusMeta = "No invite sent yet";
+        if (statusKey === "member") {
+          statusMeta = "Already in group";
+        } else if (statusKey === "pending") {
+          statusMeta = statusAt ? `Invited ${statusAt}` : "Invite pending";
+        } else if (statusKey === "declined") {
+          statusMeta = statusAt ? `Declined ${statusAt}` : "Invite declined";
+        } else if (statusKey === "accepted") {
+          statusMeta = statusAt ? `Accepted ${statusAt}` : "Invite accepted";
+        }
+
+        return {
+          user_id: member.user_id,
+          display_name: member.display_name,
+          statusKey,
+          statusLabel,
+          statusTone,
+          statusMeta,
+        };
+      })
+      .sort((a, b) => {
+        const statusCmp = statusWeight[a.statusKey] - statusWeight[b.statusKey];
+        if (statusCmp !== 0) return statusCmp;
+        return a.display_name.localeCompare(b.display_name, "en", { sensitivity: "base" });
+      });
+  }, [currentUserId, memberDirectory, selectedGroupInviteStatusByUserId, selectedGroupUserIdSet]);
 
   return (
     <main className="ui-page ui-page--wide">
@@ -1526,6 +1749,132 @@ export default function LeaderboardPage() {
                         {sendingGroupInvites ? "Sending..." : "Send invites"}
                       </UiButton>
                     </div>
+                  </div>
+                )}
+
+                {selectedGroup?.is_creator && creatorInviteOverviewRows.length > 0 && (
+                  <div
+                    style={{
+                      border: "1px solid var(--border)",
+                      borderRadius: 12,
+                      padding: 12,
+                      display: "grid",
+                      gap: 8,
+                    }}
+                  >
+                    <div className="ui-row-between">
+                      <strong>Group invite status</strong>
+                      <span className="ui-caption">{selectedGroup.name}</span>
+                    </div>
+                    <div
+                      style={{
+                        border: "1px solid var(--border)",
+                        borderRadius: 10,
+                        maxHeight: isMobile ? 260 : 320,
+                        overflow: "auto",
+                        display: "grid",
+                      }}
+                    >
+                      {creatorInviteOverviewRows.map((member) => {
+                        const isBusy = inviteActionUserId === member.user_id;
+                        const canInvite =
+                          member.statusKey === "not_invited" ||
+                          member.statusKey === "declined" ||
+                          member.statusKey === "accepted";
+                        const canRescind = member.statusKey === "pending";
+                        const badgeStyles: Record<
+                          "default" | "success" | "danger" | "info",
+                          { color: string; borderColor: string; background: string }
+                        > = {
+                          default: {
+                            color: "var(--muted)",
+                            borderColor: "var(--border)",
+                            background: "var(--card)",
+                          },
+                          success: {
+                            color: "rgb(21,128,61)",
+                            borderColor: "rgba(34,197,94,0.4)",
+                            background: "rgba(22,163,74,0.08)",
+                          },
+                          danger: {
+                            color: "rgb(185,28,28)",
+                            borderColor: "rgba(239,68,68,0.4)",
+                            background: "rgba(220,38,38,0.08)",
+                          },
+                          info: {
+                            color: "rgb(29,78,216)",
+                            borderColor: "rgba(59,130,246,0.4)",
+                            background: "rgba(37,99,235,0.08)",
+                          },
+                        };
+                        const badgeStyle = badgeStyles[member.statusTone];
+
+                        return (
+                          <div
+                            key={`invite-status-${member.user_id}`}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: 10,
+                              padding: "8px 10px",
+                              borderBottom: "1px solid var(--border)",
+                              flexWrap: isMobile ? "wrap" : "nowrap",
+                            }}
+                          >
+                            <div style={{ display: "grid", gap: 2 }}>
+                              <div style={{ fontWeight: 600 }}>{member.display_name}</div>
+                              <div className="ui-caption">{member.statusMeta}</div>
+                            </div>
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "flex-end",
+                                gap: 8,
+                                flexWrap: "wrap",
+                              }}
+                            >
+                              <span
+                                style={{
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                  padding: "4px 10px",
+                                  borderRadius: 999,
+                                  border: `1px solid ${badgeStyle.borderColor}`,
+                                  color: badgeStyle.color,
+                                  background: badgeStyle.background,
+                                }}
+                              >
+                                {member.statusLabel}
+                              </span>
+                              {canInvite && (
+                                <UiButton
+                                  pill
+                                  disabled={isBusy}
+                                  onClick={() => inviteSingleMemberToSelectedGroup(member.user_id)}
+                                >
+                                  {isBusy ? "Sending..." : "Invite"}
+                                </UiButton>
+                              )}
+                              {canRescind && (
+                                <UiButton
+                                  pill
+                                  disabled={isBusy}
+                                  onClick={() => rescindInviteFromSelectedGroup(member.user_id)}
+                                >
+                                  {isBusy ? "Working..." : "Rescind"}
+                                </UiButton>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <p className="ui-caption" style={{ margin: 0 }}>
+                      Member = in group, Pending = not actioned, Declined = invite rejected, Not
+                      invited = no invite sent.
+                    </p>
                   </div>
                 )}
               </div>

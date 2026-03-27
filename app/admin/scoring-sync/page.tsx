@@ -33,6 +33,8 @@ type ScoringRunsResponse = {
   runs?: ScoringAutomationRun[];
 };
 
+type RunTypeFilter = "all" | "active" | "full";
+
 function fmtMelbourne(iso: string) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
@@ -62,6 +64,7 @@ function runTypeLabel(run: ScoringAutomationRun, fallback: string) {
 
 export default function ScoringSyncLogPage() {
   const [season, setSeason] = useState<number>(2026);
+  const [runTypeFilter, setRunTypeFilter] = useState<RunTypeFilter>("all");
   const [status, setStatus] = useState<string>("Checking login...");
   const [loading, setLoading] = useState<boolean>(false);
   const [runs, setRuns] = useState<ScoringAutomationRun[]>([]);
@@ -98,10 +101,18 @@ export default function ScoringSyncLogPage() {
   }
 
   async function loadRuns(token: string) {
+    const params = new URLSearchParams({
+      season: String(season),
+      limit: "80",
+    });
+    if (runTypeFilter === "active") {
+      params.set("job_kind", "scoring_15m");
+    } else if (runTypeFilter === "full") {
+      params.set("job_kind", "scoring_daily_full");
+    }
+
     const res = await fetch(
-      `/api/admin/scoring-automation-runs?season=${encodeURIComponent(
-        String(season)
-      )}&limit=80`,
+      `/api/admin/scoring-automation-runs?${params.toString()}`,
       {
         cache: "no-store",
         headers: { Authorization: `Bearer ${token}` },
@@ -148,7 +159,7 @@ export default function ScoringSyncLogPage() {
     if (status) return;
     void refreshLogs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, season]);
+  }, [status, season, runTypeFilter]);
 
   return (
     <main className="ui-page ui-page--narrow ui-admin-page">
@@ -178,6 +189,16 @@ export default function ScoringSyncLogPage() {
                   onChange={(e) => setSeason(Number(e.target.value))}
                   className="ui-input ui-admin-input-season"
                 />
+                <select
+                  value={runTypeFilter}
+                  onChange={(e) => setRunTypeFilter(e.target.value as RunTypeFilter)}
+                  className="ui-input"
+                  style={{ minWidth: 210 }}
+                >
+                  <option value="all">All run types</option>
+                  <option value="active">Active round check</option>
+                  <option value="full">Full parse</option>
+                </select>
                 <UiButton
                   disabled={loading}
                   onClick={() => void refreshLogs()}

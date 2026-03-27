@@ -1187,6 +1187,20 @@ export default function LeaderboardPage() {
     });
   }, [scopedRows, scopedTrendSeries]);
 
+  useEffect(() => {
+    if (viewMode !== "groups") return;
+    if (!selectedGroupId) return;
+    const groupUserIds = scopedTrendSeries.map((series) => series.user_id);
+    if (groupUserIds.length === 0) return;
+
+    setSelectedTrendUserIds((prev) => {
+      if (prev.length === groupUserIds.length && prev.every((userId) => groupUserIds.includes(userId))) {
+        return prev;
+      }
+      return groupUserIds;
+    });
+  }, [viewMode, selectedGroupId, scopedTrendSeries]);
+
   function onSort(nextKey: SortKey) {
     if (sortBy === nextKey) {
       setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));

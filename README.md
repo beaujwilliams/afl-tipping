@@ -37,16 +37,19 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 
 ## Scheduled Pre-lock Reminders
 
-This repo includes a GitHub Actions workflow at `.github/workflows/prelock-reminders.yml` that runs every 30 minutes and calls:
+Pre-lock reminders are scheduled via Vercel Cron:
+
+- `*/30 * * * *` -> `/api/cron/prelock-reminders-30m`
+
+The cron endpoint forwards to:
 
 `/api/admin/send-prelock-reminders?season=2026&hours_before_lock=3&window_minutes=30`
 
-The endpoint only sends to members who have not tipped, and deduplicates sends per user/round.
+The reminder route only sends to members who have not tipped, and deduplicates sends per user/round.
 
-Required GitHub settings:
+Required Vercel setting:
 
-- Secret: `CRON_SECRET` (must match production `CRON_SECRET`)
-- Optional repository variable: `SITE_URL` (defaults to `https://www.complicatedtips.com`)
+- Environment variable: `CRON_SECRET` (must match production `CRON_SECRET`)
 
 ## Scheduled Odds Snapshot
 
@@ -63,12 +66,15 @@ Required GitHub settings:
 
 ## Scheduled Scoring Sync + Leaderboard Refresh
 
-This repo includes two GitHub Actions workflows:
+Scoring automation is scheduled via Vercel Cron:
 
-- `.github/workflows/scoring-sync-15m.yml` runs every 15 minutes and calls:
-  - `/api/admin/run-scoring-automation?season=2026&scope=active&job_kind=scoring_15m`
-- `.github/workflows/scoring-sync-daily-full.yml` runs once daily and calls:
-  - `/api/admin/run-scoring-automation?season=2026&scope=full&job_kind=scoring_daily_full`
+- `*/15 * * * *` -> `/api/cron/scoring-15m`
+- `16 16 * * *` -> `/api/cron/scoring-daily-full` (daily full-season safety pass)
+
+The cron endpoints forward to:
+
+- `/api/admin/run-scoring-automation?season=2026&scope=active&job_kind=scoring_15m`
+- `/api/admin/run-scoring-automation?season=2026&scope=full&job_kind=scoring_daily_full`
 
 Behavior:
 
@@ -76,10 +82,9 @@ Behavior:
 - Full run scope is a safety pass across the season.
 - Leaderboard recalc only runs when `sync-results.updated > 0`.
 
-Required GitHub settings:
+Required Vercel setting:
 
-- Secret: `CRON_SECRET` (must match production `CRON_SECRET`)
-- Optional repository variable: `SITE_URL` (defaults to `https://www.complicatedtips.com`)
+- Environment variable: `CRON_SECRET` (must match production `CRON_SECRET`)
 
 ## Signup Freeze + Next Season Interest
 

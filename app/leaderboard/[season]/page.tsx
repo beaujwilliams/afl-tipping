@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { UnpaidTag } from "@/components/UnpaidTag";
 import { ChampionCrown } from "@/components/ChampionCrown";
-import { UiCard, UiTableCell, UiTableHeadCell, UiTableScroll, UiTableShell } from "@/components/ui";
+import { UiButton, UiCard, UiTableCell, UiTableHeadCell, UiTableScroll, UiTableShell } from "@/components/ui";
+import { leaderboardRankComparator } from "@/lib/scoring-lock-rules";
 
 type LeaderboardRow = {
   user_id: string;
@@ -50,6 +51,32 @@ type LeaderboardTrendSeries = {
   display_name: string;
   payment_status?: string | null;
   points: LeaderboardTrendPoint[];
+};
+
+type LeaderboardGroup = {
+  id: string;
+  name: string;
+  season: number;
+  created_at: string;
+  created_by_user_id: string;
+  created_by_display_name: string;
+  member_count: number;
+  member_user_ids: string[];
+  is_creator: boolean;
+};
+
+type GroupInvite = {
+  id: string;
+  group_id: string;
+  group_name: string;
+  invited_by_user_id: string;
+  invited_by_display_name: string;
+  created_at: string;
+};
+
+type MemberDirectoryEntry = {
+  user_id: string;
+  display_name: string;
 };
 
 type SortKey =
@@ -393,6 +420,8 @@ function TrendChart(props: {
 
 export default function LeaderboardPage() {
   const params = useParams<{ season: string }>();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const season = Number(params.season);
 
   const [rows, setRows] = useState<LeaderboardRow[]>([]);
@@ -406,6 +435,23 @@ export default function LeaderboardPage() {
   const [sortBy, setSortBy] = useState<SortKey>("total_points");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [isMobile, setIsMobile] = useState(false);
+  const [viewMode, setViewMode] = useState<"overall" | "groups">(() =>
+    searchParams.get("group") ? "groups" : "overall"
+  );
+  const [groups, setGroups] = useState<LeaderboardGroup[]>([]);
+  const [pendingInvites, setPendingInvites] = useState<GroupInvite[]>([]);
+  const [memberDirectory, setMemberDirectory] = useState<MemberDirectoryEntry[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [groupMsg, setGroupMsg] = useState("");
+  const [groupActionMsg, setGroupActionMsg] = useState("");
+  const [loadingGroups, setLoadingGroups] = useState(true);
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [selectedNewInviteUserIds, setSelectedNewInviteUserIds] = useState<string[]>([]);
+  const [submittingNewGroup, setSubmittingNewGroup] = useState(false);
+  const [selectedExistingInviteUserIds, setSelectedExistingInviteUserIds] = useState<string[]>([]);
+  const [sendingGroupInvites, setSendingGroupInvites] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   function applyLeaderboardData(json: LeaderboardResponse) {
     const nextRows = Array.isArray(json.rows) ? json.rows : [];
@@ -460,6 +506,224 @@ export default function LeaderboardPage() {
     });
   }
 
+  function applyGroupData(json: {
+    ok?: boolean;
+    groups?: LeaderboardGroup[];
+    pending_invites?: GroupInvite[];
+    member_directory?: MemberDirectoryEntry[];
+  }) {
+    const nextGroups = Array.isArray(json.groups) ? json.groups : [];
+    const nextInvites = Array.isArray(json.pending_invites) ? json.pending_invites : [];
+    const nextMemberDirectory = Array.isArray(json.member_directory)
+      ? json.member_directory
+      : [];
+
+    setGroups(nextGroups);
+    setPendingInvites(nextInvites);
+    setMemberDirectory(nextMemberDirectory);
+  }
+
+  async function loadGroups() {
+    setLoadingGroups(true);
+    setGroupActionMsg("");
+    try {
+      const { data: auth } = await supabaseBrowser.auth.getSession();
+      if (!auth.session) return;
+
+      const response = await fetch(`/api/leaderboard-groups?season=${encodeURIComponent(String(season))}`, {
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${auth.session.access_token}`,
+        },
+      });
+      const json = (await response.json().catch(() => null)) as
+        | {
+            ok?: boolean;
+            error?: string;
+            groups?: LeaderboardGroup[];
+            pending_invites?: GroupInvite[];
+            member_directory?: MemberDirectoryEntry[];
+          }
+        | null;
+
+      if (!response.ok || !json?.ok) {
+        setGroupMsg(json?.error || "Could not load private leaderboard groups.");
+        setGroups([]);
+        setPendingInvites([]);
+        setMemberDirectory([]);
+        return;
+      }
+
+      setGroupMsg("");
+      applyGroupData(json);
+    } catch {
+      setGroupMsg("Could not load private leaderboard groups.");
+      setGroups([]);
+      setPendingInvites([]);
+      setMemberDirectory([]);
+    } finally {
+      setLoadingGroups(false);
+    }
+  }
+
+  async function respondToInvite(inviteId: string, action: "accept" | "decline") {
+    setGroupActionMsg("");
+    try {
+      const { data: auth } = await supabaseBrowser.auth.getSession();
+      if (!auth.session) {
+        window.location.href = "/login";
+        return;
+      }
+      setCurrentUserId(auth.session.user.id);
+
+      const response = await fetch(`/api/leaderboard-group-invites/${encodeURIComponent(inviteId)}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${auth.session.access_token}`,
+        },
+        body: JSON.stringify({ action }),
+      });
+      const json = (await response.json().catch(() => null)) as
+        | { ok?: boolean; error?: string }
+        | null;
+
+      if (!response.ok || !json?.ok) {
+        setGroupActionMsg(json?.error || "Could not update invite.");
+        return;
+      }
+
+      if (action === "accept") {
+        setGroupActionMsg("Invite accepted.");
+      } else {
+        setGroupActionMsg("Invite declined.");
+      }
+
+      await loadGroups();
+    } catch {
+      setGroupActionMsg("Could not update invite.");
+    }
+  }
+
+  async function createGroup() {
+    const name = newGroupName.trim();
+    if (name.length < 2) {
+      setGroupActionMsg("Group name must be at least 2 characters.");
+      return;
+    }
+
+    setSubmittingNewGroup(true);
+    setGroupActionMsg("");
+    try {
+      const { data: auth } = await supabaseBrowser.auth.getSession();
+      if (!auth.session) {
+        window.location.href = "/login";
+        return;
+      }
+
+      const response = await fetch("/api/leaderboard-groups", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${auth.session.access_token}`,
+        },
+        body: JSON.stringify({
+          season,
+          name,
+          invite_user_ids: selectedNewInviteUserIds,
+        }),
+      });
+      const json = (await response.json().catch(() => null)) as
+        | { ok?: boolean; error?: string; group?: { id?: string } }
+        | null;
+
+      if (!response.ok || !json?.ok) {
+        setGroupActionMsg(json?.error || "Could not create group.");
+        return;
+      }
+
+      setNewGroupName("");
+      setSelectedNewInviteUserIds([]);
+      setCreatingGroup(false);
+      setGroupActionMsg("Group created.");
+
+      await loadGroups();
+      const nextGroupId = String(json.group?.id ?? "");
+      if (nextGroupId) {
+        setViewMode("groups");
+        setSelectedGroupId(nextGroupId);
+      }
+    } catch {
+      setGroupActionMsg("Could not create group.");
+    } finally {
+      setSubmittingNewGroup(false);
+    }
+  }
+
+  async function inviteToSelectedGroup() {
+    if (!selectedGroupId || selectedExistingInviteUserIds.length === 0) {
+      setGroupActionMsg("Select at least one member to invite.");
+      return;
+    }
+
+    setSendingGroupInvites(true);
+    setGroupActionMsg("");
+    try {
+      const { data: auth } = await supabaseBrowser.auth.getSession();
+      if (!auth.session) {
+        window.location.href = "/login";
+        return;
+      }
+
+      const response = await fetch(
+        `/api/leaderboard-groups/${encodeURIComponent(selectedGroupId)}/invites`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${auth.session.access_token}`,
+          },
+          body: JSON.stringify({
+            invite_user_ids: selectedExistingInviteUserIds,
+          }),
+        }
+      );
+      const json = (await response.json().catch(() => null)) as
+        | { ok?: boolean; error?: string; invited_count?: number }
+        | null;
+
+      if (!response.ok || !json?.ok) {
+        setGroupActionMsg(json?.error || "Could not send group invites.");
+        return;
+      }
+
+      const invitedCount = Number(json.invited_count ?? 0);
+      if (invitedCount > 0) {
+        setGroupActionMsg(`Sent ${invitedCount} invite${invitedCount === 1 ? "" : "s"}.`);
+      } else {
+        setGroupActionMsg("No new invites were needed.");
+      }
+      setSelectedExistingInviteUserIds([]);
+      await loadGroups();
+    } catch {
+      setGroupActionMsg("Could not send group invites.");
+    } finally {
+      setSendingGroupInvites(false);
+    }
+  }
+
+  function toggleUserInList(
+    userId: string,
+    selected: string[],
+    setter: (value: string[]) => void
+  ) {
+    if (selected.includes(userId)) {
+      setter(selected.filter((id) => id !== userId));
+      return;
+    }
+    setter([...selected, userId]);
+  }
+
   useEffect(() => {
     (async () => {
       const cacheKey = `leaderboard_cache_v1_${season}`;
@@ -510,6 +774,47 @@ export default function LeaderboardPage() {
   }, [season]);
 
   useEffect(() => {
+    loadGroups();
+  }, [season]);
+
+  const currentGroupQuery = String(searchParams.get("group") ?? "").trim();
+
+  useEffect(() => {
+    if (loadingGroups) return;
+    if (viewMode !== "groups") return;
+
+    if (currentGroupQuery) {
+      const matched = groups.find((group) => group.id === currentGroupQuery);
+      if (matched) {
+        if (selectedGroupId !== matched.id) setSelectedGroupId(matched.id);
+        return;
+      }
+    }
+
+    setSelectedGroupId((prev) => {
+      if (prev && groups.some((group) => group.id === prev)) {
+        return prev;
+      }
+      return groups[0]?.id ?? null;
+    });
+  }, [currentGroupQuery, groups, loadingGroups, selectedGroupId, viewMode]);
+
+  useEffect(() => {
+    const expectedQuery =
+      viewMode === "groups" && selectedGroupId
+        ? `group=${encodeURIComponent(selectedGroupId)}`
+        : "";
+    const currentQuery = currentGroupQuery ? `group=${encodeURIComponent(currentGroupQuery)}` : "";
+    if (expectedQuery === currentQuery) return;
+
+    const nextUrl =
+      expectedQuery.length > 0
+        ? `/leaderboard/${season}?${expectedQuery}`
+        : `/leaderboard/${season}`;
+    router.replace(nextUrl, { scroll: false });
+  }, [currentGroupQuery, router, season, selectedGroupId, viewMode]);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
 
     const media = window.matchMedia("(max-width: 640px)");
@@ -527,10 +832,56 @@ export default function LeaderboardPage() {
 
   const activeSortBy: SortKey = sortBy;
   const activeSortDirection: SortDirection = sortDirection;
-  const rankByUserId = useMemo(
-    () => new Map(rows.map((row) => [row.user_id, row.rank])),
-    [rows]
+  const selectedGroup = useMemo(
+    () => groups.find((group) => group.id === selectedGroupId) ?? null,
+    [groups, selectedGroupId]
   );
+  const selectedGroupUserIdSet = useMemo(
+    () => new Set(selectedGroup?.member_user_ids ?? []),
+    [selectedGroup]
+  );
+  const scopedRows = useMemo(() => {
+    if (viewMode !== "groups") return rows;
+    if (!selectedGroup) return [] as LeaderboardRow[];
+    return rows.filter((row) => selectedGroupUserIdSet.has(row.user_id));
+  }, [rows, selectedGroup, selectedGroupUserIdSet, viewMode]);
+  const scopeRankMetaByUserId = useMemo(() => {
+    const ranked = [...scopedRows].sort((a, b) =>
+      leaderboardRankComparator(
+        {
+          total_points: a.total_points,
+          accuracy_pct: a.accuracy_pct,
+          correct_tips: a.correct_tips,
+          display_name: a.display_name,
+        },
+        {
+          total_points: b.total_points,
+          accuracy_pct: b.accuracy_pct,
+          correct_tips: b.correct_tips,
+          display_name: b.display_name,
+        }
+      )
+    );
+
+    const leaderPoints = ranked.length ? Number(ranked[0].total_points) : 0;
+    const byUserId = new Map<string, { rank: number; behind: number }>();
+    ranked.forEach((row, index) => {
+      byUserId.set(row.user_id, {
+        rank: index + 1,
+        behind: Math.max(0, leaderPoints - Number(row.total_points ?? 0)),
+      });
+    });
+    return byUserId;
+  }, [scopedRows]);
+
+  const rankByUserId = useMemo(() => {
+    return new Map(
+      scopedRows.map((row) => [
+        row.user_id,
+        scopeRankMetaByUserId.get(row.user_id)?.rank ?? row.rank,
+      ])
+    );
+  }, [scopeRankMetaByUserId, scopedRows]);
 
   const rankColWidth = isMobile ? 56 : 68;
   const tipsterColWidth = isMobile ? 148 : 188;
@@ -555,7 +906,17 @@ export default function LeaderboardPage() {
   }
 
   const sortedRows = useMemo(() => {
-    const list = [...rows];
+    const list = [...scopedRows];
+
+    function scopedNumericValue(row: LeaderboardRow, key: NumericSortKey) {
+      if (key === "rank") {
+        return scopeRankMetaByUserId.get(row.user_id)?.rank ?? row.rank;
+      }
+      if (key === "behind_leader") {
+        return scopeRankMetaByUserId.get(row.user_id)?.behind ?? row.behind_leader;
+      }
+      return numericSortValue(row, key);
+    }
 
     list.sort((a, b) => {
       let primaryCmp = 0;
@@ -563,7 +924,7 @@ export default function LeaderboardPage() {
       if (activeSortBy === "display_name") {
         primaryCmp = a.display_name.localeCompare(b.display_name, "en", { sensitivity: "base" });
       } else {
-        primaryCmp = numericSortValue(a, activeSortBy) - numericSortValue(b, activeSortBy);
+        primaryCmp = scopedNumericValue(a, activeSortBy) - scopedNumericValue(b, activeSortBy);
       }
 
       const directionalPrimary = activeSortDirection === "asc" ? primaryCmp : -primaryCmp;
@@ -571,8 +932,10 @@ export default function LeaderboardPage() {
         return directionalPrimary;
       }
 
-      // Keep season rank as a stable reference when values tie.
-      const rankTieBreak = a.rank - b.rank;
+      // Keep scope rank as a stable reference when values tie.
+      const rankTieBreak =
+        (scopeRankMetaByUserId.get(a.user_id)?.rank ?? a.rank) -
+        (scopeRankMetaByUserId.get(b.user_id)?.rank ?? b.rank);
       if (rankTieBreak !== 0) {
         return rankTieBreak;
       }
@@ -581,27 +944,45 @@ export default function LeaderboardPage() {
     });
 
     return list;
-  }, [rows, activeSortBy, activeSortDirection]);
+  }, [activeSortBy, activeSortDirection, scopedRows, scopeRankMetaByUserId]);
+
+  const scopedTrendSeries = useMemo(() => {
+    if (viewMode !== "groups") return trendSeries;
+    if (!selectedGroup) return [] as LeaderboardTrendSeries[];
+    return trendSeries.filter((series) => selectedGroupUserIdSet.has(series.user_id));
+  }, [selectedGroup, selectedGroupUserIdSet, trendSeries, viewMode]);
 
   const filteredTrendOptions = useMemo(() => {
     const query = trendSearch.trim().toLowerCase();
     const list = query
-      ? trendSeries.filter((series) => series.display_name.toLowerCase().includes(query))
-      : trendSeries;
+      ? scopedTrendSeries.filter((series) => series.display_name.toLowerCase().includes(query))
+      : scopedTrendSeries;
     return [...list].sort((a, b) => {
       const rankA = rankByUserId.get(a.user_id) ?? Number.MAX_SAFE_INTEGER;
       const rankB = rankByUserId.get(b.user_id) ?? Number.MAX_SAFE_INTEGER;
       if (rankA !== rankB) return rankA - rankB;
       return a.display_name.localeCompare(b.display_name, "en", { sensitivity: "base" });
     });
-  }, [trendSeries, trendSearch, rankByUserId]);
+  }, [scopedTrendSeries, trendSearch, rankByUserId]);
 
   const selectedTrendSeries = useMemo(() => {
-    const byUserId = new Map(trendSeries.map((series) => [series.user_id, series]));
+    const byUserId = new Map(scopedTrendSeries.map((series) => [series.user_id, series]));
     return selectedTrendUserIds
       .map((userId) => byUserId.get(userId))
       .filter((series): series is LeaderboardTrendSeries => Boolean(series));
-  }, [trendSeries, selectedTrendUserIds]);
+  }, [scopedTrendSeries, selectedTrendUserIds]);
+
+  useEffect(() => {
+    const validIds = new Set(scopedTrendSeries.map((series) => series.user_id));
+    setSelectedTrendUserIds((prev) => {
+      const kept = prev.filter((userId) => validIds.has(userId));
+      if (kept.length > 0) return kept;
+      return scopedRows
+        .slice(0, 5)
+        .map((row) => row.user_id)
+        .filter((userId) => validIds.has(userId));
+    });
+  }, [scopedRows, scopedTrendSeries]);
 
   function onSort(nextKey: SortKey) {
     if (sortBy === nextKey) {
@@ -627,8 +1008,8 @@ export default function LeaderboardPage() {
   }
 
   function selectTopTrendUsers(count: number) {
-    const validIds = new Set(trendSeries.map((series) => series.user_id));
-    const topIds = rows
+    const validIds = new Set(scopedTrendSeries.map((series) => series.user_id));
+    const topIds = scopedRows
       .slice(0, count)
       .map((row) => row.user_id)
       .filter((userId) => validIds.has(userId));
@@ -677,6 +1058,17 @@ export default function LeaderboardPage() {
     );
   }
 
+  const pendingInviteCount = pendingInvites.length;
+  const newGroupCandidateMembers = memberDirectory.filter(
+    (member) => member.user_id !== currentUserId
+  );
+  const selectedGroupMemberIds = new Set(selectedGroup?.member_user_ids ?? []);
+  const existingGroupInviteCandidates = memberDirectory.filter((member) => {
+    if (member.user_id === currentUserId) return false;
+    if (selectedGroupMemberIds.has(member.user_id)) return false;
+    return true;
+  });
+
   return (
     <main className="ui-page ui-page--wide">
       <h1 className="ui-title">Leaderboard • {season}</h1>
@@ -685,9 +1077,330 @@ export default function LeaderboardPage() {
 
       {!msg && (
         <>
+          <UiCard className="ui-mt-3">
+            <div style={{ padding: 16, display: "grid", gap: 12 }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 10,
+                  flexWrap: "wrap",
+                }}
+              >
+                <div style={{ display: "grid", gap: 4 }}>
+                  <h2 style={{ margin: 0, fontSize: 24, lineHeight: 1.1 }}>Leaderboard view</h2>
+                  <p className="ui-caption" style={{ margin: 0 }}>
+                    Switch between the full ladder and your private group boards.
+                  </p>
+                </div>
+
+                <div
+                  role="group"
+                  aria-label="Leaderboard mode"
+                  style={{
+                    display: "inline-flex",
+                    border: "1px solid var(--border)",
+                    borderRadius: 999,
+                    overflow: "hidden",
+                    background: "var(--card)",
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setViewMode("overall");
+                    }}
+                    style={{
+                      appearance: "none",
+                      border: "none",
+                      padding: "6px 12px",
+                      cursor: "pointer",
+                      fontSize: 13,
+                      fontWeight: 700,
+                      background: viewMode === "overall" ? "var(--foreground)" : "transparent",
+                      color: viewMode === "overall" ? "var(--background)" : "var(--foreground)",
+                    }}
+                    aria-pressed={viewMode === "overall"}
+                  >
+                    Overall
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setViewMode("groups");
+                      if (!selectedGroupId && groups.length > 0) {
+                        setSelectedGroupId(groups[0].id);
+                      }
+                    }}
+                    style={{
+                      appearance: "none",
+                      border: "none",
+                      padding: "6px 12px",
+                      cursor: "pointer",
+                      fontSize: 13,
+                      fontWeight: 700,
+                      background: viewMode === "groups" ? "var(--foreground)" : "transparent",
+                      color: viewMode === "groups" ? "var(--background)" : "var(--foreground)",
+                    }}
+                    aria-pressed={viewMode === "groups"}
+                  >
+                    My Groups
+                  </button>
+                </div>
+              </div>
+
+              {loadingGroups && (
+                <p className="ui-caption" style={{ margin: 0 }}>
+                  Loading private groups...
+                </p>
+              )}
+              {!loadingGroups && groupMsg && (
+                <p className="ui-caption" style={{ margin: 0, color: "rgb(185,28,28)" }}>
+                  {groupMsg}
+                </p>
+              )}
+              {!loadingGroups && groupActionMsg && (
+                <p className="ui-caption" style={{ margin: 0 }}>
+                  {groupActionMsg}
+                </p>
+              )}
+
+              {pendingInviteCount > 0 && (
+                <div
+                  style={{
+                    border: "1px solid var(--border)",
+                    borderRadius: 12,
+                    padding: 12,
+                    display: "grid",
+                    gap: 8,
+                    background: "var(--card)",
+                  }}
+                >
+                  <div className="ui-row-between">
+                    <strong>You have {pendingInviteCount} group invite{pendingInviteCount === 1 ? "" : "s"}</strong>
+                    <span className="ui-caption">Handle invites to clear the badge.</span>
+                  </div>
+                  {pendingInvites.map((invite) => (
+                    <div
+                      key={invite.id}
+                      style={{
+                        borderTop: "1px solid var(--border)",
+                        paddingTop: 8,
+                        display: "grid",
+                        gap: 6,
+                      }}
+                    >
+                      <div style={{ fontWeight: 700 }}>{invite.group_name}</div>
+                      <div className="ui-caption">
+                        Invited by {invite.invited_by_display_name}
+                      </div>
+                      <div className="ui-row-wrap">
+                        <UiButton
+                          pill
+                          onClick={() => respondToInvite(invite.id, "accept")}
+                        >
+                          Accept
+                        </UiButton>
+                        <UiButton
+                          pill
+                          onClick={() => respondToInvite(invite.id, "decline")}
+                        >
+                          Decline
+                        </UiButton>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {viewMode === "groups" && (
+                <div style={{ display: "grid", gap: 10 }}>
+                  <div className="ui-row-between">
+                    <strong>My private groups</strong>
+                    <UiButton
+                      pill
+                      onClick={() => setCreatingGroup((prev) => !prev)}
+                    >
+                      {creatingGroup ? "Cancel" : "Create group"}
+                    </UiButton>
+                  </div>
+
+                  {groups.length === 0 ? (
+                    <p className="ui-caption" style={{ margin: 0 }}>
+                      You are not in any private groups yet. Create one to start a friends-only board.
+                    </p>
+                  ) : (
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: 6,
+                        gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))",
+                      }}
+                    >
+                      {groups.map((group) => {
+                        const selected = selectedGroupId === group.id;
+                        return (
+                          <button
+                            key={group.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedGroupId(group.id);
+                              setViewMode("groups");
+                            }}
+                            style={{
+                              textAlign: "left",
+                              border: "1px solid var(--border)",
+                              borderRadius: 12,
+                              padding: 10,
+                              background: selected ? "var(--card-soft)" : "var(--card)",
+                              cursor: "pointer",
+                              display: "grid",
+                              gap: 3,
+                            }}
+                          >
+                            <span style={{ fontWeight: 800 }}>{group.name}</span>
+                            <span className="ui-caption">
+                              {group.member_count} members
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {creatingGroup && (
+                    <div
+                      style={{
+                        border: "1px solid var(--border)",
+                        borderRadius: 12,
+                        padding: 12,
+                        display: "grid",
+                        gap: 8,
+                        background: "var(--card)",
+                      }}
+                    >
+                      <strong>Create a private group</strong>
+                      <input
+                        className="ui-input"
+                        placeholder="Group name"
+                        value={newGroupName}
+                        onChange={(event) => setNewGroupName(event.target.value)}
+                        maxLength={80}
+                      />
+                      <p className="ui-caption" style={{ margin: 0 }}>
+                        Invite members (optional)
+                      </p>
+                      <div
+                        style={{
+                          border: "1px solid var(--border)",
+                          borderRadius: 10,
+                          maxHeight: 180,
+                          overflow: "auto",
+                          padding: 8,
+                          display: "grid",
+                          gap: 6,
+                        }}
+                      >
+                        {newGroupCandidateMembers.map((member) => (
+                          <label
+                            key={`new-group-member-${member.user_id}`}
+                            style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedNewInviteUserIds.includes(member.user_id)}
+                              onChange={() =>
+                                toggleUserInList(
+                                  member.user_id,
+                                  selectedNewInviteUserIds,
+                                  setSelectedNewInviteUserIds
+                                )
+                              }
+                            />
+                            <span>{member.display_name}</span>
+                          </label>
+                        ))}
+                        {newGroupCandidateMembers.length === 0 && (
+                          <span className="ui-caption">No members available to invite.</span>
+                        )}
+                      </div>
+                      <div className="ui-row-wrap">
+                        <UiButton pill onClick={createGroup} disabled={submittingNewGroup}>
+                          {submittingNewGroup ? "Creating..." : "Create group"}
+                        </UiButton>
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedGroup && (
+                    <div
+                      style={{
+                        border: "1px solid var(--border)",
+                        borderRadius: 12,
+                        padding: 12,
+                        display: "grid",
+                        gap: 8,
+                      }}
+                    >
+                      <strong>Invite members to {selectedGroup.name}</strong>
+                      <div
+                        style={{
+                          border: "1px solid var(--border)",
+                          borderRadius: 10,
+                          maxHeight: 150,
+                          overflow: "auto",
+                          padding: 8,
+                          display: "grid",
+                          gap: 6,
+                        }}
+                      >
+                        {existingGroupInviteCandidates.map((member) => (
+                          <label
+                            key={`existing-group-member-${member.user_id}`}
+                            style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedExistingInviteUserIds.includes(member.user_id)}
+                              onChange={() =>
+                                toggleUserInList(
+                                  member.user_id,
+                                  selectedExistingInviteUserIds,
+                                  setSelectedExistingInviteUserIds
+                                )
+                              }
+                            />
+                            <span>{member.display_name}</span>
+                          </label>
+                        ))}
+                        {existingGroupInviteCandidates.length === 0 && (
+                          <span className="ui-caption">No additional members available.</span>
+                        )}
+                      </div>
+                      <div className="ui-row-wrap">
+                        <UiButton
+                          pill
+                          onClick={inviteToSelectedGroup}
+                          disabled={sendingGroupInvites}
+                        >
+                          {sendingGroupInvites ? "Sending..." : "Send invites"}
+                        </UiButton>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </UiCard>
+
           <UiTableShell className="ui-mt-3">
-            {rows.length === 0 ? (
-              <div style={{ padding: 16 }} className="ui-caption">No leaderboard data yet.</div>
+            {scopedRows.length === 0 ? (
+              <div style={{ padding: 16 }} className="ui-caption">
+                {viewMode === "groups"
+                  ? "Select a group to view its leaderboard."
+                  : "No leaderboard data yet."}
+              </div>
             ) : (
               <UiTableScroll>
                 <table className={`ui-table ${isMobile ? "ui-table--compact" : ""}`} style={{ minWidth: tableMinWidth }}>
@@ -706,77 +1419,82 @@ export default function LeaderboardPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {sortedRows.map((r) => (
-                      <tr key={r.user_id}>
-                        <UiTableCell
-                          style={{
-                            fontWeight: 900,
-                            ...stickyColumnStyle(1, false),
-                          }}
-                        >
-                          #{r.rank}
-                        </UiTableCell>
-                        <UiTableCell
-                          style={{
-                            fontWeight: 700,
-                            ...stickyColumnStyle(2, false),
-                          }}
-                          title={
-                            r.payment_status === "pending"
-                              ? `${r.display_name} (unpaid)`
-                              : r.display_name
-                          }
-                        >
-                          <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                            <UnpaidTag paymentStatus={r.payment_status ?? null} compact={isMobile} />
-                            <span
-                              style={{
-                                minWidth: 0,
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                                display: "block",
-                              }}
-                            >
-                              {r.display_name}
+                    {sortedRows.map((r) => {
+                      const scopedRank = scopeRankMetaByUserId.get(r.user_id)?.rank ?? r.rank;
+                      const scopedBehind =
+                        scopeRankMetaByUserId.get(r.user_id)?.behind ?? r.behind_leader;
+                      return (
+                        <tr key={r.user_id}>
+                          <UiTableCell
+                            style={{
+                              fontWeight: 900,
+                              ...stickyColumnStyle(1, false),
+                            }}
+                          >
+                            #{scopedRank}
+                          </UiTableCell>
+                          <UiTableCell
+                            style={{
+                              fontWeight: 700,
+                              ...stickyColumnStyle(2, false),
+                            }}
+                            title={
+                              r.payment_status === "pending"
+                                ? `${r.display_name} (unpaid)`
+                                : r.display_name
+                            }
+                          >
+                            <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                              <UnpaidTag paymentStatus={r.payment_status ?? null} compact={isMobile} />
+                              <span
+                                style={{
+                                  minWidth: 0,
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                  display: "block",
+                                }}
+                              >
+                                {r.display_name}
+                              </span>
+                              <ChampionCrown isChampion={r.user_id === reigningChampionUserId} />
                             </span>
-                            <ChampionCrown isChampion={r.user_id === reigningChampionUserId} />
-                          </span>
-                        </UiTableCell>
-                        <UiTableCell style={{ fontWeight: 800, width: 92, minWidth: 92 }}>
-                          {fmtPts(r.total_points)}
-                        </UiTableCell>
-                        <UiTableCell style={{ width: 84, minWidth: 84 }}>
-                          {r.behind_leader <= 0 ? "-" : fmtPts(r.behind_leader)}
-                        </UiTableCell>
-                        <UiTableCell
-                          style={{
-                            width: 74,
-                            minWidth: 74,
-                            color: movementColor(r.movement),
-                            fontWeight: 800,
-                          }}
-                          title={r.previous_rank ? `Previously #${r.previous_rank}` : "No previous round baseline"}
-                        >
-                          {movementText(r.movement)}
-                        </UiTableCell>
-                        <UiTableCell style={{ width: 90, minWidth: 90 }}>
-                          {fmtPct(r.accuracy_pct)}
-                        </UiTableCell>
-                        <UiTableCell style={{ width: 68, minWidth: 68 }}>
-                          {r.current_streak}
-                        </UiTableCell>
-                        <UiTableCell style={{ width: 88, minWidth: 88 }}>
-                          {fmtPts(r.avg_winning_odds)}
-                        </UiTableCell>
-                        <UiTableCell style={{ width: 72, minWidth: 72 }}>
-                          {r.correct_tips}
-                        </UiTableCell>
-                        <UiTableCell style={{ fontWeight: 700, width: 112, minWidth: 112 }}>
-                          {fmtPts(r.round_score)}
-                        </UiTableCell>
-                      </tr>
-                    ))}
+                          </UiTableCell>
+                          <UiTableCell style={{ fontWeight: 800, width: 92, minWidth: 92 }}>
+                            {fmtPts(r.total_points)}
+                          </UiTableCell>
+                          <UiTableCell style={{ width: 84, minWidth: 84 }}>
+                            {scopedBehind <= 0 ? "-" : fmtPts(scopedBehind)}
+                          </UiTableCell>
+                          <UiTableCell
+                            style={{
+                              width: 74,
+                              minWidth: 74,
+                              color: movementColor(r.movement),
+                              fontWeight: 800,
+                            }}
+                            title={r.previous_rank ? `Previously #${r.previous_rank}` : "No previous round baseline"}
+                          >
+                            {movementText(r.movement)}
+                          </UiTableCell>
+                          <UiTableCell style={{ width: 90, minWidth: 90 }}>
+                            {fmtPct(r.accuracy_pct)}
+                          </UiTableCell>
+                          <UiTableCell style={{ width: 68, minWidth: 68 }}>
+                            {r.current_streak}
+                          </UiTableCell>
+                          <UiTableCell style={{ width: 88, minWidth: 88 }}>
+                            {fmtPts(r.avg_winning_odds)}
+                          </UiTableCell>
+                          <UiTableCell style={{ width: 72, minWidth: 72 }}>
+                            {r.correct_tips}
+                          </UiTableCell>
+                          <UiTableCell style={{ fontWeight: 700, width: 112, minWidth: 112 }}>
+                            {fmtPts(r.round_score)}
+                          </UiTableCell>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </UiTableScroll>
@@ -838,7 +1556,7 @@ export default function LeaderboardPage() {
                 </div>
               </div>
 
-              {trendSeries.length === 0 || trendRounds.length === 0 ? (
+              {scopedTrendSeries.length === 0 || trendRounds.length === 0 ? (
                 <p className="ui-caption" style={{ margin: 0 }}>
                   Trend data appears after rounds are scored.
                 </p>
@@ -847,7 +1565,7 @@ export default function LeaderboardPage() {
                   <TrendChart
                     rounds={trendRounds}
                     selectedSeries={selectedTrendSeries}
-                    totalParticipants={rows.length}
+                    totalParticipants={Math.max(1, scopedRows.length)}
                     metric={trendMetric}
                   />
 
@@ -938,7 +1656,7 @@ export default function LeaderboardPage() {
                       <button
                         type="button"
                         onClick={() =>
-                          setSelectedTrendUserIds(trendSeries.map((series) => series.user_id))
+                          setSelectedTrendUserIds(scopedTrendSeries.map((series) => series.user_id))
                         }
                         style={{
                           border: "1px solid var(--border)",

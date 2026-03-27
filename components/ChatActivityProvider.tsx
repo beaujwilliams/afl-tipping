@@ -14,6 +14,7 @@ type ChatActivityContextValue = {
   unreadChat: number;
   unreadMentions: number;
   unreadAnnouncements: number;
+  unreadLeaderboardInvites: number;
 };
 
 const ChatActivityContext = createContext<ChatActivityContextValue | null>(null);
@@ -57,6 +58,7 @@ export function ChatActivityProvider({
   const [unreadChat, setUnreadChat] = useState(0);
   const [unreadMentions, setUnreadMentions] = useState(0);
   const [unreadAnnouncements, setUnreadAnnouncements] = useState(0);
+  const [unreadLeaderboardInvites, setUnreadLeaderboardInvites] = useState(0);
   const [authTick, setAuthTick] = useState(0);
 
   useEffect(() => {
@@ -76,6 +78,7 @@ export function ChatActivityProvider({
         setUnreadChat(0);
         setUnreadMentions(0);
         setUnreadAnnouncements(0);
+        setUnreadLeaderboardInvites(0);
         return;
       }
 
@@ -115,21 +118,42 @@ export function ChatActivityProvider({
         });
         const announcementsJson = (await announcementsRes
           .json()
-          .catch(() => null)) as { ok?: boolean; rows?: Array<{ published_at_utc?: string | null; created_at?: string | null }> } | null;
+          .catch(() => null)) as {
+          ok?: boolean;
+          rows?: Array<{ published_at_utc?: string | null; created_at?: string | null }>;
+        } | null;
 
         if (!announcementsRes.ok || !announcementsJson?.ok || !Array.isArray(announcementsJson.rows)) {
           setUnreadAnnouncements(0);
-          return;
+        } else {
+          let unread = 0;
+          announcementsJson.rows.forEach((row) => {
+            const ts = new Date(String(row.published_at_utc ?? row.created_at ?? "")).getTime();
+            if (Number.isFinite(ts) && ts > lastAnnouncementsSeenMs) unread += 1;
+          });
+          setUnreadAnnouncements(unread);
         }
-
-        let unread = 0;
-        announcementsJson.rows.forEach((row) => {
-          const ts = new Date(String(row.published_at_utc ?? row.created_at ?? "")).getTime();
-          if (Number.isFinite(ts) && ts > lastAnnouncementsSeenMs) unread += 1;
-        });
-        setUnreadAnnouncements(unread);
       } catch {
         setUnreadAnnouncements(0);
+      }
+
+      try {
+        const invitesRes = await fetch("/api/leaderboard-group-invites", {
+          cache: "no-store",
+          headers: {
+            Authorization: `Bearer ${data.session.access_token}`,
+          },
+        });
+        const invitesJson = (await invitesRes.json().catch(() => null)) as
+          | { ok?: boolean; pending_count?: number }
+          | null;
+        if (!invitesRes.ok || !invitesJson?.ok) {
+          setUnreadLeaderboardInvites(0);
+        } else {
+          setUnreadLeaderboardInvites(Number(invitesJson.pending_count ?? 0));
+        }
+      } catch {
+        setUnreadLeaderboardInvites(0);
       }
     }
 
@@ -158,8 +182,16 @@ export function ChatActivityProvider({
       unreadChat: viewingChat ? 0 : unreadChat,
       unreadMentions: viewingChat ? 0 : unreadMentions,
       unreadAnnouncements: viewingAnnouncements ? 0 : unreadAnnouncements,
+      unreadLeaderboardInvites,
     }),
-    [unreadChat, unreadMentions, unreadAnnouncements, viewingChat, viewingAnnouncements]
+    [
+      unreadChat,
+      unreadMentions,
+      unreadAnnouncements,
+      unreadLeaderboardInvites,
+      viewingChat,
+      viewingAnnouncements,
+    ]
   );
 
   return <ChatActivityContext.Provider value={value}>{children}</ChatActivityContext.Provider>;

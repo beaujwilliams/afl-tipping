@@ -74,23 +74,23 @@ function TopLink({
   href,
   label,
   pathname,
-  unreadChat,
-  unreadMentions,
+  badges = [],
 }: {
   href: string;
   label: string;
   pathname: string;
-  unreadChat: number;
-  unreadMentions: number;
+  badges?: Array<{ value: string | number; tone?: "danger" | "warning" }>;
 }) {
   const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
-  const isChat = href === "/chat";
 
   return (
     <Link href={href} style={pillStyles({ active })}>
       {label}
-      {isChat && unreadChat > 0 && <CountBadge value={unreadChat} />}
-      {isChat && unreadMentions > 0 && <CountBadge value={`@${unreadMentions}`} tone="warning" />}
+      {badges.map((badge, index) => (
+        <span key={`${href}-badge-${index}`}>
+          <CountBadge value={badge.value} tone={badge.tone ?? "danger"} />
+        </span>
+      ))}
     </Link>
   );
 }
@@ -181,7 +181,8 @@ export default function AppLayoutChrome({ children }: { children: React.ReactNod
   const [openMenu, setOpenMenu] = useState<MenuKey | null>(null);
   const navRef = useRef<HTMLDivElement | null>(null);
   const hoverCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { unreadChat, unreadMentions, unreadAnnouncements } = useChatActivity();
+  const { unreadChat, unreadMentions, unreadAnnouncements, unreadLeaderboardInvites } =
+    useChatActivity();
 
   useEffect(() => {
     let mounted = true;
@@ -409,22 +410,27 @@ export default function AppLayoutChrome({ children }: { children: React.ReactNod
                   href="/leaderboard/2026"
                   label="Leaderboard"
                   pathname={pathname}
-                  unreadChat={unreadChat}
-                  unreadMentions={unreadMentions}
+                  badges={
+                    unreadLeaderboardInvites > 0
+                      ? [{ value: unreadLeaderboardInvites }]
+                      : []
+                  }
                 />
                 <TopLink
                   href="/chat"
                   label="Chat"
                   pathname={pathname}
-                  unreadChat={unreadChat}
-                  unreadMentions={unreadMentions}
+                  badges={[
+                    ...(unreadChat > 0 ? [{ value: unreadChat }] : []),
+                    ...(unreadMentions > 0
+                      ? [{ value: `@${unreadMentions}`, tone: "warning" as const }]
+                      : []),
+                  ]}
                 />
                 <TopLink
                   href={profileHref}
                   label={profileLabel}
                   pathname={pathname}
-                  unreadChat={unreadChat}
-                  unreadMentions={unreadMentions}
                 />
 
                 <div

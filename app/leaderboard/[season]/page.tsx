@@ -1094,7 +1094,7 @@ export default function LeaderboardPage() {
   return (
     <main className="ui-page ui-page--wide">
       <div className="ui-page-header">
-        <h1 className="ui-title">Leaderboard • {season}</h1>
+        <h1 className="ui-title">Leaderboard {season}</h1>
         <div
           role="group"
           aria-label="Leaderboard mode"

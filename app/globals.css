@@ -652,6 +652,18 @@ button {
   list-style: none;
 }
 
+.ui-admin-details:not([open]) {
+  display: flex;
+  align-items: center;
+}
+
+.ui-admin-details:not([open]) .ui-admin-details-summary {
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+
 .ui-admin-details-summary::-webkit-details-marker {
   display: none;
 }

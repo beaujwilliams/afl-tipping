@@ -39,7 +39,7 @@ export async function GET(req: Request) {
     const limit = Number.isFinite(limitParam)
       ? Math.max(1, Math.min(100, Math.trunc(limitParam)))
       : 25;
-    const jobKind = String(url.searchParams.get("job_kind") ?? "scoring_15m")
+    const jobKind = String(url.searchParams.get("job_kind") ?? "")
       .trim()
       .toLowerCase();
 

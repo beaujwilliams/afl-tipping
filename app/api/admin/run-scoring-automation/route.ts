@@ -155,6 +155,33 @@ export async function GET(req: Request) {
       }
     }
 
+    // Retention cleanup runs only on the once-daily full pass.
+    const shouldRunLogCleanup = jobKind === "scoring_daily_full";
+    const cleanupRetentionHours = 72;
+    const cleanupCutoffUtc = new Date(
+      Date.now() - cleanupRetentionHours * 60 * 60 * 1000
+    ).toISOString();
+    let logCleanupDeleted: number | null = null;
+    let logCleanupError: string | null = null;
+
+    if (shouldRunLogCleanup) {
+      const cleanup = await supabase
+        .from("scoring_automation_runs")
+        .delete({ count: "exact" })
+        .eq("competition_id", competitionId)
+        .lt("started_at_utc", cleanupCutoffUtc);
+
+      if (cleanup.error) {
+        logCleanupError = cleanup.error.message;
+        if (isMissingRelationError(cleanup.error.message, "scoring_automation_runs")) {
+          logCleanupError =
+            `${cleanup.error.message} (hint: apply migration db/migrations/20260327_scoring_automation_runs.sql)`;
+        }
+      } else if (typeof cleanup.count === "number") {
+        logCleanupDeleted = cleanup.count;
+      }
+    }
+
     return NextResponse.json({
       ok: runStatus === "success",
       season,
@@ -167,6 +194,13 @@ export async function GET(req: Request) {
       steps: details,
       log_saved: !logInsertError,
       log_error: logInsertError,
+      log_cleanup: {
+        ran: shouldRunLogCleanup,
+        retention_hours: cleanupRetentionHours,
+        cutoff_utc: shouldRunLogCleanup ? cleanupCutoffUtc : null,
+        deleted: logCleanupDeleted,
+        error: logCleanupError,
+      },
       started_at_utc: startedAtUtc,
       finished_at_utc: finishedAtUtc,
     });

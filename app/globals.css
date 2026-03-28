@@ -708,6 +708,28 @@ button {
   min-width: 0;
 }
 
+.ui-scoring-log-table {
+  min-width: 760px;
+}
+
+.ui-scoring-log-table th,
+.ui-scoring-log-table td {
+  padding: 6px 8px !important;
+  font-size: 12px;
+  line-height: 1.2;
+  vertical-align: top;
+}
+
+.ui-scoring-log-table th {
+  white-space: nowrap;
+}
+
+.ui-scoring-log-btn {
+  padding: 5px 10px;
+  min-height: 0;
+  font-size: 12px;
+}
+
 @media (max-width: 980px) {
   .ui-scoring-filter-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

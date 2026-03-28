@@ -272,7 +272,7 @@ export default function ScoringSyncLogPage() {
             ) : (
               <UiTableShell style={{ marginTop: 12 }}>
                 <UiTableScroll>
-                  <table className="ui-table ui-table--compact" style={{ minWidth: 980 }}>
+                  <table className="ui-table ui-table--compact ui-scoring-log-table">
                     <thead>
                       <tr className="ui-table-head-row">
                         <UiTableHeadCell>Date/Time</UiTableHeadCell>
@@ -305,7 +305,7 @@ export default function ScoringSyncLogPage() {
                                 onClick={() =>
                                   setOpenRunId((prev) => (prev === run.id ? null : run.id))
                                 }
-                                className="ui-admin-btn ui-admin-btn--compact"
+                                className="ui-admin-btn ui-admin-btn--compact ui-scoring-log-btn"
                               >
                                 {isOpen ? "Hide" : "View"}
                               </UiButton>

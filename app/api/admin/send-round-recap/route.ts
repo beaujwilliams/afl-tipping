@@ -1149,6 +1149,7 @@ export async function GET(req: Request) {
     const seasonBiggestUpsetsOtherRounds = seasonBiggestUpsetRows.filter(
       (x) => x.round_number !== roundNumber
     );
+    const topSeasonUpsets = topN(seasonUpsetRows, 5);
 
     const oneTipSwapRows = lbRows
       .map((r) => {
@@ -1405,6 +1406,18 @@ export async function GET(req: Request) {
       );
     } else {
       textLines.push("- Biggest upset-by-points check: unavailable.");
+    }
+    if (topSeasonUpsets.length > 0) {
+      textLines.push("- Top 5 biggest upsets so far (highest winning odds):");
+      topSeasonUpsets.forEach((x, idx) =>
+        textLines.push(
+          `  ${idx + 1}. Round ${x.round_number} - ${x.home_team} vs ${x.away_team} (${x.winner_team} ${fmt2(
+            Number(x.winner_odds)
+          )})`
+        )
+      );
+    } else {
+      textLines.push("- Top 5 biggest upsets so far: unavailable.");
     }
     textLines.push(
       `- ${fivePlusWinners} tipster${fivePlusWinners === 1 ? "" : "s"} hit 5+ winners; ${sixPlusWinners} hit 6+.`

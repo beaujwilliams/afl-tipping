@@ -181,6 +181,42 @@ function displayNameMentionAliases(displayName: string | null | undefined) {
   return Array.from(aliases).filter((alias) => alias.length >= 2 && alias.length <= 30);
 }
 
+function displayNameReadableAlias(displayName: string | null | undefined) {
+  const raw = String(displayName ?? "").trim();
+  if (!raw) return "";
+  const ascii = raw.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const parts = ascii.split(/[^A-Za-z0-9]+/).filter(Boolean);
+  if (!parts.length) return "";
+  return parts.join("_").slice(0, 30);
+}
+
+function pickPreferredMentionAlias(displayName: string, resolvableAliases: string[]) {
+  if (!resolvableAliases.length) return null;
+  const readable = displayNameReadableAlias(displayName);
+  const readableNormalized = normalizeMentionAliasToken(readable);
+  if (readableNormalized && resolvableAliases.includes(readableNormalized)) return readableNormalized;
+
+  const compact = normalizeMentionAliasToken(readable.replace(/_/g, ""));
+  if (compact && resolvableAliases.includes(compact)) return compact;
+
+  const withUnderscore = resolvableAliases.find((alias) => alias.includes("_"));
+  if (withUnderscore) return withUnderscore;
+  return resolvableAliases[0];
+}
+
+function readableAliasFromPreferred(displayName: string, preferredAlias: string) {
+  const readable = displayNameReadableAlias(displayName);
+  if (readable && normalizeMentionAliasToken(readable) === preferredAlias) return readable;
+  if (preferredAlias.includes("_")) {
+    return preferredAlias
+      .split("_")
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join("_");
+  }
+  return preferredAlias.charAt(0).toUpperCase() + preferredAlias.slice(1);
+}
+
 function bodyMentionsAnyAlias(text: string, aliases: Set<string>) {
   if (!aliases.size) return false;
   const found = extractMentionAliases(text);
@@ -211,9 +247,9 @@ function mentionCandidateScore(candidate: MentionCandidate, query: string) {
   const q = query.trim().toLowerCase();
   if (!q) return 0;
   const displayLower = candidate.displayName.toLowerCase();
-  if (candidate.insertAlias.startsWith(q)) return 1;
+  if (candidate.insertAlias.toLowerCase().startsWith(q)) return 1;
   if (displayLower.startsWith(q)) return 2;
-  if (candidate.username?.startsWith(q)) return 3;
+  if (candidate.username?.toLowerCase().startsWith(q)) return 3;
   if (candidate.searchValue.includes(q)) return 4;
   return -1;
 }
@@ -569,14 +605,17 @@ export default function ChatPage() {
 
     const candidateList: MentionCandidate[] = mentionRows
       .map((row) => {
-        const resolvedAlias = row.aliases.find((alias) => byAlias[alias] === row.userId);
-        if (!resolvedAlias) return null;
+        const resolvableAliases = row.aliases.filter((alias) => byAlias[alias] === row.userId);
+        const preferredAlias = pickPreferredMentionAlias(row.displayName, resolvableAliases);
+        if (!preferredAlias) return null;
         return {
           userId: row.userId,
           displayName: row.displayName,
           username: row.username,
-          insertAlias: resolvedAlias,
-          searchValue: `${row.displayName.toLowerCase()} ${row.aliases.join(" ")} ${row.username ?? ""}`.trim(),
+          insertAlias: readableAliasFromPreferred(row.displayName, preferredAlias),
+          searchValue: `${row.displayName.toLowerCase()} ${row.aliases.join(" ")} ${row.username ?? ""} ${preferredAlias}`
+            .trim()
+            .toLowerCase(),
         };
       })
       .filter((row): row is MentionCandidate => !!row)
@@ -875,14 +914,17 @@ export default function ChatPage() {
 
       const localCandidates: MentionCandidate[] = localMentionRows
         .map((row) => {
-          const resolvedAlias = row.aliases.find((alias) => localAliasMap[alias] === row.userId);
-          if (!resolvedAlias) return null;
+          const resolvableAliases = row.aliases.filter((alias) => localAliasMap[alias] === row.userId);
+          const preferredAlias = pickPreferredMentionAlias(row.displayName, resolvableAliases);
+          if (!preferredAlias) return null;
           return {
             userId: row.userId,
             displayName: row.displayName,
             username: row.username,
-            insertAlias: resolvedAlias,
-            searchValue: `${row.displayName.toLowerCase()} ${row.aliases.join(" ")} ${row.username ?? ""}`.trim(),
+            insertAlias: readableAliasFromPreferred(row.displayName, preferredAlias),
+            searchValue: `${row.displayName.toLowerCase()} ${row.aliases.join(" ")} ${row.username ?? ""} ${preferredAlias}`
+              .trim()
+              .toLowerCase(),
           };
         })
         .filter((row): row is MentionCandidate => !!row)
@@ -1387,7 +1429,7 @@ export default function ChatPage() {
           }}
         >
           <div style={{ fontSize: 12, opacity: 0.78 }}>
-            Mention people with @display-name or @username (for example @Jordan).
+            Mention people with their leaderboard name (for example @Jordan_Daley).
             {myUsername && ` Your username is @${myUsername}.`}
             {unreadMentionCountInView > 0 && (
               <span style={{ marginLeft: 8, color: "rgb(217, 119, 6)", fontWeight: 800 }}>
@@ -1795,7 +1837,7 @@ export default function ChatPage() {
             onClick={(e) => setComposerCursor(e.currentTarget.selectionStart ?? text.length)}
             onKeyUp={(e) => setComposerCursor(e.currentTarget.selectionStart ?? text.length)}
             maxLength={CHAT_MAX_CHARS}
-            placeholder="Say something… Use @display-name or @username to mention someone"
+            placeholder="Say something… Use @Leaderboard_Name to mention someone"
             style={{
               flex: 1,
               minHeight: 44,
@@ -1929,7 +1971,7 @@ export default function ChatPage() {
                   }}
                 >
                   {mention.valid
-                    ? `@${mention.alias} -> ${mention.displayName ?? "Member"}`
+                    ? `Tagged: ${mention.displayName ?? "Member"}`
                     : `@${mention.alias} not found`}
                 </span>
               ))}

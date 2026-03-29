@@ -330,6 +330,18 @@ function ordinal(n: number) {
   return `${v}th`;
 }
 
+function atHandle(name: string) {
+  const n = String(name ?? "").trim();
+  if (!n) return "@unknown";
+  return n.startsWith("@") ? n : `@${n}`;
+}
+
+function pickByRound<T>(round: number, options: T[]) {
+  if (options.length === 0) throw new Error("pickByRound requires at least one option");
+  const idx = Math.abs(Math.trunc(round)) % options.length;
+  return options[idx];
+}
+
 function computeDifficultyPct(
   players: Array<{ correct_tips: number; total_tips: number }>
 ) {
@@ -1247,91 +1259,137 @@ export async function GET(req: Request) {
     const generatedAtIso = new Date().toISOString();
 
     const textLines: string[] = [];
-    const winnerHeadline =
-      roundWinners.length === 1
-        ? `${roundWinners[0].display_name} topped the week with ${fmt2(maxRoundScore)} points.`
-        : `${humanList(roundWinners.map((w) => w.display_name))} topped the week with ${fmt2(
-            maxRoundScore
-          )} points.`;
+    const lbByUserId = new Map(lbRows.map((r) => [String(r.user_id), r]));
+    const topScorerUserIds = new Set(topRoundScorers.map((p) => String(p.user_id)));
+    const top3Rows = topN(lbRows, 3);
+    const extraClimber = topRises.find((r) => !topScorerUserIds.has(String(r.user_id))) ?? null;
+    const seasonSecondBiggestUpset =
+      seasonBiggestUpsetOdds === null
+        ? null
+        : seasonUpsetRows.find(
+            (x) => Number(x.winner_odds) < Number(seasonBiggestUpsetOdds) - 0.0001
+          ) ?? null;
 
-    textLines.push(`Round ${roundNumber} is complete, and ${winnerHeadline}`);
+    const sillyHeading = pickByRound(roundNumber, [
+      "Some more silly data.",
+      "More stat nonsense for the group chat.",
+      "Extra stat chaos.",
+      "A few bonus numbers for the stat sickos.",
+    ]);
+
+    if (roundWinners.length === 1) {
+      const winner = roundWinners[0];
+      const winnerLb = lbByUserId.get(String(winner.user_id)) ?? null;
+      const winnerMove =
+        winnerLb && Number(winnerLb.movement) !== 0
+          ? ` This shifts ${atHandle(winner.display_name)} ${fmtSigned(
+              Number(winnerLb.movement)
+            )} and into ${ordinal(Number(winnerLb.rank))} overall.`
+          : "";
+      textLines.push(
+        `Round ${roundNumber} is complete, with ${atHandle(
+          winner.display_name
+        )} top-scoring on ${fmt2(maxRoundScore)} points.${winnerMove}`
+      );
+    } else {
+      textLines.push(
+        `Round ${roundNumber} is complete, with ${humanList(
+          roundWinners.map((w) => atHandle(w.display_name))
+        )} sharing top score on ${fmt2(maxRoundScore)} points.`
+      );
+    }
+
     textLines.push("");
     textLines.push("Next highest scorers:");
-    for (let idx = 1; idx < Math.min(5, topRoundScorers.length); idx += 1) {
-      const p = topRoundScorers[idx];
-      textLines.push(`${idx + 1}. ${p.display_name} - ${fmt2(Number(p.round_score))}`);
-    }
-    if (topRoundScorers.length <= 1) {
-      textLines.push("2. n/a");
-      textLines.push("3. n/a");
-      textLines.push("4. n/a");
-      textLines.push("5. n/a");
-    } else if (topRoundScorers.length < 5) {
-      for (let idx = topRoundScorers.length + 1; idx <= 5; idx += 1) {
-        textLines.push(`${idx}. n/a`);
+    for (let idx = 1; idx <= 4; idx += 1) {
+      const scorer = topRoundScorers[idx];
+      if (!scorer) {
+        textLines.push(`${idx + 1}. n/a`);
+        continue;
       }
+      const lbRow = lbByUserId.get(String(scorer.user_id)) ?? null;
+      const movementSuffix =
+        lbRow && Number(lbRow.movement) !== 0 ? ` (${fmtSigned(Number(lbRow.movement))})` : "";
+      const rankSuffix = lbRow ? ` now ${ordinal(Number(lbRow.rank))} overall` : "";
+      textLines.push(
+        `${idx + 1}. ${atHandle(scorer.display_name)} - ${fmt2(
+          Number(scorer.round_score)
+        )}${movementSuffix}${rankSuffix}`
+      );
     }
     if (tiedAtFifth.length > 0 && topRoundScorers.length >= 5) {
       textLines.push(
         `Also on ${fmt2(Number(topRoundScorers[4].round_score))}: ${humanList(
-          tiedAtFifth.map((p) => p.display_name)
+          tiedAtFifth.map((p) => atHandle(p.display_name))
         )}.`
       );
     }
-    textLines.push("");
 
+    if (extraClimber) {
+      textLines.push("");
+      textLines.push(
+        `Outside the top scorers, biggest mover was ${atHandle(
+          extraClimber.display_name
+        )} (${fmtSigned(Number(extraClimber.movement))}) and into ${ordinal(
+          Number(extraClimber.rank)
+        )}.`
+      );
+    }
+
+    textLines.push("");
+    textLines.push(`Leaderboard after Round ${roundNumber}:`);
+    if (top3Rows.length > 0) {
+      textLines.push(`1. ${atHandle(top3Rows[0].display_name)}`);
+    }
+    if (top3Rows.length > 1) {
+      textLines.push(
+        `2. ${atHandle(top3Rows[1].display_name)} (-${fmt2(Number(top3Rows[1].behind_leader))})`
+      );
+    }
+    if (top3Rows.length > 2) {
+      textLines.push(
+        `3. ${atHandle(top3Rows[2].display_name)} (-${fmt2(Number(top3Rows[2].behind_leader))})`
+      );
+    }
+
+    textLines.push("");
     textLines.push(
-      `Round difficulty landed at ${fmt2(
-        roundDifficultyPct
-      )}% correct tips, with an average round score of ${fmt2(roundAvg)}.`
+      `${pickByRound(roundNumber, [
+        "Round difficulty was",
+        "This week's difficulty came in at",
+        "Round difficulty landed at",
+      ])} ${fmt2(roundDifficultyPct)}% correct tips, with an average score of ${fmt2(roundAvg)}.`
     );
     if (previousRoundNumber !== null && previousRoundDifficulty !== null && difficultyDelta !== null) {
-      const difficultyGapAbs = Math.abs(difficultyDelta);
       textLines.push(
-        `Compared to Round ${previousRoundNumber} (${fmt2(previousRoundDifficulty)}%), Round ${roundNumber} was ${
-          difficultyDelta >= 0 ? "+" : "-"
-        }${fmt2(difficultyGapAbs)} percentage points ${difficultyDelta >= 0 ? "easier" : "harder"}.`
+        `Compared to Round ${previousRoundNumber} (${fmt2(previousRoundDifficulty)}%), Round ${roundNumber} was ${fmt2(
+          Math.abs(difficultyDelta)
+        )} percentage points ${difficultyDelta >= 0 ? "easier" : "harder"}.`
       );
     } else {
-      textLines.push(
-        "Compared to previous round: N/A (this is the first completed round, so it sets the baseline)."
-      );
+      textLines.push("No previous completed round baseline was available for comparison.");
     }
-    textLines.push("");
 
-    textLines.push("5 biggest climbers");
-    if (topRises.length > 0) {
-      topRises.forEach((r) => {
-        textLines.push(
-          `- ${r.display_name} (${fmtSigned(Number(r.movement))}): ${tipInsightForUser(String(
-            r.user_id
-          ))}.`
-        );
-      });
-    } else {
-      textLines.push("- None.");
-    }
     textLines.push("");
+    textLines.push("Biggest climbers:");
+    topN(topRises, 5).forEach((r, idx) =>
+      textLines.push(`${idx + 1}. ${atHandle(r.display_name)} (${fmtSigned(Number(r.movement))})`)
+    );
+    if (topRises.length === 0) textLines.push("1. n/a");
 
-    textLines.push("5 biggest fallers");
-    if (topDrops.length > 0) {
-      topDrops.forEach((r) => {
-        textLines.push(
-          `- ${r.display_name} (${fmtSigned(Number(r.movement))}): ${tipInsightForUser(String(
-            r.user_id
-          ))}.`
-        );
-      });
-    } else {
-      textLines.push("- None.");
-    }
     textLines.push("");
+    textLines.push("Biggest fallers:");
+    topN(topDrops, 5).forEach((r, idx) =>
+      textLines.push(`${idx + 1}. ${atHandle(r.display_name)} (${fmtSigned(Number(r.movement))})`)
+    );
+    if (topDrops.length === 0) textLines.push("1. n/a");
 
+    textLines.push("");
     if (biggestUpset) {
       textLines.push(
         `Biggest upset this week: ${biggestUpset.winner} at ${fmt2(
           biggestUpset.winnerOdds
-        )} (backed by only ${fmt1(biggestUpset.winnerTipShare)}%).`
+        )} (backed by ${fmt1(biggestUpset.winnerTipShare)}%).`
       );
     } else {
       textLines.push("Biggest upset this week: n/a.");
@@ -1339,114 +1397,120 @@ export async function GET(req: Request) {
     if (mostPickedTeam) {
       const mostPickedPct =
         roundTipsTotal > 0 ? (Number(mostPickedTeam[1]) / Number(roundTipsTotal)) * 100 : 0;
-      textLines.push(
-        `Most-picked side: ${mostPickedTeam[0]} (${mostPickedTeam[1]} picks, ${fmt1(mostPickedPct)}%).`
-      );
+      textLines.push(`Most-picked side: ${mostPickedTeam[0]} (${fmt1(mostPickedPct)}%).`);
     } else {
       textLines.push("Most-picked side: n/a.");
     }
-    textLines.push("");
 
-    textLines.push("Extra round notes:");
-    textLines.push(`- Majority pick won ${majorityPickWins} of ${rrMatches.length} games.`);
+    textLines.push("");
+    textLines.push(sillyHeading);
+    textLines.push(
+      `* ${pickByRound(roundNumber, [
+        "Majority pick won",
+        "The majority side won",
+        "Consensus pick won",
+      ])} ${majorityPickWins} of ${rrMatches.length} games.`
+    );
     if (minorityBackedWinners.length > 0) {
       textLines.push(
-        `- ${minorityBackedWinners.length} winner${
+        `* Only ${minorityBackedWinners.length} winner${
           minorityBackedWinners.length === 1 ? "" : "s"
-        } ${minorityBackedWinners.length === 1 ? "was" : "were"} backed by fewer than half the comp: ${humanList(
+        } were backed by fewer than half the comp: ${humanList(
           minorityBackedWinners.map((x) => `${x.winner} (${fmt1(x.winnerPct)}%)`)
         )}.`
       );
     } else {
-      textLines.push("- No winners were backed by fewer than half the comp.");
+      textLines.push("* Every winner was backed by at least half the comp.");
     }
-    if (perfectRoundPlayers.length > 0) {
-      textLines.push(
-        `- Perfect round check: ${humanList(
-          perfectRoundPlayers.map((p) => p.display_name)
-        )} nailed ${fullRoundTips}/${fullRoundTips}.`
-      );
-    } else {
-      textLines.push(`- Perfect round check: no one went ${fullRoundTips}/${fullRoundTips}.`);
-    }
-    if (zeroAfterTippingAllPlayers.length > 0) {
-      textLines.push(
-        `- Zero-score-after-tipping check: ${humanList(
-          zeroAfterTippingAllPlayers.map((p) => p.display_name)
-        )} scored 0 despite tipping all ${fullRoundTips} games.`
-      );
-    } else {
-      textLines.push(
-        `- Zero-score-after-tipping check: no one scored 0 after tipping all ${fullRoundTips} games.`
-      );
-    }
+    textLines.push(
+      perfectRoundPlayers.length > 0
+        ? `* Perfect round check: ${humanList(
+            perfectRoundPlayers.map((p) => atHandle(p.display_name))
+          )} hit ${fullRoundTips}/${fullRoundTips}.`
+        : `* Perfect round check: no one went ${fullRoundTips}/${fullRoundTips}.`
+    );
+    textLines.push(
+      zeroAfterTippingAllPlayers.length > 0
+        ? `* Zero-score-after-tipping check: ${humanList(
+            zeroAfterTippingAllPlayers.map((p) => atHandle(p.display_name))
+          )} scored 0 after tipping all ${fullRoundTips}.`
+        : `* Zero-score-after-tipping check: no one scored 0 after tipping all ${fullRoundTips} games.`
+    );
     if (seasonBiggestUpset && seasonBiggestUpsetsThisRound.length > 0) {
       if (seasonBiggestUpsetsOtherRounds.length > 0) {
         textLines.push(
-          `- Biggest upset-by-points check: yes. This round matched the season high at ${fmt2(
+          `* Biggest upset-by-points check: this round matched the season high at ${fmt2(
             Number(seasonBiggestUpset.winner_odds)
-          )}. Also hit in ${humanList(
+          )}, alongside ${humanList(
             seasonBiggestUpsetsOtherRounds.map(
               (x) => `Round ${x.round_number} (${x.home_team} vs ${x.away_team})`
             )
           )}.`
         );
+      } else if (seasonSecondBiggestUpset) {
+        textLines.push(
+          `* ${seasonBiggestUpset.winner_team} at ${fmt2(
+            Number(seasonBiggestUpset.winner_odds)
+          )} is now the biggest upset of the season, surpassing Round ${seasonSecondBiggestUpset.round_number} (${seasonSecondBiggestUpset.home_team} vs ${seasonSecondBiggestUpset.away_team}: ${seasonSecondBiggestUpset.winner_team} @ ${fmt2(
+            Number(seasonSecondBiggestUpset.winner_odds)
+          )}).`
+        );
       } else {
         textLines.push(
-          `- Biggest upset-by-points check: yes. This round set the season high at ${fmt2(
+          `* ${seasonBiggestUpset.winner_team} at ${fmt2(
             Number(seasonBiggestUpset.winner_odds)
-          )}.`
+          )} is now the biggest upset of the season.`
         );
       }
     } else if (seasonBiggestUpset) {
       textLines.push(
-        `- Biggest upset-by-points check: no. Season high remains ${seasonBiggestUpset.winner_team} at ${fmt2(
+        `* Biggest upset-by-points check: season high remains ${seasonBiggestUpset.winner_team} @ ${fmt2(
           Number(seasonBiggestUpset.winner_odds)
-        )} in Round ${seasonBiggestUpset.round_number} (${seasonBiggestUpset.home_team} vs ${seasonBiggestUpset.away_team}).`
+        )} (Round ${seasonBiggestUpset.round_number}).`
       );
     } else {
-      textLines.push("- Biggest upset-by-points check: unavailable.");
+      textLines.push("* Biggest upset-by-points check: unavailable.");
     }
+    textLines.push(
+      `* ${fivePlusWinners} tippers hit 5+ winners; ${sixPlusWinners} hit 6+.`
+    );
+
     if (topSeasonUpsets.length > 0) {
-      textLines.push("- Top 5 biggest upsets so far (highest winning odds):");
+      textLines.push("* Top 5 biggest upsets so far:");
       topSeasonUpsets.forEach((x, idx) =>
         textLines.push(
-          `  ${idx + 1}. Round ${x.round_number} - ${x.home_team} vs ${x.away_team} (${x.winner_team} ${fmt2(
+          `  ${idx + 1}. Round ${x.round_number} - ${x.home_team} vs ${x.away_team} (${x.winner_team} @ ${fmt2(
             Number(x.winner_odds)
           )})`
         )
       );
-    } else {
-      textLines.push("- Top 5 biggest upsets so far: unavailable.");
     }
-    textLines.push(
-      `- ${fivePlusWinners} tipster${fivePlusWinners === 1 ? "" : "s"} hit 5+ winners; ${sixPlusWinners} hit 6+.`
-    );
-    textLines.push("");
 
-    textLines.push(`\"Why oh why did I pick them\" this round goes to:`);
+    textLines.push("");
     if (bestOneTipSwap) {
-      textLines.push(`- ${bestOneTipSwap.display_name}`);
       textLines.push(
-        `- Would have gone from ${ordinal(bestOneTipSwap.old_rank)} to ${ordinal(
+        `And \"Why oh why did I pick them\" this round goes to: ${atHandle(
+          bestOneTipSwap.display_name
+        )}!!`
+      );
+      textLines.push(
+        `They would have gone from ${ordinal(bestOneTipSwap.old_rank)} to ${ordinal(
           bestOneTipSwap.new_rank
-        )} (${fmtSigned(bestOneTipSwap.climbed)} places)`
+        )} (${fmtSigned(bestOneTipSwap.climbed)} places) had they changed ${bestOneTipSwap.swap.fromTeam} to ${bestOneTipSwap.swap.toTeam}.`
       );
-      textLines.push(
-        `- Swap: ${bestOneTipSwap.swap.fromTeam} -> ${bestOneTipSwap.swap.toTeam} in ${bestOneTipSwap.swap.match.home_team} vs ${bestOneTipSwap.swap.match.away_team}`
-      );
-      textLines.push(`- Estimated points gain: +${fmt2(bestOneTipSwap.gain)}`);
     } else {
-      textLines.push("- No positive one-tip swap scenarios this round.");
+      textLines.push(`And \"Why oh why did I pick them\" had no winner this round.`);
     }
     if (nextBestOneTipSwaps.length > 0) {
-      textLines.push("Next closest:");
-      nextBestOneTipSwaps.forEach((x) =>
-        textLines.push(
-          `- ${x.display_name}: ${fmtSigned(x.climbed)} places (${ordinal(x.old_rank)} -> ${ordinal(
-            x.new_rank
-          )})`
-        )
+      textLines.push(
+        `Next closest: ${nextBestOneTipSwaps
+          .map(
+            (x) =>
+              `${atHandle(x.display_name)} (${ordinal(x.old_rank)} to ${ordinal(x.new_rank)}, ${fmtSigned(
+                x.climbed
+              )})`
+          )
+          .join("; ")}.`
       );
     }
 

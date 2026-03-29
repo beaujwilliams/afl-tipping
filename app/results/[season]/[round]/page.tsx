@@ -20,6 +20,8 @@ type MatchResultRow = {
   commence_time_utc: string;
   home_team: string;
   away_team: string;
+  home_odds: number | null;
+  away_odds: number | null;
   venue: string | null;
   status: string | null;
   winner_team: string | null;
@@ -169,6 +171,12 @@ function fmtPct(n: number) {
   const v = Number(n ?? 0);
   if (Number.isNaN(v)) return "0%";
   return `${Math.round(v)}%`;
+}
+
+function fmtOdds(n: number | null | undefined) {
+  const v = Number(n);
+  if (!Number.isFinite(v) || v <= 0) return null;
+  return v.toFixed(2);
 }
 
 function pctBar(pct: number) {
@@ -784,6 +792,8 @@ export default function RoundResultsDetailPage() {
               const winner = String(m.winner_team ?? "").trim();
               const finished = !!winner;
               const picksForMatch = pickListsByMatchId[m.id] ?? { home: [], away: [] };
+              const homeOddsLabel = fmtOdds(m.home_odds);
+              const awayOddsLabel = fmtOdds(m.away_odds);
 
               return (
                 <UiCard key={m.id}>
@@ -826,7 +836,10 @@ export default function RoundResultsDetailPage() {
                             marginBottom: 4,
                           }}
                         >
-                          <span>{m.home_team}</span>
+                          <span>
+                            {m.home_team}
+                            {homeOddsLabel ? ` (${homeOddsLabel})` : ""}
+                          </span>
                           <span>
                             {m.tipping.home_pct}% ({m.tipping.home_count})
                           </span>
@@ -859,7 +872,10 @@ export default function RoundResultsDetailPage() {
                             marginBottom: 4,
                           }}
                         >
-                          <span>{m.away_team}</span>
+                          <span>
+                            {m.away_team}
+                            {awayOddsLabel ? ` (${awayOddsLabel})` : ""}
+                          </span>
                           <span>
                             {m.tipping.away_pct}% ({m.tipping.away_count})
                           </span>

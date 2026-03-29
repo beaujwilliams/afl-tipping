@@ -352,6 +352,8 @@ export async function GET(req: Request) {
 
       return {
         ...m,
+        home_odds: oddsByMatchId[mid]?.home_odds ?? null,
+        away_odds: oddsByMatchId[mid]?.away_odds ?? null,
         total_tips: totalTips,
         tipping: {
           home_team: m.home_team,

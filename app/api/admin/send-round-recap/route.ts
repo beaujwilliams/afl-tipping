@@ -1132,6 +1132,12 @@ export async function GET(req: Request) {
 
     const seasonBiggestUpset = seasonUpsetRows[0] ?? null;
     const seasonBiggestUpsetOdds = seasonBiggestUpset ? Number(seasonBiggestUpset.winner_odds) : null;
+    const seasonBiggestUpsetRows =
+      seasonBiggestUpsetOdds === null
+        ? []
+        : seasonUpsetRows.filter(
+            (x) => Math.abs(Number(x.winner_odds) - Number(seasonBiggestUpsetOdds)) < 0.0001
+          );
     const seasonBiggestUpsetsThisRound =
       seasonBiggestUpsetOdds === null
         ? []
@@ -1140,6 +1146,9 @@ export async function GET(req: Request) {
               x.round_number === roundNumber &&
               Math.abs(Number(x.winner_odds) - Number(seasonBiggestUpsetOdds)) < 0.0001
           );
+    const seasonBiggestUpsetsOtherRounds = seasonBiggestUpsetRows.filter(
+      (x) => x.round_number !== roundNumber
+    );
 
     const oneTipSwapRows = lbRows
       .map((r) => {
@@ -1371,16 +1380,28 @@ export async function GET(req: Request) {
       );
     }
     if (seasonBiggestUpset && seasonBiggestUpsetsThisRound.length > 0) {
-      textLines.push(
-        `- Biggest upset-by-points check: yes. This round matched the season high at ${fmt2(
-          Number(seasonBiggestUpset.winner_odds)
-        )}.`
-      );
+      if (seasonBiggestUpsetsOtherRounds.length > 0) {
+        textLines.push(
+          `- Biggest upset-by-points check: yes. This round matched the season high at ${fmt2(
+            Number(seasonBiggestUpset.winner_odds)
+          )}. Also hit in ${humanList(
+            seasonBiggestUpsetsOtherRounds.map(
+              (x) => `Round ${x.round_number} (${x.home_team} vs ${x.away_team})`
+            )
+          )}.`
+        );
+      } else {
+        textLines.push(
+          `- Biggest upset-by-points check: yes. This round set the season high at ${fmt2(
+            Number(seasonBiggestUpset.winner_odds)
+          )}.`
+        );
+      }
     } else if (seasonBiggestUpset) {
       textLines.push(
         `- Biggest upset-by-points check: no. Season high remains ${seasonBiggestUpset.winner_team} at ${fmt2(
           Number(seasonBiggestUpset.winner_odds)
-        )} in Round ${seasonBiggestUpset.round_number}.`
+        )} in Round ${seasonBiggestUpset.round_number} (${seasonBiggestUpset.home_team} vs ${seasonBiggestUpset.away_team}).`
       );
     } else {
       textLines.push("- Biggest upset-by-points check: unavailable.");

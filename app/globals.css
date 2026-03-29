@@ -13,6 +13,7 @@
   --border: rgba(0, 0, 0, 0.12);
   --card: #ffffff;
   --card-soft: rgba(0, 0, 0, 0.03);
+  --champion-gold: #b8871b;
 
   --radius-sm: 10px;
   --radius-md: 12px;
@@ -39,6 +40,7 @@
     --border: rgba(255, 255, 255, 0.18);
     --card: #111111;
     --card-soft: rgba(255, 255, 255, 0.06);
+    --champion-gold: #f0c455;
   }
 }
 
@@ -396,6 +398,10 @@ button {
   border-radius: 999px;
   border: 1px solid var(--border);
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
 }
 
 .ui-badge--open {
@@ -678,6 +684,14 @@ button {
 
 .ui-admin-details[open] .ui-admin-details-summary::before {
   transform: rotate(90deg);
+}
+
+.ui-summary-plain {
+  list-style: none;
+}
+
+.ui-summary-plain::-webkit-details-marker {
+  display: none;
 }
 
 .ui-admin-automation-item {

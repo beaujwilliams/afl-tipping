@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { UnpaidTag } from "@/components/UnpaidTag";
-import { ChampionCrown } from "@/components/ChampionCrown";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { UiButtonLink, UiCard } from "@/components/ui";
 
@@ -497,8 +496,16 @@ export default function SeasonRoundsPageClient({
                                 flexWrap: "wrap",
                               }}
                             >
-                              <ChampionCrown isChampion={p.user_id === reigningChampionUserId} />
-                              <span>{p.display_name?.trim() ? p.display_name : "(no display name)"}</span>
+                              <span
+                                style={{
+                                  color:
+                                    p.user_id === reigningChampionUserId
+                                      ? "var(--champion-gold)"
+                                      : undefined,
+                                }}
+                              >
+                                {p.display_name?.trim() ? p.display_name : "(no display name)"}
+                              </span>
                               <UnpaidTag paymentStatus={p.payment_status ?? null} />
                             </div>
                             <div style={{ fontSize: 12, opacity: 0.75, whiteSpace: "nowrap" }}>

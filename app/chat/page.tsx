@@ -5,7 +5,6 @@ import Link from "next/link";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { ReactionPill } from "@/components/ReactionPill";
 import { UnpaidTag } from "@/components/UnpaidTag";
-import { ChampionCrown } from "@/components/ChampionCrown";
 
 type MsgRow = {
   id: string;
@@ -1535,8 +1534,16 @@ export default function ChatPage() {
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 10, opacity: 0.9 }}>
                       <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
                         <div style={{ fontWeight: 900, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                          <ChampionCrown isChampion={m.user_id === reigningChampionUserId} />
-                          <span>{who}</span>
+                          <span
+                            style={{
+                              color:
+                                m.user_id === reigningChampionUserId
+                                  ? "var(--champion-gold)"
+                                  : undefined,
+                            }}
+                          >
+                            {who}
+                          </span>
                           <UnpaidTag paymentStatus={paymentStatus} />
                         </div>
                         {team && (

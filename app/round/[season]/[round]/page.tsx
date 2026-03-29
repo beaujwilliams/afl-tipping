@@ -3,8 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
-import { UnpaidTag } from "@/components/UnpaidTag";
-import { ChampionCrown } from "@/components/ChampionCrown";
 
 type RoundRow = {
   id: string;
@@ -38,29 +36,6 @@ type OddsRow = {
   away_odds: number;
   captured_at_utc: string;
   snapshot_for_time_utc?: string;
-};
-
-type TipBreakdownResponse = {
-  ok: boolean;
-  season: number;
-  round: number;
-  byMatch: Record<string, Record<string, number>>;
-};
-
-type LockedTipPlayer = {
-  user_id: string;
-  display_name: string | null;
-  payment_status?: string | null;
-  potential: number;
-  picks: Record<string, { team: string; odds: number }>;
-};
-
-type LockedTipsResponse = {
-  ok: boolean;
-  season: number;
-  round: number;
-  reigning_champion_user_id?: string | null;
-  players: LockedTipPlayer[];
 };
 
 type PaymentStatus = "paid" | "pending" | "waived";
@@ -211,20 +186,6 @@ export default function RoundPage() {
 
   const [oddsByMatchId, setOddsByMatchId] = useState<Record<string, OddsRow>>({});
   const [oddsInfo, setOddsInfo] = useState<string>("");
-
-  // NEW: everyone's tips table after lock
-  const [lockedTips, setLockedTips] = useState<LockedTipPlayer[] | null>(null);
-  const [lockedTipsMsg, setLockedTipsMsg] = useState<string>("");
-  const [reigningChampionUserId, setReigningChampionUserId] = useState<string | null>(null);
-  const [lockedTipsSearch, setLockedTipsSearch] = useState("");
-  const [showLockedTipsInfo, setShowLockedTipsInfo] = useState(false);
-  const [expandedLockedTipUserIds, setExpandedLockedTipUserIds] = useState<Record<string, boolean>>({});
-  const lockedTipsRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
-
-  // ✅ NEW: tip breakdown once locked
-  const [tipBreakdownByMatch, setTipBreakdownByMatch] = useState<
-    Record<string, Record<string, number>>
-  >({});
 
   // Polling UX
   const [oddsPollingStopped, setOddsPollingStopped] = useState(false);
@@ -479,13 +440,6 @@ export default function RoundPage() {
       setTipsByMatchId({});
       setOddsPollingStopped(false);
       setOddsPollingReason("");
-      setTipBreakdownByMatch({});
-      setLockedTips(null);
-      setLockedTipsMsg("");
-      setReigningChampionUserId(null);
-      setLockedTipsSearch("");
-      setShowLockedTipsInfo(false);
-      setExpandedLockedTipUserIds({});
 
       const { data: auth } = await supabaseBrowser.auth.getUser();
       if (!auth.user) {
@@ -648,69 +602,6 @@ export default function RoundPage() {
     })();
   }, [season, round, loadOddsForMatchesLocked]);
 
-  // ✅ when round is locked, fetch tip breakdown per match
-  useEffect(() => {
-    if (!isLocked) return;
-
-    (async () => {
-      try {
-        const res = await fetch(
-          `/api/round-tip-breakdown?season=${encodeURIComponent(
-            String(season)
-          )}&round=${encodeURIComponent(String(round))}${compId ? `&competition_id=${encodeURIComponent(compId)}` : ""}`,
-          { cache: "no-store" }
-        );
-        const json = (await res
-          .json()
-          .catch(() => null)) as TipBreakdownResponse | null;
-        if (res.ok && json?.ok && json.byMatch) {
-          setTipBreakdownByMatch(json.byMatch);
-        }
-      } catch {
-        // ignore
-      }
-    })();
-  }, [isLocked, season, round, compId]);
-
-  // ✅ when round is locked, fetch "everyone's tips" table
-  useEffect(() => {
-    if (!isLocked) return;
-    if (lockedTips !== null) return; // already fetched (or already failed but we don't want to spam)
-
-    (async () => {
-      try {
-        setLockedTipsMsg("");
-        const res = await fetch(
-          `/api/round-locked-tips?season=${encodeURIComponent(
-            String(season)
-          )}&round=${encodeURIComponent(String(round))}${compId ? `&competition_id=${encodeURIComponent(compId)}` : ""}`,
-          { cache: "no-store" }
-        );
-        const json = (await res
-          .json()
-          .catch(() => null)) as LockedTipsResponse | null;
-
-        if (!res.ok || !json?.ok) {
-          setLockedTips([]);
-          setLockedTipsMsg("Could not load everyone’s tips.");
-          return;
-        }
-
-        setReigningChampionUserId(
-          typeof json.reigning_champion_user_id === "string" ? json.reigning_champion_user_id : null
-        );
-
-        const list = Array.isArray(json.players) ? json.players : [];
-        // sort: highest potential first
-        list.sort((a, b) => Number(b.potential ?? 0) - Number(a.potential ?? 0));
-        setLockedTips(list);
-      } catch {
-        setLockedTips([]);
-        setLockedTipsMsg("Could not load everyone’s tips.");
-      }
-    })();
-  }, [isLocked, season, round, lockedTips, compId]);
-
   // -------- Poll odds every 90s while missing, up to 60 minutes --------
   const pollStartRef = useRef<number | null>(null);
   const snapshotKey = snapshotForTimeUtc ?? "no-snapshot";
@@ -775,123 +666,6 @@ export default function RoundPage() {
   const showRefreshHint =
     oddsPollingStopped && oddsPollingReason === "timeout" && oddsMissing;
   const showSnapshotMissedAlert = isLocked && !!matches.length && oddsMissing;
-
-  const matchTitleById = useMemo(() => {
-    const out: Record<string, string> = {};
-    matches.forEach((m) => {
-      out[m.id] = `${m.home_team} vs ${m.away_team}`;
-    });
-    return out;
-  }, [matches]);
-
-  const lockedTipsRankByUserId = useMemo(() => {
-    const out: Record<string, number> = {};
-    (lockedTips ?? []).forEach((p, idx) => {
-      out[p.user_id] = idx + 1;
-    });
-    return out;
-  }, [lockedTips]);
-
-  const visibleLockedTips = useMemo(() => {
-    if (!lockedTips) return [] as Array<
-      LockedTipPlayer & {
-        row_rank: number;
-        picks_count: number;
-        underdog_count: number;
-      }
-    >;
-
-    const q = lockedTipsSearch.trim().toLowerCase();
-
-    return lockedTips
-      .filter((p) => {
-        if (!q) return true;
-        const name = String(p.display_name ?? "").toLowerCase();
-        const id = String(p.user_id).toLowerCase();
-        return name.includes(q) || id.includes(q);
-      })
-      .map((p) => {
-        let picksCount = 0;
-        let underdogCount = 0;
-
-        matches.forEach((m) => {
-          const team = p.picks?.[m.id]?.team ?? "";
-          if (!team) return;
-          picksCount += 1;
-
-          const odds = oddsByMatchId[m.id];
-          if (odds) {
-            const pickedOdds =
-              team === m.home_team
-                ? Number(odds.home_odds ?? 0)
-                : team === m.away_team
-                  ? Number(odds.away_odds ?? 0)
-                  : 0;
-            const otherOdds =
-              team === m.home_team
-                ? Number(odds.away_odds ?? 0)
-                : team === m.away_team
-                  ? Number(odds.home_odds ?? 0)
-                  : 0;
-
-            if (pickedOdds > 0 && otherOdds > 0 && pickedOdds > otherOdds) {
-              underdogCount += 1;
-            }
-          }
-        });
-
-        return {
-          ...p,
-          row_rank: lockedTipsRankByUserId[p.user_id] ?? 0,
-          picks_count: picksCount,
-          underdog_count: underdogCount,
-        };
-      });
-  }, [
-    lockedTips,
-    lockedTipsSearch,
-    matches,
-    oddsByMatchId,
-    lockedTipsRankByUserId,
-  ]);
-
-  const allVisibleExpanded =
-    visibleLockedTips.length > 0 &&
-    visibleLockedTips.every((p) => !!expandedLockedTipUserIds[p.user_id]);
-
-  function jumpToMyTips() {
-    if (!userId || !lockedTips) return;
-    const me = lockedTips.find((p) => p.user_id === userId);
-    if (!me) return;
-
-    setLockedTipsSearch("");
-    setExpandedLockedTipUserIds((prev) => ({ ...prev, [userId]: true }));
-
-    setTimeout(() => {
-      const node = lockedTipsRowRefs.current[userId];
-      node?.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, 0);
-  }
-
-  function toggleExpandAllVisible() {
-    if (!visibleLockedTips.length) return;
-
-    setExpandedLockedTipUserIds((prev) => {
-      const next = { ...prev };
-
-      if (allVisibleExpanded) {
-        visibleLockedTips.forEach((p) => {
-          delete next[p.user_id];
-        });
-      } else {
-        visibleLockedTips.forEach((p) => {
-          next[p.user_id] = true;
-        });
-      }
-
-      return next;
-    });
-  }
 
   return (
     <main className="ui-page ui-page--content">
@@ -1078,11 +852,6 @@ export default function RoundPage() {
           const homeOdds = odds ? odds.home_odds : null;
           const awayOdds = odds ? odds.away_odds : null;
 
-          // ✅ tip breakdown counts (only shown when locked)
-          const breakdown = tipBreakdownByMatch[g.id] ?? {};
-          const homeTips = breakdown[g.home_team] ?? 0;
-          const awayTips = breakdown[g.away_team] ?? 0;
-
           return (
             <div
               key={g.id}
@@ -1126,13 +895,6 @@ export default function RoundPage() {
                 </button>
               </div>
 
-              {/* ✅ show tip breakdown once locked */}
-              {isLocked && (
-                <div style={{ marginTop: 10, fontSize: 12, opacity: 0.85 }}>
-                  Tip breakdown: <b>{g.home_team}</b> {homeTips} • <b>{g.away_team}</b> {awayTips}
-                </div>
-              )}
-
               {saving && (
                 <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>Saving…</div>
               )}
@@ -1149,12 +911,6 @@ export default function RoundPage() {
                 </div>
               )}
 
-              {isLocked && (
-                <div style={{ marginTop: 8, fontSize: 12, color: "crimson" }}>
-                  Round locked — tips cannot be changed.
-                </div>
-              )}
-
               {!odds && (
                 <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
                   Odds not captured for this match yet.
@@ -1165,199 +921,6 @@ export default function RoundPage() {
         })}
       </div>
 
-      {/* Everyone’s tips sits after the match list so members see their own picks first. */}
-      {isLocked && (
-        <div className="ui-card ui-card-soft ui-mt-4">
-          <div className="ui-row-between" style={{ gap: 10 }}>
-            <div style={{ fontWeight: 900, fontSize: 16 }}>Everyone’s tips</div>
-            <div className="ui-caption">
-              Sorted by potential total
-            </div>
-          </div>
-
-          {lockedTipsMsg && <div className="ui-caption ui-mt-3">{lockedTipsMsg}</div>}
-
-          {lockedTips === null ? (
-            <div className="ui-caption ui-mt-3">
-              Loading everyone’s tips…
-            </div>
-          ) : lockedTips.length === 0 ? (
-            <div className="ui-caption ui-mt-3">
-              No tips found (or tips table not available yet).
-            </div>
-          ) : (
-            <>
-              <div className="ui-row-wrap ui-mt-3" style={{ alignItems: "center", gap: 10 }}>
-                <input
-                  value={lockedTipsSearch}
-                  onChange={(e) => setLockedTipsSearch(e.target.value)}
-                  placeholder="Search member..."
-                  className="ui-input"
-                />
-
-                <button
-                  type="button"
-                  onClick={() => setShowLockedTipsInfo((prev) => !prev)}
-                  className="ui-btn"
-                >
-                  {showLockedTipsInfo ? "Hide info" : "What do these mean?"}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={jumpToMyTips}
-                  disabled={!userId || !(lockedTips ?? []).some((p) => p.user_id === userId)}
-                  className="ui-btn"
-                >
-                  Jump to me
-                </button>
-
-                <button
-                  type="button"
-                  onClick={toggleExpandAllVisible}
-                  disabled={visibleLockedTips.length === 0}
-                  className="ui-btn"
-                >
-                  {allVisibleExpanded ? "Collapse all" : "Expand all"}
-                </button>
-              </div>
-
-              {showLockedTipsInfo && (
-                <div className="ui-card" style={{ marginTop: 10, padding: "10px 12px", fontSize: 12, lineHeight: 1.45 }}>
-                  <div style={{ fontWeight: 900 }}>Underdogs tipped</div>
-                  <div style={{ opacity: 0.88 }}>
-                    Count of picks where the selected team had higher odds than the opponent.
-                  </div>
-                </div>
-              )}
-
-              {visibleLockedTips.length === 0 ? (
-                <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
-                  No members match your search.
-                </div>
-              ) : (
-                <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
-                  {visibleLockedTips.map((p) => {
-                    const isExpanded = !!expandedLockedTipUserIds[p.user_id];
-
-                    const picksForUser = matches.filter((m) => !!p.picks?.[m.id]);
-
-                    return (
-                      <div
-                        className="ui-card"
-                        key={p.user_id}
-                        ref={(node) => {
-                          lockedTipsRowRefs.current[p.user_id] = node;
-                        }}
-                        style={{
-                          padding: 0,
-                        }}
-                      >
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setExpandedLockedTipUserIds((prev) => ({
-                              ...prev,
-                              [p.user_id]: !prev[p.user_id],
-                            }))
-                          }
-                          style={{
-                            width: "100%",
-                            padding: "10px 12px",
-                            border: "none",
-                            background: "transparent",
-                            color: "inherit",
-                            textAlign: "left",
-                            cursor: "pointer",
-                            display: "grid",
-                            gap: 8,
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              gap: 10,
-                              alignItems: "center",
-                              flexWrap: "wrap",
-                            }}
-                          >
-                            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", fontWeight: 900 }}>
-                              <span style={{ opacity: 0.78, minWidth: 22 }}>#{p.row_rank}</span>
-                              <ChampionCrown isChampion={p.user_id === reigningChampionUserId} />
-                              <span>{p.display_name?.trim() ? p.display_name : "(no display name)"}</span>
-                              <UnpaidTag paymentStatus={p.payment_status ?? null} />
-                            </div>
-                            <div style={{ fontSize: 12, opacity: 0.95 }}>
-                              Potential <b>{Number(p.potential ?? 0).toFixed(2)}</b>
-                            </div>
-                          </div>
-
-                          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", fontSize: 12, opacity: 0.9 }}>
-                            <span>
-                              Underdogs tipped: <b>{p.underdog_count}</b>/<b>{p.picks_count}</b>
-                            </span>
-                            <span>{isExpanded ? "Hide picks ▲" : "Show picks ▼"}</span>
-                          </div>
-                        </button>
-
-                        {isExpanded && (
-                          <div
-                            style={{
-                              borderTop: "1px solid var(--border)",
-                              padding: "8px 12px 10px",
-                              display: "grid",
-                              gap: 6,
-                            }}
-                          >
-                            {picksForUser.length === 0 ? (
-                              <div style={{ fontSize: 12, opacity: 0.8 }}>
-                                No picks available for this member.
-                              </div>
-                            ) : (
-                              picksForUser.map((m) => {
-                                const pick = p.picks?.[m.id] ?? null;
-
-                                return (
-                                  <div
-                                    key={m.id}
-                                    style={{
-                                      display: "flex",
-                                      justifyContent: "space-between",
-                                      gap: 10,
-                                      fontSize: 12,
-                                      opacity: 0.95,
-                                      borderTop: "1px solid var(--border)",
-                                      paddingTop: 6,
-                                    }}
-                                  >
-                                    <div style={{ opacity: 0.9, display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                                      <span>{matchTitleById[m.id] ?? `${m.home_team} vs ${m.away_team}`}</span>
-                                    </div>
-                                    <div style={{ fontWeight: 800, textAlign: "right" }}>
-                                      {pick ? (
-                                        <>
-                                          {pick.team} <span style={{ opacity: 0.9 }}>({fmtOdds(pick.odds)})</span>
-                                        </>
-                                      ) : (
-                                        <span style={{ opacity: 0.6 }}>—</span>
-                                      )}
-                                    </div>
-                                  </div>
-                                );
-                              })
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
     </main>
   );
 }

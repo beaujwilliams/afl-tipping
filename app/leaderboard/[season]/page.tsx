@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { UnpaidTag } from "@/components/UnpaidTag";
-import { ChampionCrown } from "@/components/ChampionCrown";
 import { UiButton, UiCard, UiTableCell, UiTableHeadCell, UiTableScroll, UiTableShell } from "@/components/ui";
 import { leaderboardRankComparator } from "@/lib/scoring-lock-rules";
 
@@ -178,17 +177,13 @@ const TREND_COLORS = [
   "#475569",
 ];
 
-function hashString(value: string) {
-  let h = 0;
-  for (let i = 0; i < value.length; i += 1) {
-    h = (h << 5) - h + value.charCodeAt(i);
-    h |= 0;
-  }
-  return Math.abs(h);
+function fallbackTrendColor(index: number) {
+  const hue = (index * 47) % 360;
+  return `hsl(${hue} 82% 58%)`;
 }
 
-function colorForUser(userId: string) {
-  return TREND_COLORS[hashString(userId) % TREND_COLORS.length];
+function trendColorForUser(colorByUserId: Record<string, string>, userId: string) {
+  return colorByUserId[userId] ?? TREND_COLORS[0];
 }
 
 function buildNiceNumberTicks(maxValue: number, targetTickCount = 6) {
@@ -216,8 +211,9 @@ function TrendChart(props: {
   selectedSeries: LeaderboardTrendSeries[];
   totalParticipants: number;
   metric: TrendMetric;
+  colorByUserId: Record<string, string>;
 }) {
-  const { rounds, selectedSeries, totalParticipants, metric } = props;
+  const { rounds, selectedSeries, totalParticipants, metric, colorByUserId } = props;
   const [hoveredUserId, setHoveredUserId] = useState<string | null>(null);
   const activeHoveredUserId = selectedSeries.some((series) => series.user_id === hoveredUserId)
     ? hoveredUserId
@@ -360,7 +356,7 @@ function TrendChart(props: {
 
             const isActive =
               activeHoveredUserId === null || activeHoveredUserId === series.user_id;
-            const stroke = isActive ? colorForUser(series.user_id) : "var(--muted)";
+            const stroke = isActive ? trendColorForUser(colorByUserId, series.user_id) : "var(--muted)";
             const lastPoint = orderedPoints[orderedPoints.length - 1];
             return (
               <g key={series.user_id}>
@@ -410,7 +406,9 @@ function TrendChart(props: {
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 8,
-                border: `1px solid ${isHovered ? colorForUser(series.user_id) : "var(--border)"}`,
+                border: `1px solid ${
+                  isHovered ? trendColorForUser(colorByUserId, series.user_id) : "var(--border)"
+                }`,
                 borderRadius: 999,
                 padding: "5px 10px",
                 fontSize: 13,
@@ -426,7 +424,7 @@ function TrendChart(props: {
                   width: 9,
                   height: 9,
                   borderRadius: 999,
-                  background: colorForUser(series.user_id),
+                  background: trendColorForUser(colorByUserId, series.user_id),
                 }}
               />
               <span>{series.display_name}</span>
@@ -1175,6 +1173,22 @@ export default function LeaderboardPage() {
       .filter((series): series is LeaderboardTrendSeries => Boolean(series));
   }, [scopedTrendSeries, selectedTrendUserIds]);
 
+  const trendColorByUserId = useMemo(() => {
+    const ordered = [...scopedTrendSeries].sort((a, b) => {
+      const rankA = rankByUserId.get(a.user_id) ?? Number.MAX_SAFE_INTEGER;
+      const rankB = rankByUserId.get(b.user_id) ?? Number.MAX_SAFE_INTEGER;
+      if (rankA !== rankB) return rankA - rankB;
+      return a.display_name.localeCompare(b.display_name, "en", { sensitivity: "base" });
+    });
+
+    const byUserId: Record<string, string> = {};
+    ordered.forEach((series, index) => {
+      byUserId[series.user_id] =
+        index < TREND_COLORS.length ? TREND_COLORS[index] : fallbackTrendColor(index);
+    });
+    return byUserId;
+  }, [rankByUserId, scopedTrendSeries]);
+
   useEffect(() => {
     const validIds = new Set(scopedTrendSeries.map((series) => series.user_id));
     setSelectedTrendUserIds((prev) => {
@@ -1788,12 +1802,17 @@ export default function LeaderboardPage() {
                       const scopedRank = scopeRankMetaByUserId.get(r.user_id)?.rank ?? r.rank;
                       const scopedBehind =
                         scopeRankMetaByUserId.get(r.user_id)?.behind ?? r.behind_leader;
+                      const isChampion = r.user_id === reigningChampionUserId;
+                      const rankSticky = stickyColumnStyle(1, false);
                       return (
                         <tr key={r.user_id}>
                           <UiTableCell
                             style={{
                               fontWeight: 900,
-                              ...stickyColumnStyle(1, false),
+                              ...rankSticky,
+                              boxShadow: isChampion
+                                ? "inset 2px 0 0 var(--champion-gold), 1px 0 0 var(--border)"
+                                : rankSticky.boxShadow,
                             }}
                           >
                             #{scopedRank}
@@ -1818,11 +1837,11 @@ export default function LeaderboardPage() {
                                   textOverflow: "ellipsis",
                                   whiteSpace: "nowrap",
                                   display: "block",
+                                  color: isChampion ? "var(--champion-gold)" : undefined,
                                 }}
                               >
                                 {r.display_name}
                               </span>
-                              <ChampionCrown isChampion={r.user_id === reigningChampionUserId} />
                             </span>
                           </UiTableCell>
                           <UiTableCell style={{ fontWeight: 800, width: 92, minWidth: 92 }}>
@@ -1932,6 +1951,7 @@ export default function LeaderboardPage() {
                     selectedSeries={selectedTrendSeries}
                     totalParticipants={Math.max(1, scopedRows.length)}
                     metric={trendMetric}
+                    colorByUserId={trendColorByUserId}
                   />
 
                   <div style={{ display: "grid", gap: 10 }}>
@@ -1980,7 +2000,7 @@ export default function LeaderboardPage() {
                                 width: 9,
                                 height: 9,
                                 borderRadius: 999,
-                                background: colorForUser(series.user_id),
+                                background: trendColorForUser(trendColorByUserId, series.user_id),
                               }}
                             />
                             <span

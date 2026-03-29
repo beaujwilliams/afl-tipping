@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { UnpaidTag } from "@/components/UnpaidTag";
-import { ChampionCrown } from "@/components/ChampionCrown";
 import { waitForSession } from "@/lib/session-client";
 import {
   UiButtonLink,
@@ -98,7 +97,10 @@ type MyTipStatus = "correct" | "incorrect" | "pending" | "missed";
 type MyTipSummaryRow = {
   match_id: string;
   match_label: string;
+  home_team: string;
+  away_team: string;
   picked: string | null;
+  opponent: string | null;
   status: MyTipStatus;
 };
 
@@ -216,6 +218,11 @@ export default function RoundResultsDetailPage() {
   const [sortBy, setSortBy] = useState<RoundSortKey>("round_score");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [isMobile, setIsMobile] = useState(false);
+  const [everyoneTipsSearch, setEveryoneTipsSearch] = useState("");
+  const [expandedEveryoneTipUserIds, setExpandedEveryoneTipUserIds] = useState<
+    Record<string, boolean>
+  >({});
+  const everyoneTipsRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const invalidParams = !Number.isFinite(season) || !Number.isFinite(round);
 
   useEffect(() => {
@@ -255,6 +262,8 @@ export default function RoundResultsDetailPage() {
         setRecapLoading(false);
         setRecapError("");
         setRoundRecap(null);
+        setEveryoneTipsSearch("");
+        setExpandedEveryoneTipUserIds({});
         const res = await fetch(
           `/api/round-results?season=${encodeURIComponent(String(season))}&round=${encodeURIComponent(String(round))}`,
           {
@@ -360,6 +369,13 @@ export default function RoundResultsDetailPage() {
     return players.filter((p) => Number(p.total_tips ?? 0) > 0).length;
   }, [players]);
 
+  const isRoundLocked = useMemo(() => {
+    if (!lockTimeUtc) return false;
+    const ms = new Date(lockTimeUtc).getTime();
+    if (Number.isNaN(ms)) return false;
+    return Date.now() >= ms;
+  }, [lockTimeUtc]);
+
   const myRoundRow = useMemo(() => {
     if (!currentUserId) return null;
     return players.find((p) => p.user_id === currentUserId) ?? null;
@@ -368,6 +384,13 @@ export default function RoundResultsDetailPage() {
   const myTipRows = useMemo<MyTipSummaryRow[]>(() => {
     return matches.map((m) => {
       const picked = myRoundRow?.picks?.[m.id] ?? null;
+      const opponent = picked
+        ? picked === m.home_team
+          ? m.away_team
+          : picked === m.away_team
+            ? m.home_team
+            : null
+        : null;
       const winner = String(m.winner_team ?? "").trim();
       let status: MyTipStatus = "pending";
 
@@ -379,7 +402,10 @@ export default function RoundResultsDetailPage() {
       return {
         match_id: m.id,
         match_label: `${m.home_team} vs ${m.away_team}`,
+        home_team: m.home_team,
+        away_team: m.away_team,
         picked,
+        opponent,
         status,
       };
     });
@@ -399,6 +425,91 @@ export default function RoundResultsDetailPage() {
     () => myTipRows.filter((row) => row.status === "correct").length,
     [myTipRows]
   );
+
+  const matchTitleById = useMemo(() => {
+    const out: Record<string, string> = {};
+    matches.forEach((m) => {
+      out[m.id] = `${m.home_team} vs ${m.away_team}`;
+    });
+    return out;
+  }, [matches]);
+
+  const everyoneTipsRows = useMemo(() => {
+    const sorted = [...players].sort((a, b) => {
+      const potentialDiff = Number(b.potential_score ?? 0) - Number(a.potential_score ?? 0);
+      if (potentialDiff !== 0) return potentialDiff;
+      return a.display_name.localeCompare(b.display_name, "en", { sensitivity: "base" });
+    });
+
+    return sorted.map((p, index) => {
+      let picksCount = 0;
+      let underdogCount = 0;
+
+      matches.forEach((m) => {
+        const team = String(p.picks?.[m.id] ?? "").trim();
+        if (!team) return;
+        picksCount += 1;
+
+        const homeOdds = Number(m.home_odds ?? 0);
+        const awayOdds = Number(m.away_odds ?? 0);
+        const pickedOdds = team === m.home_team ? homeOdds : team === m.away_team ? awayOdds : 0;
+        const otherOdds = team === m.home_team ? awayOdds : team === m.away_team ? homeOdds : 0;
+        if (pickedOdds > 0 && otherOdds > 0 && pickedOdds > otherOdds) underdogCount += 1;
+      });
+
+      return {
+        ...p,
+        row_rank: index + 1,
+        picks_count: picksCount,
+        underdog_count: underdogCount,
+      };
+    });
+  }, [players, matches]);
+
+  const visibleEveryoneTips = useMemo(() => {
+    const q = everyoneTipsSearch.trim().toLowerCase();
+    if (!q) return everyoneTipsRows;
+    return everyoneTipsRows.filter((p) => {
+      const name = String(p.display_name ?? "").toLowerCase();
+      const id = String(p.user_id).toLowerCase();
+      return name.includes(q) || id.includes(q);
+    });
+  }, [everyoneTipsRows, everyoneTipsSearch]);
+
+  const allVisibleExpanded =
+    visibleEveryoneTips.length > 0 &&
+    visibleEveryoneTips.every((p) => !!expandedEveryoneTipUserIds[p.user_id]);
+
+  function jumpToMyTips() {
+    if (!currentUserId) return;
+    const me = everyoneTipsRows.find((p) => p.user_id === currentUserId);
+    if (!me) return;
+
+    setEveryoneTipsSearch("");
+    setExpandedEveryoneTipUserIds((prev) => ({ ...prev, [currentUserId]: true }));
+
+    setTimeout(() => {
+      const node = everyoneTipsRowRefs.current[currentUserId];
+      node?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 0);
+  }
+
+  function toggleExpandAllVisible() {
+    if (!visibleEveryoneTips.length) return;
+    setExpandedEveryoneTipUserIds((prev) => {
+      const next = { ...prev };
+      if (allVisibleExpanded) {
+        visibleEveryoneTips.forEach((p) => {
+          delete next[p.user_id];
+        });
+      } else {
+        visibleEveryoneTips.forEach((p) => {
+          next[p.user_id] = true;
+        });
+      }
+      return next;
+    });
+  }
 
   const pickListsByMatchId = useMemo(() => {
     const out: Record<string, { home: string[]; away: string[] }> = {};
@@ -572,9 +683,15 @@ export default function RoundResultsDetailPage() {
                             }}
                           >
                             <div style={{ minWidth: 0, lineHeight: 1.35 }}>
-                              {row.match_label} —{" "}
                               {row.picked ? (
-                                <b>{row.picked}</b>
+                                <div style={{ display: "grid", gap: 1 }}>
+                                  <div style={{ fontWeight: 800 }}>{row.picked}</div>
+                                  {row.opponent && (
+                                    <div style={{ fontSize: 12, opacity: 0.68 }}>
+                                      vs {row.opponent}
+                                    </div>
+                                  )}
+                                </div>
                               ) : (
                                 <span style={{ opacity: 0.65 }}>No tip</span>
                               )}
@@ -609,9 +726,15 @@ export default function RoundResultsDetailPage() {
                             }}
                           >
                             <div style={{ minWidth: 0, lineHeight: 1.35 }}>
-                              {row.match_label} —{" "}
                               {row.picked ? (
-                                <b>{row.picked}</b>
+                                <div style={{ display: "grid", gap: 1 }}>
+                                  <div style={{ fontWeight: 800 }}>{row.picked}</div>
+                                  {row.opponent && (
+                                    <div style={{ fontSize: 12, opacity: 0.68 }}>
+                                      vs {row.opponent}
+                                    </div>
+                                  )}
+                                </div>
                               ) : (
                                 <span style={{ opacity: 0.65 }}>No tip</span>
                               )}
@@ -680,7 +803,7 @@ export default function RoundResultsDetailPage() {
                     <tr className="ui-table-head-row">
                       {([
                         ["Rank", "rank", 1, undefined],
-                        ["Tipster", "display_name", 2, undefined],
+                        ["Name", "display_name", 2, undefined],
                         [`R${round}`, "round_score", undefined, 84],
                         ["Correct", "correct_tips", undefined, 72],
                         ["Accuracy", "accuracy_pct", undefined, 88],
@@ -732,55 +855,67 @@ export default function RoundResultsDetailPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {sortedPlayers.map((p) => (
-                      <tr key={p.user_id}>
-                        <UiTableCell style={{ fontWeight: 900, ...stickyColumnStyle(1, false) }}>
-                          #{roundRankByUserId[p.user_id] ?? "-"}
-                        </UiTableCell>
-                        <UiTableCell
-                          style={{ fontWeight: 700, ...stickyColumnStyle(2, false) }}
-                          title={
-                            p.payment_status === "pending"
-                              ? `${p.display_name} (unpaid)`
-                              : p.display_name
-                          }
-                        >
-                          <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                            <UnpaidTag paymentStatus={p.payment_status ?? null} compact={isMobile} />
-                            <span
-                              style={{
-                                minWidth: 0,
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                                display: "block",
-                              }}
-                            >
-                              {p.display_name}
+                    {sortedPlayers.map((p) => {
+                      const isChampion = p.user_id === reigningChampionUserId;
+                      const rankSticky = stickyColumnStyle(1, false);
+                      return (
+                        <tr key={p.user_id}>
+                          <UiTableCell
+                            style={{
+                              fontWeight: 900,
+                              ...rankSticky,
+                              boxShadow: isChampion
+                                ? "inset 2px 0 0 var(--champion-gold), 1px 0 0 var(--border)"
+                                : rankSticky.boxShadow,
+                            }}
+                          >
+                            #{roundRankByUserId[p.user_id] ?? "-"}
+                          </UiTableCell>
+                          <UiTableCell
+                            style={{ fontWeight: 700, ...stickyColumnStyle(2, false) }}
+                            title={
+                              p.payment_status === "pending"
+                                ? `${p.display_name} (unpaid)`
+                                : p.display_name
+                            }
+                          >
+                            <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                              <UnpaidTag paymentStatus={p.payment_status ?? null} compact={isMobile} />
+                              <span
+                                style={{
+                                  minWidth: 0,
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                  display: "block",
+                                  color: isChampion ? "var(--champion-gold)" : undefined,
+                                }}
+                              >
+                                {p.display_name}
+                              </span>
                             </span>
-                            <ChampionCrown isChampion={p.user_id === reigningChampionUserId} />
-                          </span>
-                        </UiTableCell>
-                        <UiTableCell style={{ fontWeight: 800, width: 84, minWidth: 84 }}>
-                          {fmtPts(p.round_score)}
-                        </UiTableCell>
-                        <UiTableCell style={{ width: 72, minWidth: 72 }}>
-                          {p.correct_tips}
-                        </UiTableCell>
-                        <UiTableCell style={{ width: 88, minWidth: 88 }}>
-                          {fmtPct(p.accuracy_pct)}
-                        </UiTableCell>
-                        <UiTableCell style={{ width: 88, minWidth: 88 }}>
-                          {fmtPts(p.avg_correct_odds)}
-                        </UiTableCell>
-                        <UiTableCell style={{ width: 94, minWidth: 94 }}>
-                          {fmtPts(p.potential_score)}
-                        </UiTableCell>
-                        <UiTableCell style={{ width: 78, minWidth: 78 }}>
-                          {fmtPts(p.difference_score)}
-                        </UiTableCell>
-                      </tr>
-                    ))}
+                          </UiTableCell>
+                          <UiTableCell style={{ fontWeight: 800, width: 84, minWidth: 84 }}>
+                            {fmtPts(p.round_score)}
+                          </UiTableCell>
+                          <UiTableCell style={{ width: 72, minWidth: 72 }}>
+                            {p.correct_tips}
+                          </UiTableCell>
+                          <UiTableCell style={{ width: 88, minWidth: 88 }}>
+                            {fmtPct(p.accuracy_pct)}
+                          </UiTableCell>
+                          <UiTableCell style={{ width: 88, minWidth: 88 }}>
+                            {fmtPts(p.avg_correct_odds)}
+                          </UiTableCell>
+                          <UiTableCell style={{ width: 94, minWidth: 94 }}>
+                            {fmtPts(p.potential_score)}
+                          </UiTableCell>
+                          <UiTableCell style={{ width: 78, minWidth: 78 }}>
+                            {fmtPts(p.difference_score)}
+                          </UiTableCell>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </UiTableScroll>
@@ -821,10 +956,6 @@ export default function RoundResultsDetailPage() {
                   </div>
 
                   <div className="ui-mt-3">
-                    <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
-                      Tipping percentages ({m.total_tips} tips)
-                    </div>
-
                     <div className="ui-grid" style={{ gap: 8 }}>
                       <div>
                         <div
@@ -902,6 +1033,7 @@ export default function RoundResultsDetailPage() {
 
                   <details style={{ marginTop: 12 }}>
                     <summary
+                      className="ui-summary-plain"
                       style={{
                         cursor: "pointer",
                         fontWeight: 800,
@@ -955,6 +1087,216 @@ export default function RoundResultsDetailPage() {
               );
             })}
           </div>
+
+          {isRoundLocked && (
+            <UiCard soft className="ui-mt-4">
+              <div className="ui-row-between" style={{ gap: 10 }}>
+                <div style={{ fontWeight: 900, fontSize: 16 }}>Everyone’s tips</div>
+                <div className="ui-caption">Sorted by potential total</div>
+              </div>
+
+              {players.length === 0 ? (
+                <div className="ui-caption ui-mt-3">No tips found for this round.</div>
+              ) : (
+                <>
+                  <div className="ui-row-wrap ui-mt-3" style={{ alignItems: "center", gap: 10 }}>
+                    <input
+                      value={everyoneTipsSearch}
+                      onChange={(e) => setEveryoneTipsSearch(e.target.value)}
+                      placeholder="Search member..."
+                      className="ui-input"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={jumpToMyTips}
+                      disabled={
+                        !currentUserId || !everyoneTipsRows.some((p) => p.user_id === currentUserId)
+                      }
+                      className="ui-btn"
+                    >
+                      Jump to me
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={toggleExpandAllVisible}
+                      disabled={visibleEveryoneTips.length === 0}
+                      className="ui-btn"
+                    >
+                      {allVisibleExpanded ? "Collapse all" : "Expand all"}
+                    </button>
+                  </div>
+
+                  {visibleEveryoneTips.length === 0 ? (
+                    <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
+                      No members match your search.
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+                      {visibleEveryoneTips.map((p) => {
+                        const isExpanded = !!expandedEveryoneTipUserIds[p.user_id];
+                        const picksForUser = matches.filter((m) =>
+                          Boolean(String(p.picks?.[m.id] ?? "").trim())
+                        );
+
+                        return (
+                          <div
+                            className="ui-card"
+                            key={p.user_id}
+                            ref={(node) => {
+                              everyoneTipsRowRefs.current[p.user_id] = node;
+                            }}
+                            style={{ padding: 0 }}
+                          >
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedEveryoneTipUserIds((prev) => ({
+                                  ...prev,
+                                  [p.user_id]: !prev[p.user_id],
+                                }))
+                              }
+                              style={{
+                                width: "100%",
+                                padding: "10px 12px",
+                                border: "none",
+                                background: "transparent",
+                                color: "inherit",
+                                textAlign: "left",
+                                cursor: "pointer",
+                                display: "grid",
+                                gap: 8,
+                              }}
+                            >
+                              <div
+                                style={{
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  gap: 10,
+                                  alignItems: "center",
+                                  flexWrap: "wrap",
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 6,
+                                    flexWrap: "wrap",
+                                    fontWeight: 900,
+                                  }}
+                                >
+                                  <span style={{ opacity: 0.78, minWidth: 22 }}>#{p.row_rank}</span>
+                                  <span
+                                    style={{
+                                      color:
+                                        p.user_id === reigningChampionUserId
+                                          ? "var(--champion-gold)"
+                                          : undefined,
+                                    }}
+                                  >
+                                    {p.display_name?.trim() ? p.display_name : "(no display name)"}
+                                  </span>
+                                  <UnpaidTag paymentStatus={p.payment_status ?? null} />
+                                </div>
+                                <div style={{ fontSize: 12, opacity: 0.95 }}>
+                                  Potential <b>{fmtPts(p.potential_score)}</b>
+                                </div>
+                              </div>
+
+                              <div
+                                style={{
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  gap: 10,
+                                  flexWrap: "wrap",
+                                  fontSize: 12,
+                                  opacity: 0.9,
+                                }}
+                              >
+                                <span>
+                                  Underdogs tipped: <b>{p.underdog_count}</b>/<b>{p.picks_count}</b>
+                                </span>
+                                <span>{isExpanded ? "Hide picks" : "Show picks"}</span>
+                              </div>
+                            </button>
+
+                            {isExpanded && (
+                              <div
+                                style={{
+                                  borderTop: "1px solid var(--border)",
+                                  padding: "8px 12px 10px",
+                                  display: "grid",
+                                  gap: 6,
+                                }}
+                              >
+                                {picksForUser.length === 0 ? (
+                                  <div style={{ fontSize: 12, opacity: 0.8 }}>
+                                    No picks available for this member.
+                                  </div>
+                                ) : (
+                                  picksForUser.map((m) => {
+                                    const team = String(p.picks?.[m.id] ?? "").trim();
+                                    const odds =
+                                      team === m.home_team
+                                        ? m.home_odds
+                                        : team === m.away_team
+                                          ? m.away_odds
+                                          : null;
+                                    const oddsLabel = fmtOdds(odds);
+
+                                    return (
+                                      <div
+                                        key={`${p.user_id}-${m.id}`}
+                                        style={{
+                                          display: "flex",
+                                          justifyContent: "space-between",
+                                          gap: 10,
+                                          fontSize: 12,
+                                          opacity: 0.95,
+                                          borderTop: "1px solid var(--border)",
+                                          paddingTop: 6,
+                                        }}
+                                      >
+                                        <div
+                                          style={{
+                                            opacity: 0.9,
+                                            display: "inline-flex",
+                                            alignItems: "center",
+                                            gap: 6,
+                                            flexWrap: "wrap",
+                                          }}
+                                        >
+                                          <span>{matchTitleById[m.id] ?? `${m.home_team} vs ${m.away_team}`}</span>
+                                        </div>
+                                        <div style={{ fontWeight: 800, textAlign: "right" }}>
+                                          {team ? (
+                                            <>
+                                              {team}
+                                              {oddsLabel ? (
+                                                <span style={{ opacity: 0.9 }}> ({oddsLabel})</span>
+                                              ) : null}
+                                            </>
+                                          ) : (
+                                            <span style={{ opacity: 0.6 }}>—</span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    );
+                                  })
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              )}
+            </UiCard>
+          )}
 
           {isRecapAdmin && (
             <UiCard soft className="ui-mt-4">

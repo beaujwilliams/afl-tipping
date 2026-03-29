@@ -36,6 +36,14 @@ function parseSyncUpdated(syncJson: Record<string, unknown>) {
   return parsed;
 }
 
+function parseSyncRoundsTargeted(syncJson: Record<string, unknown>) {
+  if (typeof syncJson.roundsTargetedCount === "number") return syncJson.roundsTargetedCount;
+  if (typeof syncJson.rounds_targeted === "number") return syncJson.rounds_targeted;
+  const parsed = Number(syncJson.roundsTargetedCount ?? syncJson.rounds_targeted ?? 0);
+  if (!Number.isFinite(parsed)) return 0;
+  return parsed;
+}
+
 function isMissingRelationError(message: string, relationName: string) {
   const m = String(message ?? "").toLowerCase();
   const rel = relationName.toLowerCase();
@@ -101,6 +109,42 @@ export async function GET(req: Request) {
       syncResults.status < 300 &&
       (syncResults.json.ok === true || syncResults.json.success === true);
     const syncUpdated = Math.max(0, Math.trunc(parseSyncUpdated(syncResults.json)));
+    const roundsTargetedCount = Math.max(
+      0,
+      Math.trunc(parseSyncRoundsTargeted(syncResults.json))
+    );
+    const skipIdleActiveRun =
+      scope === "active" && jobKind === "scoring_15m" && syncOk && roundsTargetedCount === 0;
+
+    if (skipIdleActiveRun) {
+      const finishedAtUtc = new Date().toISOString();
+      return NextResponse.json({
+        ok: true,
+        season,
+        competition_id: competitionId,
+        scope,
+        job_kind: jobKind,
+        run_status: "skipped",
+        skip_reason: "no_live_round",
+        rounds_targeted: roundsTargetedCount,
+        sync_updated: syncUpdated,
+        recalc_triggered: false,
+        steps: {
+          sync_results: syncResults,
+          recalc_leaderboard: {
+            status: 412,
+            json: {
+              ok: false,
+              error: "Skipped recalc because there is no locked unfinished round.",
+            },
+          },
+        },
+        log_saved: false,
+        log_skipped_reason: "active_round_not_live",
+        started_at_utc: startedAtUtc,
+        finished_at_utc: finishedAtUtc,
+      });
+    }
 
     const shouldRecalc = syncOk && syncUpdated > 0;
     const recalcLeaderboard = shouldRecalc

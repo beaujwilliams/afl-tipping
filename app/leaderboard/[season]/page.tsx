@@ -956,6 +956,7 @@ export default function LeaderboardPage() {
         window.location.href = "/login";
         return;
       }
+      setCurrentUserId(auth.session.user.id);
 
       const res = await fetch(`/api/leaderboard?season=${encodeURIComponent(String(season))}`);
 
@@ -1265,12 +1266,24 @@ export default function LeaderboardPage() {
     });
   }
 
-  function selectTopTrendUsers(count: number) {
+  function selectTopTrendUsers(
+    count: number,
+    options: { includeCurrentUser?: boolean } = {}
+  ) {
+    const { includeCurrentUser = false } = options;
     const validIds = new Set(scopedTrendSeries.map((series) => series.user_id));
     const topIds = scopedRows
       .slice(0, count)
       .map((row) => row.user_id)
       .filter((userId) => validIds.has(userId));
+    if (
+      includeCurrentUser &&
+      currentUserId &&
+      validIds.has(currentUserId) &&
+      !topIds.includes(currentUserId)
+    ) {
+      topIds.push(currentUserId);
+    }
     setSelectedTrendUserIds(topIds);
   }
 
@@ -2049,7 +2062,7 @@ export default function LeaderboardPage() {
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                       <button
                         type="button"
-                        onClick={() => selectTopTrendUsers(5)}
+                        onClick={() => selectTopTrendUsers(5, { includeCurrentUser: true })}
                         style={{
                           border: "1px solid var(--border)",
                           background: "var(--card)",
@@ -2060,7 +2073,22 @@ export default function LeaderboardPage() {
                           fontWeight: 600,
                         }}
                       >
-                        Top 5
+                        Top 5 + You
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => selectTopTrendUsers(15, { includeCurrentUser: true })}
+                        style={{
+                          border: "1px solid var(--border)",
+                          background: "var(--card)",
+                          color: "var(--foreground)",
+                          borderRadius: 999,
+                          padding: "6px 12px",
+                          cursor: "pointer",
+                          fontWeight: 600,
+                        }}
+                      >
+                        Top 15 + You
                       </button>
                       <button
                         type="button"

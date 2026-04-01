@@ -82,6 +82,7 @@ export type RoundTipStatusResponse = {
   season: number;
   competition_id: string;
   reigning_champion_user_id?: string | null;
+  champion_highlight_user_ids?: string[];
   admin: boolean;
   rounds: RoundTipStatusRound[];
 };
@@ -463,6 +464,7 @@ export async function getRoundTipStatusResponse(params: {
     season: params.season,
     competition_id: params.competitionId,
     reigning_champion_user_id: reigningChampion.reigning_champion_user_id,
+    champion_highlight_user_ids: reigningChampion.champion_highlight_user_ids,
     admin: params.admin,
     rounds,
   };

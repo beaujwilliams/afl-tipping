@@ -113,6 +113,7 @@ export type LeaderboardResponse = {
   season: number;
   competition_id: string;
   reigning_champion_user_id?: string | null;
+  champion_highlight_user_ids?: string[];
   latest_scored_round: number | null;
   previous_round_for_movement: number | null;
   matches_scored: number;
@@ -263,6 +264,7 @@ export async function computeLeaderboardSnapshot(params: {
       season: params.season,
       competition_id: competitionId,
       reigning_champion_user_id: reigningChampion.reigning_champion_user_id,
+      champion_highlight_user_ids: reigningChampion.champion_highlight_user_ids,
       latest_scored_round: null,
       previous_round_for_movement: null,
       matches_scored: 0,
@@ -708,6 +710,7 @@ export async function computeLeaderboardSnapshot(params: {
     season: params.season,
     competition_id: competitionId,
     reigning_champion_user_id: reigningChampion.reigning_champion_user_id,
+    champion_highlight_user_ids: reigningChampion.champion_highlight_user_ids,
     latest_scored_round: latestScoredRound,
     previous_round_for_movement: previousRoundForMovement,
     matches_scored: scoredMatches.length,

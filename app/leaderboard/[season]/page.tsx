@@ -30,6 +30,7 @@ type LeaderboardResponse = {
   ok: boolean;
   season: number;
   reigning_champion_user_id?: string | null;
+  champion_highlight_user_ids?: string[];
   latest_scored_round: number | null;
   previous_round_for_movement: number | null;
   matches_scored: number;
@@ -184,6 +185,19 @@ function fallbackTrendColor(index: number) {
 
 function trendColorForUser(colorByUserId: Record<string, string>, userId: string) {
   return colorByUserId[userId] ?? TREND_COLORS[0];
+}
+
+function normalizeUserIdList(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of value) {
+    const userId = typeof item === "string" ? item.trim() : "";
+    if (!userId || seen.has(userId)) continue;
+    seen.add(userId);
+    out.push(userId);
+  }
+  return out;
 }
 
 function buildNiceNumberTicks(maxValue: number, targetTickCount = 6) {
@@ -446,7 +460,7 @@ export default function LeaderboardPage() {
   const season = Number(params.season);
 
   const [rows, setRows] = useState<LeaderboardRow[]>([]);
-  const [reigningChampionUserId, setReigningChampionUserId] = useState<string | null>(null);
+  const [championHighlightUserIds, setChampionHighlightUserIds] = useState<string[]>([]);
   const [trendRounds, setTrendRounds] = useState<number[]>([]);
   const [trendSeries, setTrendSeries] = useState<LeaderboardTrendSeries[]>([]);
   const [selectedTrendUserIds, setSelectedTrendUserIds] = useState<string[]>([]);
@@ -480,11 +494,20 @@ export default function LeaderboardPage() {
   function applyLeaderboardData(json: LeaderboardResponse) {
     const nextRows = Array.isArray(json.rows) ? json.rows : [];
     setRows(nextRows);
-    setReigningChampionUserId(
-      typeof json.reigning_champion_user_id === "string"
-        ? json.reigning_champion_user_id
-        : null
+    const nextChampionHighlightUserIds = normalizeUserIdList(
+      json.champion_highlight_user_ids
     );
+    const reigningChampionUserId =
+      typeof json.reigning_champion_user_id === "string"
+        ? json.reigning_champion_user_id.trim()
+        : "";
+    if (
+      reigningChampionUserId &&
+      !nextChampionHighlightUserIds.includes(reigningChampionUserId)
+    ) {
+      nextChampionHighlightUserIds.unshift(reigningChampionUserId);
+    }
+    setChampionHighlightUserIds(nextChampionHighlightUserIds);
 
     const nextRounds = Array.isArray(json.scored_rounds)
       ? json.scored_rounds
@@ -1087,6 +1110,10 @@ export default function LeaderboardPage() {
   const rankColWidth = isMobile ? 56 : 68;
   const tipsterColWidth = isMobile ? 148 : 188;
   const tableMinWidth = isMobile ? 860 : 1000;
+  const championHighlightSet = useMemo(
+    () => new Set(championHighlightUserIds),
+    [championHighlightUserIds]
+  );
 
   function stickyColumnStyle(col: 1 | 2, isHeader: boolean) {
     return {
@@ -1802,7 +1829,7 @@ export default function LeaderboardPage() {
                       const scopedRank = scopeRankMetaByUserId.get(r.user_id)?.rank ?? r.rank;
                       const scopedBehind =
                         scopeRankMetaByUserId.get(r.user_id)?.behind ?? r.behind_leader;
-                      const isChampion = r.user_id === reigningChampionUserId;
+                      const isChampion = championHighlightSet.has(r.user_id);
                       const rankSticky = stickyColumnStyle(1, false);
                       return (
                         <tr key={r.user_id}>
@@ -1810,9 +1837,6 @@ export default function LeaderboardPage() {
                             style={{
                               fontWeight: 900,
                               ...rankSticky,
-                              boxShadow: isChampion
-                                ? "inset 2px 0 0 var(--champion-gold), 1px 0 0 var(--border)"
-                                : rankSticky.boxShadow,
                             }}
                           >
                             #{scopedRank}

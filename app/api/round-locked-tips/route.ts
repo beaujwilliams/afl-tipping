@@ -178,6 +178,7 @@ export async function GET(req: Request) {
         season,
         round,
         reigning_champion_user_id: reigningChampion.reigning_champion_user_id,
+        champion_highlight_user_ids: reigningChampion.champion_highlight_user_ids,
         players: playersWithPayment,
         cached: true,
         computed_at: cached.computed_at,
@@ -214,6 +215,7 @@ export async function GET(req: Request) {
         season,
         round,
         reigning_champion_user_id: reigningChampion.reigning_champion_user_id,
+        champion_highlight_user_ids: reigningChampion.champion_highlight_user_ids,
         players,
         cached: false,
       });
@@ -254,6 +256,7 @@ export async function GET(req: Request) {
         season,
         round,
         reigning_champion_user_id: reigningChampion.reigning_champion_user_id,
+        champion_highlight_user_ids: reigningChampion.champion_highlight_user_ids,
         players,
         cached: false,
       });
@@ -356,6 +359,7 @@ export async function GET(req: Request) {
       season,
       round,
       reigning_champion_user_id: reigningChampion.reigning_champion_user_id,
+      champion_highlight_user_ids: reigningChampion.champion_highlight_user_ids,
       players,
       cached: false,
     });

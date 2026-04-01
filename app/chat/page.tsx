@@ -49,6 +49,7 @@ type MembershipUserRow = {
 type ReigningChampionResponse = {
   ok?: boolean;
   reigning_champion_user_id?: string | null;
+  champion_highlight_user_ids?: string[];
 };
 
 type ComposerMentionStatus = {
@@ -280,7 +281,7 @@ export default function ChatPage() {
   const [mentionableByAlias, setMentionableByAlias] = useState<Record<string, string>>({});
   const [mentionCandidates, setMentionCandidates] = useState<MentionCandidate[]>([]);
   const [paymentStatusByUserId, setPaymentStatusByUserId] = useState<Record<string, string | null>>({});
-  const [reigningChampionUserId, setReigningChampionUserId] = useState<string | null>(null);
+  const [championHighlightUserIds, setChampionHighlightUserIds] = useState<string[]>([]);
   const [reactions, setReactions] = useState<ReactionRow[]>([]);
 
   const [text, setText] = useState("");
@@ -328,6 +329,10 @@ export default function ChatPage() {
     for (const alias of displayNameMentionAliases(myDisplayName)) aliases.add(alias);
     return aliases;
   }, [myUsernameAlias, myDisplayName]);
+  const championHighlightSet = useMemo(
+    () => new Set(championHighlightUserIds),
+    [championHighlightUserIds]
+  );
 
   const composerMentionStatuses = useMemo<ComposerMentionStatus[]>(() => {
     const aliases = extractMentionAliases(text);
@@ -1117,7 +1122,7 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (!competitionId) {
-      setReigningChampionUserId(null);
+      setChampionHighlightUserIds([]);
       return;
     }
 
@@ -1133,16 +1138,26 @@ export default function ChatPage() {
         if (!alive) return;
 
         if (!res.ok || !json?.ok) {
-          setReigningChampionUserId(null);
+          setChampionHighlightUserIds([]);
           return;
         }
 
-        setReigningChampionUserId(
-          typeof json.reigning_champion_user_id === "string" ? json.reigning_champion_user_id : null
-        );
+        const championIds = Array.isArray(json.champion_highlight_user_ids)
+          ? json.champion_highlight_user_ids
+              .map((value) => (typeof value === "string" ? value.trim() : ""))
+              .filter(Boolean)
+          : [];
+        const reigningChampionUserId =
+          typeof json.reigning_champion_user_id === "string"
+            ? json.reigning_champion_user_id.trim()
+            : "";
+        if (reigningChampionUserId && !championIds.includes(reigningChampionUserId)) {
+          championIds.unshift(reigningChampionUserId);
+        }
+        setChampionHighlightUserIds(Array.from(new Set(championIds)));
       } catch {
         if (!alive) return;
-        setReigningChampionUserId(null);
+        setChampionHighlightUserIds([]);
       }
     })();
 
@@ -1196,9 +1211,8 @@ export default function ChatPage() {
       if (!seen[r.message_id][r.emoji]) seen[r.message_id][r.emoji] = new Set();
 
       const name = nameByUserId[r.user_id] ?? "Anonymous tipster";
-      const crownedName = r.user_id === reigningChampionUserId ? `${name} 👑` : name;
       const paymentStatus = paymentStatusByUserId[r.user_id] ?? null;
-      const display = paymentStatus === "pending" ? `${crownedName} (unpaid)` : crownedName;
+      const display = paymentStatus === "pending" ? `${name} (unpaid)` : name;
       if (seen[r.message_id][r.emoji].has(display)) continue;
 
       seen[r.message_id][r.emoji].add(display);
@@ -1206,7 +1220,7 @@ export default function ChatPage() {
     }
 
     return out;
-  }, [reactions, nameByUserId, paymentStatusByUserId, reigningChampionUserId]);
+  }, [reactions, nameByUserId, paymentStatusByUserId]);
 
   async function send() {
     const baseBody = text.trim();
@@ -1537,7 +1551,7 @@ export default function ChatPage() {
                           <span
                             style={{
                               color:
-                                m.user_id === reigningChampionUserId
+                                championHighlightSet.has(m.user_id)
                                   ? "var(--champion-gold)"
                                   : undefined,
                             }}

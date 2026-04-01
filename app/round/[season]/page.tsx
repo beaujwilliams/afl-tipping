@@ -22,7 +22,7 @@ export default async function SeasonRoundsPage(props: SeasonRoundsPageProps) {
         rows={[]}
         statusByRoundId={{}}
         isAdmin={false}
-        reigningChampionUserId={null}
+        championHighlightUserIds={[]}
         initialMessage="Invalid season."
       />
     );
@@ -45,7 +45,7 @@ export default async function SeasonRoundsPage(props: SeasonRoundsPageProps) {
   }> = [];
   let statusByRoundId: Record<string, Awaited<ReturnType<typeof getRoundTipStatusResponse>>["rounds"][number]> = {};
   let isAdmin = false;
-  let reigningChampionUserId: string | null = null;
+  let championHighlightUserIds: string[] = [];
   let initialMessage: string | null = null;
 
   try {
@@ -82,10 +82,20 @@ export default async function SeasonRoundsPage(props: SeasonRoundsPageProps) {
         payload.rounds.map((round) => [round.round_id, round])
       );
       isAdmin = payload.admin;
-      reigningChampionUserId =
-        typeof payload.reigning_champion_user_id === "string"
-          ? payload.reigning_champion_user_id
-          : null;
+      championHighlightUserIds = Array.isArray(payload.champion_highlight_user_ids)
+        ? payload.champion_highlight_user_ids
+            .map((value) => (typeof value === "string" ? value.trim() : ""))
+            .filter(Boolean)
+        : [];
+      if (
+        typeof payload.reigning_champion_user_id === "string" &&
+        payload.reigning_champion_user_id.trim()
+      ) {
+        const reigningChampionUserId = payload.reigning_champion_user_id.trim();
+        if (!championHighlightUserIds.includes(reigningChampionUserId)) {
+          championHighlightUserIds.unshift(reigningChampionUserId);
+        }
+      }
     }
   } catch (error) {
     initialMessage =
@@ -98,7 +108,7 @@ export default async function SeasonRoundsPage(props: SeasonRoundsPageProps) {
       rows={rows}
       statusByRoundId={statusByRoundId}
       isAdmin={isAdmin}
-      reigningChampionUserId={reigningChampionUserId}
+      championHighlightUserIds={championHighlightUserIds}
       initialMessage={initialMessage}
     />
   );

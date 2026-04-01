@@ -63,7 +63,7 @@ type SeasonRoundsPageClientProps = {
   rows: SeasonRoundRow[];
   statusByRoundId: Record<string, SeasonTipStatusRound>;
   isAdmin: boolean;
-  reigningChampionUserId: string | null;
+  championHighlightUserIds: string[];
   initialMessage?: string | null;
 };
 
@@ -104,10 +104,14 @@ export default function SeasonRoundsPageClient({
   rows,
   statusByRoundId,
   isAdmin,
-  reigningChampionUserId,
+  championHighlightUserIds,
   initialMessage,
 }: SeasonRoundsPageClientProps) {
   const msg = initialMessage ?? "";
+  const championHighlightSet = useMemo(
+    () => new Set(championHighlightUserIds),
+    [championHighlightUserIds]
+  );
 
   // per-round expand/collapse for "who hasn't tipped"
   const [openRoundId, setOpenRoundId] = useState<string | null>(null);
@@ -499,7 +503,7 @@ export default function SeasonRoundsPageClient({
                               <span
                                 style={{
                                   color:
-                                    p.user_id === reigningChampionUserId
+                                    championHighlightSet.has(p.user_id)
                                       ? "var(--champion-gold)"
                                       : undefined,
                                 }}

@@ -54,6 +54,7 @@ type RoundResultsResponse = {
   season: number;
   round: number;
   reigning_champion_user_id?: string | null;
+  champion_highlight_user_ids?: string[];
   lock_time_utc: string | null;
   snapshot_for_time_utc: string | null;
   matches: MatchResultRow[];
@@ -209,7 +210,7 @@ export default function RoundResultsDetailPage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [matches, setMatches] = useState<MatchResultRow[]>([]);
   const [players, setPlayers] = useState<PlayerRoundScore[]>([]);
-  const [reigningChampionUserId, setReigningChampionUserId] = useState<string | null>(null);
+  const [championHighlightUserIds, setChampionHighlightUserIds] = useState<string[]>([]);
   const [lockTimeUtc, setLockTimeUtc] = useState<string | null>(null);
   const [isRecapAdmin, setIsRecapAdmin] = useState(false);
   const [recapLoading, setRecapLoading] = useState(false);
@@ -280,11 +281,19 @@ export default function RoundResultsDetailPage() {
 
         setMatches(Array.isArray(json.matches) ? json.matches : []);
         setPlayers(Array.isArray(json.players) ? json.players : []);
-        setReigningChampionUserId(
+        const championIds = Array.isArray(json.champion_highlight_user_ids)
+          ? json.champion_highlight_user_ids
+              .map((value) => (typeof value === "string" ? value.trim() : ""))
+              .filter(Boolean)
+          : [];
+        const reigningChampionUserId =
           typeof json.reigning_champion_user_id === "string"
-            ? json.reigning_champion_user_id
-            : null
-        );
+            ? json.reigning_champion_user_id.trim()
+            : "";
+        if (reigningChampionUserId && !championIds.includes(reigningChampionUserId)) {
+          championIds.unshift(reigningChampionUserId);
+        }
+        setChampionHighlightUserIds(Array.from(new Set(championIds)));
         setLockTimeUtc(json.lock_time_utc ?? null);
 
         setRecapLoading(true);
@@ -339,6 +348,10 @@ export default function RoundResultsDetailPage() {
 
   const activeSortBy: RoundSortKey = sortBy;
   const activeSortDirection: SortDirection = sortDirection;
+  const championHighlightSet = useMemo(
+    () => new Set(championHighlightUserIds),
+    [championHighlightUserIds]
+  );
   const rankColWidth = isMobile ? 56 : 68;
   const tipsterColWidth = isMobile ? 148 : 188;
   const tableMinWidth = isMobile ? 760 : 900;
@@ -856,7 +869,7 @@ export default function RoundResultsDetailPage() {
                   </thead>
                   <tbody>
                     {sortedPlayers.map((p) => {
-                      const isChampion = p.user_id === reigningChampionUserId;
+                      const isChampion = championHighlightSet.has(p.user_id);
                       const rankSticky = stickyColumnStyle(1, false);
                       return (
                         <tr key={p.user_id}>
@@ -864,9 +877,6 @@ export default function RoundResultsDetailPage() {
                             style={{
                               fontWeight: 900,
                               ...rankSticky,
-                              boxShadow: isChampion
-                                ? "inset 2px 0 0 var(--champion-gold), 1px 0 0 var(--border)"
-                                : rankSticky.boxShadow,
                             }}
                           >
                             #{roundRankByUserId[p.user_id] ?? "-"}
@@ -1191,7 +1201,7 @@ export default function RoundResultsDetailPage() {
                                   <span
                                     style={{
                                       color:
-                                        p.user_id === reigningChampionUserId
+                                        championHighlightSet.has(p.user_id)
                                           ? "var(--champion-gold)"
                                           : undefined,
                                     }}

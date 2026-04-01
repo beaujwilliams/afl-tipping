@@ -11,6 +11,19 @@ function isMissingColumnError(message: string, columnName: string) {
   return m.includes(col) && (m.includes("column") || m.includes("does not exist"));
 }
 
+function normalizeUuidList(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of value) {
+    const id = typeof item === "string" ? item.trim() : "";
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
+
 async function getCompetitionId(
   supabase: ReturnType<typeof createServiceClient>,
   req: Request
@@ -71,30 +84,37 @@ export async function PATCH(req: Request) {
 
     const body = (await req.json().catch(() => null)) as
       | null
-      | { reigning_champion_override_user_id?: string | null };
+      | {
+          reigning_champion_override_user_id?: string | null;
+          champion_highlight_user_ids?: unknown;
+        };
 
-    if (!body || !("reigning_champion_override_user_id" in body)) {
+    if (
+      !body ||
+      (!("reigning_champion_override_user_id" in body) &&
+        !("champion_highlight_user_ids" in body))
+    ) {
       return NextResponse.json(
-        { error: "Missing reigning_champion_override_user_id in body" },
+        {
+          error:
+            "Missing update fields (provide reigning_champion_override_user_id and/or champion_highlight_user_ids)",
+        },
         { status: 400 }
       );
     }
 
-    const overrideUserIdRaw = body.reigning_champion_override_user_id;
-    const overrideUserId =
-      typeof overrideUserIdRaw === "string" && overrideUserIdRaw.trim().length
-        ? overrideUserIdRaw.trim()
-        : null;
-
-    const checkColumn = await supabase
+    const checkOverrideColumn = await supabase
       .from("competitions")
       .select("reigning_champion_override_user_id")
       .eq("id", competitionId)
       .single();
 
     if (
-      checkColumn.error &&
-      isMissingColumnError(checkColumn.error.message, "reigning_champion_override_user_id")
+      checkOverrideColumn.error &&
+      isMissingColumnError(
+        checkOverrideColumn.error.message,
+        "reigning_champion_override_user_id"
+      )
     ) {
       return NextResponse.json(
         {
@@ -105,20 +125,97 @@ export async function PATCH(req: Request) {
       );
     }
 
-    if (checkColumn.error) {
+    if (checkOverrideColumn.error) {
       return NextResponse.json(
-        { error: "Failed to read competition", details: checkColumn.error.message },
+        { error: "Failed to read competition", details: checkOverrideColumn.error.message },
         { status: 500 }
       );
     }
 
-    if (overrideUserId) {
-      const { data: memberRow, error: memErr } = await supabase
+    const hasOverrideInput = "reigning_champion_override_user_id" in body;
+    const existingOverrideUserId =
+      typeof checkOverrideColumn.data?.reigning_champion_override_user_id === "string"
+        ? checkOverrideColumn.data.reigning_champion_override_user_id
+        : null;
+    const overrideUserIdRaw = body.reigning_champion_override_user_id;
+    const overrideUserId = hasOverrideInput
+      ? typeof overrideUserIdRaw === "string" && overrideUserIdRaw.trim().length
+        ? overrideUserIdRaw.trim()
+        : null
+      : existingOverrideUserId;
+
+    const checkHighlightColumn = await supabase
+      .from("competitions")
+      .select("champion_highlight_user_ids")
+      .eq("id", competitionId)
+      .single();
+
+    let highlightColumnAvailable = true;
+    let existingHighlightIds: string[] = [];
+
+    if (
+      checkHighlightColumn.error &&
+      isMissingColumnError(checkHighlightColumn.error.message, "champion_highlight_user_ids")
+    ) {
+      highlightColumnAvailable = false;
+    } else if (checkHighlightColumn.error) {
+      return NextResponse.json(
+        { error: "Failed to read competition", details: checkHighlightColumn.error.message },
+        { status: 500 }
+      );
+    } else {
+      existingHighlightIds = normalizeUuidList(
+        checkHighlightColumn.data?.champion_highlight_user_ids
+      );
+    }
+
+    const hasHighlightsInput = "champion_highlight_user_ids" in body;
+    if (hasHighlightsInput && !highlightColumnAvailable) {
+      return NextResponse.json(
+        {
+          error: "Database is missing competitions.champion_highlight_user_ids",
+          hint: "Apply migration db/migrations/20260401_competition_champion_highlights.sql",
+        },
+        { status: 500 }
+      );
+    }
+
+    let championHighlightUserIds = existingHighlightIds;
+    if (hasHighlightsInput) {
+      const raw = body.champion_highlight_user_ids;
+      if (raw === null) {
+        championHighlightUserIds = [];
+      } else if (!Array.isArray(raw)) {
+        return NextResponse.json(
+          { error: "champion_highlight_user_ids must be an array of user ids" },
+          { status: 400 }
+        );
+      } else {
+        const hasInvalid = raw.some((item) => typeof item !== "string");
+        if (hasInvalid) {
+          return NextResponse.json(
+            { error: "champion_highlight_user_ids must contain only string user ids" },
+            { status: 400 }
+          );
+        }
+        championHighlightUserIds = normalizeUuidList(raw);
+      }
+    }
+
+    const idsToValidate = Array.from(
+      new Set(
+        [overrideUserId, ...championHighlightUserIds]
+          .map((value) => String(value ?? "").trim())
+          .filter(Boolean)
+      )
+    );
+
+    if (idsToValidate.length > 0) {
+      const { data: memberRows, error: memErr } = await supabase
         .from("memberships")
         .select("user_id")
         .eq("competition_id", competitionId)
-        .eq("user_id", overrideUserId)
-        .maybeSingle();
+        .in("user_id", idsToValidate);
 
       if (memErr) {
         return NextResponse.json(
@@ -127,17 +224,41 @@ export async function PATCH(req: Request) {
         );
       }
 
-      if (!memberRow) {
+      const validIds = new Set((memberRows ?? []).map((row) => String(row.user_id)));
+
+      if (overrideUserId && !validIds.has(overrideUserId)) {
         return NextResponse.json(
           { error: "Champion override must be an existing competition member" },
           { status: 400 }
         );
       }
+
+      const invalidHighlightIds = championHighlightUserIds.filter((id) => !validIds.has(id));
+      if (invalidHighlightIds.length > 0) {
+        return NextResponse.json(
+          {
+            error:
+              "Champion highlight list must contain only existing competition members",
+            details: `Invalid user ids: ${invalidHighlightIds.join(", ")}`,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    const updatePayload: {
+      reigning_champion_override_user_id: string | null;
+      champion_highlight_user_ids?: string[];
+    } = {
+      reigning_champion_override_user_id: overrideUserId,
+    };
+    if (highlightColumnAvailable) {
+      updatePayload.champion_highlight_user_ids = championHighlightUserIds;
     }
 
     const { error: updateErr } = await supabase
       .from("competitions")
-      .update({ reigning_champion_override_user_id: overrideUserId })
+      .update(updatePayload)
       .eq("id", competitionId);
 
     if (updateErr) {

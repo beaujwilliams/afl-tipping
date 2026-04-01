@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { generateJoinCode } from "@/lib/join-code";
 
 export default function SetupPage() {
   const [msg, setMsg] = useState("Setting up your competition…");
@@ -33,7 +34,7 @@ export default function SetupPage() {
       }
 
       // Create comp
-      const joinCode = "NEEDLESSLY";
+      const joinCode = generateJoinCode();
       const { data: comp, error: e2 } = await supabaseBrowser
         .from("competitions")
         .insert({

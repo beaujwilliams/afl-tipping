@@ -1,10 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase-server";
-
-function makeJoinCode() {
-  return "NEEDLESSLY";
-}
+import { generateJoinCode } from "@/lib/join-code";
 
 export async function ensureCompetition() {
   const supabase = await createClient();
@@ -26,7 +23,7 @@ export async function ensureCompetition() {
     .from("competitions")
     .insert({
       name: "Needlessly Complicated AFL Tipping",
-      join_code: makeJoinCode(),
+      join_code: generateJoinCode(),
       owner_user_id: auth.user.id,
     })
     .select("id, join_code")

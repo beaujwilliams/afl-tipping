@@ -76,6 +76,8 @@ type LeaderboardCacheRow = {
   computed_at: string | null;
 };
 
+const SUPABASE_PAGE_SIZE = 1000;
+
 export type LeaderboardRow = {
   user_id: string;
   display_name: string;
@@ -236,6 +238,41 @@ async function resolveCompetitionIdForSeason(params: {
   };
 }
 
+async function readTipsForScoredMatches(params: {
+  supabase: ReturnType<typeof createServiceClient>;
+  competitionId: string;
+  scoredMatchIds: string[];
+}) {
+  if (!params.scoredMatchIds.length) return [] as TipRow[];
+
+  const out: TipRow[] = [];
+  let from = 0;
+
+  while (true) {
+    const to = from + SUPABASE_PAGE_SIZE - 1;
+
+    const { data, error } = await params.supabase
+      .from("tips")
+      .select("user_id, match_id, picked_team")
+      .eq("competition_id", params.competitionId)
+      .in("match_id", params.scoredMatchIds)
+      .order("id", { ascending: true })
+      .range(from, to);
+
+    if (error) {
+      throw new Error(`Failed to read tips: ${error.message}`);
+    }
+
+    const batch = (data ?? []) as TipRow[];
+    out.push(...batch);
+
+    if (batch.length < SUPABASE_PAGE_SIZE) break;
+    from += SUPABASE_PAGE_SIZE;
+  }
+
+  return out;
+}
+
 export async function computeLeaderboardSnapshot(params: {
   season: number;
   competitionId?: string | null;
@@ -376,20 +413,11 @@ export async function computeLeaderboardSnapshot(params: {
 
   const scoredMatchIds = scoredMatches.map((m) => m.id);
 
-  let tipRows: TipRow[] = [];
-  if (scoredMatchIds.length > 0) {
-    const { data: tips, error: tErr } = await supabase
-      .from("tips")
-      .select("user_id, match_id, picked_team")
-      .eq("competition_id", competitionId)
-      .in("match_id", scoredMatchIds);
-
-    if (tErr) {
-      throw new Error(`Failed to read tips: ${tErr.message}`);
-    }
-
-    tipRows = (tips ?? []) as TipRow[];
-  }
+  const tipRows = await readTipsForScoredMatches({
+    supabase,
+    competitionId,
+    scoredMatchIds,
+  });
 
   let memberships: MembershipRow[] = [];
   const withPaymentAndTest = await supabase

@@ -59,7 +59,12 @@ export default function InfoPage() {
         </div>
 
         <div>
-          <h2 style={{ marginBottom: 8 }}>5. Season winner and tie-breakers</h2>
+          <h2 style={{ marginBottom: 8 }}>5. Tipping runs through the regular season and the finals</h2>
+          <p>The competition continues through every finals match, including the Grand Final.</p>
+        </div>
+
+        <div>
+          <h2 style={{ marginBottom: 8 }}>6. Season winner and tie-breakers</h2>
           <p>
             The highest total points across the season wins. If two or more players are tied on
             total points, ranking is decided in this order:
@@ -71,7 +76,7 @@ export default function InfoPage() {
         </div>
 
         <div>
-          <h2 style={{ marginBottom: 8 }}>6. Prize money split</h2>
+          <h2 style={{ marginBottom: 8 }}>7. Prize money split</h2>
           <p>
             Final prize distribution is set after Round 3 once total entries are confirmed. It may be
             winner-takes-all or split across 1st, 2nd, and 3rd.

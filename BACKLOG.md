@@ -32,6 +32,6 @@ All existing `BL-*` items from the previous single backlog are preserved in
 
 ## Cross-Backlog Next 3
 
-1. `UI-001` Add season switcher and remove hardcoded `2026`
-2. `BL-011` Season archive selector and year-over-year comparison page
-3. `BL-017` Optional SMS tipping reminders
+1. `BL-021` Server-render round page initial payload and keep tip save client-side
+2. `BL-022` Move layout auth/admin state server-side and trim global unread polling
+3. `BL-023` Server-render stats and merge/cache season stats payload

@@ -30,9 +30,8 @@ All existing `BL-*` items from the previous single backlog are preserved in
 
 - `BL-003` (remove hardcoded 2026) -> `UI-001` in [BACKLOG_UI_UX.md](BACKLOG_UI_UX.md)
 
-## Cross-Backlog Next 4
+## Cross-Backlog Next 3
 
-1. `BL-020` Defer non-essential chat boot data
-2. `BL-016` Observability: logs + alerting for job failures
-3. `BL-015` Audit log for admin actions
-4. `UI-007` Standardized toast/status feedback
+1. `BL-016` Observability: logs + alerting for job failures
+2. `BL-015` Audit log for admin actions
+3. `UI-007` Standardized toast/status feedback

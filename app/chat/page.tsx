@@ -275,6 +275,8 @@ export default function ChatPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [competitionId, setCompetitionId] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [mentionDirectoryLoaded, setMentionDirectoryLoaded] = useState(false);
+  const [mentionDirectoryLoading, setMentionDirectoryLoading] = useState(false);
 
   const [messages, setMessages] = useState<MsgRow[]>([]);
   const [quotedById, setQuotedById] = useState<Record<string, MsgRow>>({});
@@ -319,6 +321,8 @@ export default function ChatPage() {
 
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const knownIdsRef = useRef<Set<string>>(new Set());
+  const mentionDirectoryPromiseRef = useRef<Promise<void> | null>(null);
+  const mentionDirectoryCompetitionIdRef = useRef<string | null>(null);
 
   const messageById = useMemo(() => {
     const out: Record<string, MsgRow> = { ...quotedById };
@@ -452,6 +456,7 @@ export default function ChatPage() {
   }
 
   async function loadMentionDirectory(accessToken: string, fallbackCompetitionId?: string | null) {
+    const targetCompetitionId = String(fallbackCompetitionId ?? competitionId ?? "").trim() || null;
     let directoryRows: ProfileRow[] = [];
 
     try {
@@ -635,6 +640,41 @@ export default function ChatPage() {
     setUsernameByUserId((prev) => ({ ...prev, ...usernamesMap }));
     setMentionableByAlias(byAlias);
     setMentionCandidates(candidateList);
+    mentionDirectoryCompetitionIdRef.current = targetCompetitionId;
+    setMentionDirectoryLoaded(true);
+  }
+
+  async function ensureMentionDirectoryLoaded(
+    accessToken?: string | null,
+    fallbackCompetitionId?: string | null
+  ) {
+    const targetCompetitionId = String(fallbackCompetitionId ?? competitionId ?? "").trim() || null;
+    const alreadyLoaded =
+      mentionDirectoryLoaded && mentionDirectoryCompetitionIdRef.current === targetCompetitionId;
+
+    if (alreadyLoaded || mentionDirectoryLoading) {
+      return mentionDirectoryPromiseRef.current ?? Promise.resolve();
+    }
+
+    const run = async () => {
+      setMentionDirectoryLoading(true);
+      try {
+        let resolvedToken = String(accessToken ?? "").trim();
+        if (!resolvedToken) {
+          const { data } = await supabaseBrowser.auth.getSession();
+          resolvedToken = String(data.session?.access_token ?? "").trim();
+        }
+        if (!resolvedToken) return;
+        await loadMentionDirectory(resolvedToken, targetCompetitionId);
+      } finally {
+        setMentionDirectoryLoading(false);
+        mentionDirectoryPromiseRef.current = null;
+      }
+    };
+
+    const promise = run();
+    mentionDirectoryPromiseRef.current = promise;
+    return promise;
   }
 
   async function ensureSession() {
@@ -714,12 +754,12 @@ export default function ChatPage() {
     if (resolvedCompId) {
       setCompetitionId(resolvedCompId);
       setIsAdmin(isAdminRole(resolvedRole));
-      await loadMentionDirectory(s.session.access_token, resolvedCompId);
     } else {
       setCompetitionId(null);
       setIsAdmin(false);
       setMentionableByAlias({});
       setMentionCandidates([]);
+      setMentionDirectoryLoaded(false);
     }
 
     setReady(true);
@@ -1183,6 +1223,45 @@ export default function ChatPage() {
     loadRecent();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, competitionId]);
+
+  useEffect(() => {
+    mentionDirectoryCompetitionIdRef.current = null;
+    setMentionDirectoryLoaded(false);
+    setMentionDirectoryLoading(false);
+    setMentionableByAlias({});
+    setMentionCandidates([]);
+  }, [competitionId]);
+
+  useEffect(() => {
+    if (!ready || !competitionId || mentionDirectoryLoaded) return;
+
+    let cancelled = false;
+
+    const run = () => {
+      if (cancelled) return;
+      void ensureMentionDirectoryLoaded(undefined, competitionId);
+    };
+
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      const idleId = window.requestIdleCallback(() => run(), { timeout: 2500 });
+      return () => {
+        cancelled = true;
+        window.cancelIdleCallback(idleId);
+      };
+    }
+
+    const timer = globalThis.setTimeout(run, 1500);
+    return () => {
+      cancelled = true;
+      globalThis.clearTimeout(timer);
+    };
+  }, [ready, competitionId, mentionDirectoryLoaded]);
+
+  useEffect(() => {
+    if (!ready || !competitionId || mentionDirectoryLoaded) return;
+    if (!activeMention && !text.trim()) return;
+    void ensureMentionDirectoryLoaded(undefined, competitionId);
+  }, [activeMention, competitionId, mentionDirectoryLoaded, ready, text]);
 
   // Realtime refresh
   useEffect(() => {
@@ -1866,6 +1945,11 @@ export default function ChatPage() {
             onChange={(e) => {
               setText(e.target.value);
               setComposerCursor(e.target.selectionStart ?? e.target.value.length);
+            }}
+            onFocus={() => {
+              if (!mentionDirectoryLoaded && competitionId) {
+                void ensureMentionDirectoryLoaded(undefined, competitionId);
+              }
             }}
             onClick={(e) => setComposerCursor(e.currentTarget.selectionStart ?? text.length)}
             onKeyUp={(e) => setComposerCursor(e.currentTarget.selectionStart ?? text.length)}

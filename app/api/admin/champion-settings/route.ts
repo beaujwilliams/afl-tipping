@@ -11,6 +11,12 @@ function isMissingColumnError(message: string, columnName: string) {
   return m.includes(col) && (m.includes("column") || m.includes("does not exist"));
 }
 
+function isMissingTableError(message: string, tableName: string) {
+  const m = message.toLowerCase();
+  const t = tableName.toLowerCase();
+  return m.includes(t) && (m.includes("relation") || m.includes("does not exist") || m.includes("table"));
+}
+
 function normalizeUuidList(value: unknown) {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
@@ -29,6 +35,65 @@ async function getCompetitionId(
   req: Request
 ) {
   return resolveCompetitionIdForAdminRequest(req, supabase);
+}
+
+async function resolvePreviousSeasonChampionCandidate(params: {
+  supabase: ReturnType<typeof createServiceClient>;
+  competitionId: string;
+  season: number;
+}) {
+  const { supabase, competitionId, season } = params;
+  const previousSeason = Number.isFinite(season) ? season - 1 : null;
+  let previousSeasonChampionUserId: string | null = null;
+  let previousSeasonChampionNotMember = false;
+
+  if (previousSeason !== null) {
+    const previousSeasonChampion = await supabase
+      .from("season_champions")
+      .select("user_id")
+      .eq("competition_id", competitionId)
+      .eq("season", previousSeason)
+      .maybeSingle();
+
+    if (
+      previousSeasonChampion.error &&
+      !isMissingTableError(previousSeasonChampion.error.message, "season_champions")
+    ) {
+      throw new Error(
+        `Failed to load previous season champion: ${previousSeasonChampion.error.message}`
+      );
+    }
+
+    const candidateUserId =
+      !previousSeasonChampion.error && previousSeasonChampion.data?.user_id
+        ? String(previousSeasonChampion.data.user_id)
+        : null;
+
+    if (candidateUserId) {
+      const memberCheck = await supabase
+        .from("memberships")
+        .select("user_id")
+        .eq("competition_id", competitionId)
+        .eq("user_id", candidateUserId)
+        .maybeSingle();
+
+      if (memberCheck.error) {
+        throw new Error(`Failed to validate previous season champion: ${memberCheck.error.message}`);
+      }
+
+      if (memberCheck.data?.user_id) {
+        previousSeasonChampionUserId = candidateUserId;
+      } else {
+        previousSeasonChampionNotMember = true;
+      }
+    }
+  }
+
+  return {
+    previousSeason,
+    previousSeasonChampionUserId,
+    previousSeasonChampionNotMember,
+  };
 }
 
 export async function GET(req: Request) {
@@ -52,10 +117,19 @@ export async function GET(req: Request) {
       supabase,
     });
 
+    const previousSeasonCandidate = await resolvePreviousSeasonChampionCandidate({
+      supabase,
+      competitionId,
+      season,
+    });
+
     return NextResponse.json({
       ok: true,
       competition_id: competitionId,
       season,
+      previous_season: previousSeasonCandidate.previousSeason,
+      previous_season_champion_user_id: previousSeasonCandidate.previousSeasonChampionUserId,
+      previous_season_champion_not_member: previousSeasonCandidate.previousSeasonChampionNotMember,
       ...resolved,
     });
   } catch (e: unknown) {
@@ -274,10 +348,19 @@ export async function PATCH(req: Request) {
       supabase,
     });
 
+    const previousSeasonCandidate = await resolvePreviousSeasonChampionCandidate({
+      supabase,
+      competitionId,
+      season,
+    });
+
     return NextResponse.json({
       ok: true,
       competition_id: competitionId,
       season,
+      previous_season: previousSeasonCandidate.previousSeason,
+      previous_season_champion_user_id: previousSeasonCandidate.previousSeasonChampionUserId,
+      previous_season_champion_not_member: previousSeasonCandidate.previousSeasonChampionNotMember,
       ...resolved,
     });
   } catch (e: unknown) {

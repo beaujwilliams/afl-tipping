@@ -1120,6 +1120,7 @@ export default function LeaderboardPage() {
   const rankColWidth = isMobile ? 56 : 68;
   const tipsterColWidth = isMobile ? 148 : 188;
   const tableMinWidth = isMobile ? 860 : 1000;
+  const leaderboardTableFontSize = isMobile ? 13 : 14;
   const championHighlightSet = useMemo(
     () => new Set(championHighlightUserIds),
     [championHighlightUserIds]
@@ -1831,7 +1832,10 @@ export default function LeaderboardPage() {
               </div>
             ) : (
               <UiTableScroll>
-                <table className={`ui-table ${isMobile ? "ui-table--compact" : ""}`} style={{ minWidth: tableMinWidth }}>
+                <table
+                  className={`ui-table ${isMobile ? "ui-table--compact" : ""}`}
+                  style={{ minWidth: tableMinWidth, fontSize: leaderboardTableFontSize }}
+                >
                   <thead>
                     <tr className="ui-table-head-row">
                       {sortableHeader("Rank", "rank", 1)}
@@ -1887,7 +1891,7 @@ export default function LeaderboardPage() {
                                 style={{
                                   display: "block",
                                   color: isChampion ? "var(--champion-gold)" : undefined,
-                                  fontSize: isMobile ? 13 : 14,
+                                  fontSize: "inherit",
                                   lineHeight: 1.15,
                                   whiteSpace: "nowrap",
                                 }}

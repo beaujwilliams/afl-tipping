@@ -1,4 +1,8 @@
 import { NextResponse } from "next/server";
+import {
+  describeChampionSeasonAuditChanges,
+  recordAdminAuditEvent,
+} from "@/lib/admin-audit";
 import { createServiceClient } from "@/lib/supabase-server";
 import { requireAdminOrCron, resolveCompetitionIdForAdminRequest } from "@/lib/admin-auth";
 import { resolveReigningChampion } from "@/lib/reigning-champion";
@@ -82,6 +86,7 @@ export async function PATCH(req: Request) {
 
     const gate = await requireAdminOrCron(req, { competitionId });
     if (!gate.ok) return NextResponse.json(gate.json, { status: gate.status });
+    const actorUserId = gate.mode === "bearer" ? gate.userId : null;
 
     const url = new URL(req.url);
     const season = Number(url.searchParams.get("season") || String(DEFAULT_SEASON));
@@ -272,6 +277,33 @@ export async function PATCH(req: Request) {
         },
         { status: 500 }
       );
+    }
+
+    const championChanges = describeChampionSeasonAuditChanges({
+      before: seasonChampionSettings.rows,
+      after: refreshedSeasonChampions.rows,
+    });
+    const auditError = await recordAdminAuditEvent({
+      competitionId,
+      season,
+      actionType: "champion_settings_updated",
+      actorMode: gate.mode,
+      actorUserId,
+      targetType: "competition",
+      targetLabel: "Season winners",
+      summary:
+        championChanges.length > 0
+          ? `Updated season winners: ${championChanges.join(", ")}.`
+          : "Saved season winners without changes.",
+      requestPath: url.pathname + url.search,
+      details: {
+        before: seasonChampionSettings.rows,
+        after: refreshedSeasonChampions.rows,
+        changed_seasons: championChanges,
+      },
+    });
+    if (auditError) {
+      console.warn("admin audit log failed after champion settings update", auditError);
     }
 
     return NextResponse.json({

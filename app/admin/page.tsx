@@ -585,6 +585,20 @@ export default function AdminPage() {
             </UiButtonLink>
           </UiCard>
 
+          <UiCard className="ui-admin-tool">
+            <div className="ui-admin-subtitle">Admin audit log</div>
+            <div className="ui-admin-summary ui-admin-summary--tight">
+              See who changed members, settings, fixture data, results, snapshots, and manual
+              leaderboard refreshes.
+            </div>
+            <UiButtonLink
+              href={`/admin/audit-log?season=${encodeURIComponent(String(season))}`}
+              className="ui-admin-btn ui-admin-btn--full"
+            >
+              Open Audit Log
+            </UiButtonLink>
+          </UiCard>
+
           <div className="ui-admin-automation-list">
             <div className="ui-admin-automation-item">
               <div className="ui-admin-automation-title">What runs automatically now</div>

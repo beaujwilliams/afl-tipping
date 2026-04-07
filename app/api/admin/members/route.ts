@@ -1,4 +1,9 @@
 import { NextResponse } from "next/server";
+import {
+  describeMemberAuditChanges,
+  recordAdminAuditEvent,
+  shortUserLabel,
+} from "@/lib/admin-audit";
 import { createServiceClient } from "@/lib/supabase-server";
 import { requireAdminOrCron, resolveCompetitionIdForAdminRequest } from "@/lib/admin-auth";
 import { invalidateRoundTipStatusCache } from "@/lib/round-tip-status-data";
@@ -67,6 +72,68 @@ type ProfileMemberRow = {
   display_name: string | null;
   email?: string | null;
 };
+
+type MemberAuditSnapshot = {
+  display_name: string | null;
+  role: string | null;
+  payment_status: string | null;
+  is_test_account: boolean | null;
+};
+
+type MembershipAuditRow = {
+  role: string | null;
+  payment_status?: string | null;
+  is_test_account?: boolean | null;
+};
+
+async function loadMemberAuditSnapshot(
+  supabase: ReturnType<typeof createServiceClient>,
+  competitionId: string,
+  userId: string
+): Promise<MemberAuditSnapshot> {
+  let membership: MembershipAuditRow | null = null;
+  const withAll = await supabase
+    .from("memberships")
+    .select("role, payment_status, is_test_account")
+    .eq("competition_id", competitionId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (withAll.error) {
+    const fallbackCols = [
+      "role",
+      ...(isMissingColumnError(withAll.error.message, "payment_status") ? [] : ["payment_status"]),
+      ...(isMissingColumnError(withAll.error.message, "is_test_account") ? [] : ["is_test_account"]),
+    ];
+
+    if (fallbackCols.length > 0) {
+      const fallback = await supabase
+        .from("memberships")
+        .select(fallbackCols.join(", "))
+        .eq("competition_id", competitionId)
+        .eq("user_id", userId)
+        .maybeSingle();
+      membership = (fallback.data as MembershipAuditRow | null) ?? null;
+    }
+  } else {
+    membership = (withAll.data as MembershipAuditRow | null) ?? null;
+  }
+
+  const profile = await supabase
+    .from("profiles")
+    .select("display_name")
+    .eq("id", userId)
+    .maybeSingle();
+
+  return {
+    display_name:
+      ((profile.data as { display_name?: string | null } | null)?.display_name ?? null),
+    role: membership?.role ?? null,
+    payment_status: membership?.payment_status ?? null,
+    is_test_account:
+      typeof membership?.is_test_account === "boolean" ? membership.is_test_account : null,
+  };
+}
 
 export async function GET(req: Request) {
   try {
@@ -244,6 +311,8 @@ export async function PATCH(req: Request) {
     }
     const admin = await requireAdminOrCron(req, { competitionId });
     if (!admin.ok) return NextResponse.json(admin.json, { status: admin.status });
+    const actorUserId = admin.mode === "bearer" ? admin.userId : null;
+    const beforeSnapshot = await loadMemberAuditSnapshot(supabase, competitionId, user_id);
 
     if (display_name !== undefined) {
       const { error } = await supabase.from("profiles").upsert(
@@ -325,6 +394,50 @@ export async function PATCH(req: Request) {
       console.warn("round tip status cache invalidation failed", cacheErr);
     }
 
+    const afterSnapshot = {
+      display_name:
+        display_name !== undefined
+          ? display_name.length
+            ? display_name
+            : null
+          : beforeSnapshot.display_name,
+      role: role !== undefined ? role : beforeSnapshot.role,
+      payment_status:
+        payment_status !== undefined ? payment_status : beforeSnapshot.payment_status,
+      is_test_account:
+        is_test_account !== undefined ? is_test_account : beforeSnapshot.is_test_account,
+    };
+    const changes = describeMemberAuditChanges({
+      before: beforeSnapshot,
+      after: afterSnapshot,
+    });
+    const targetLabel =
+      afterSnapshot.display_name ??
+      beforeSnapshot.display_name ??
+      shortUserLabel(user_id);
+    const auditError = await recordAdminAuditEvent({
+      competitionId,
+      actionType: "member_updated",
+      actorMode: admin.mode,
+      actorUserId,
+      targetType: "member",
+      targetUserId: user_id,
+      targetLabel,
+      summary:
+        changes.length > 0
+          ? `Updated member ${targetLabel}: ${changes.join("; ")}.`
+          : `Saved member ${targetLabel} without detected field changes.`,
+      requestPath: new URL(req.url).pathname + new URL(req.url).search,
+      details: {
+        before: beforeSnapshot,
+        after: afterSnapshot,
+        changed_fields: changes,
+      },
+    });
+    if (auditError) {
+      console.warn("admin audit log failed after member update", auditError);
+    }
+
     return NextResponse.json({ ok: true });
   } catch (e: unknown) {
     return NextResponse.json(
@@ -348,6 +461,8 @@ export async function DELETE(req: Request) {
     }
     const admin = await requireAdminOrCron(req, { competitionId });
     if (!admin.ok) return NextResponse.json(admin.json, { status: admin.status });
+    const actorUserId = admin.mode === "bearer" ? admin.userId : null;
+    const beforeSnapshot = await loadMemberAuditSnapshot(supabase, competitionId, user_id);
 
     const { error } = await supabase
       .from("memberships")
@@ -369,6 +484,25 @@ export async function DELETE(req: Request) {
       });
     } catch (cacheErr) {
       console.warn("round tip status cache invalidation failed", cacheErr);
+    }
+
+    const targetLabel = beforeSnapshot.display_name ?? shortUserLabel(user_id);
+    const auditError = await recordAdminAuditEvent({
+      competitionId,
+      actionType: "member_removed",
+      actorMode: admin.mode,
+      actorUserId,
+      targetType: "member",
+      targetUserId: user_id,
+      targetLabel,
+      summary: `Removed member ${targetLabel} from the competition.`,
+      requestPath: new URL(req.url).pathname + new URL(req.url).search,
+      details: {
+        removed_member: beforeSnapshot,
+      },
+    });
+    if (auditError) {
+      console.warn("admin audit log failed after member removal", auditError);
     }
 
     return NextResponse.json({ ok: true });

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { recordAdminAuditEvent } from "@/lib/admin-audit";
 import { createServiceClient } from "@/lib/supabase-server";
 import { requireAdminOrCron, resolveCompetitionIdForAdminRequest } from "@/lib/admin-auth";
 import {
@@ -35,6 +36,7 @@ export async function GET(req: Request) {
     const triggerMode = gate.mode;
     const cronSecret = gate.mode === "cron" ? gate.secret : null;
     const bearerToken = gate.mode === "bearer" ? gate.token : null;
+    const actorUserId = gate.mode === "bearer" ? gate.userId : null;
 
     const url = new URL(req.url);
     const season = Number(url.searchParams.get("season") || "2026");
@@ -70,6 +72,23 @@ export async function GET(req: Request) {
         });
         if (logError) {
           body.observability_log_error = logError;
+        }
+
+        const auditError = await recordAdminAuditEvent({
+          competitionId: resolvedCompetitionId,
+          season,
+          actionType: "snapshot_odds_due",
+          resultStatus: classification.runStatus,
+          actorMode: triggerMode,
+          actorUserId,
+          targetType: "season",
+          targetLabel: `Season ${season}`,
+          summary: classification.summary,
+          requestPath: url.pathname + url.search,
+          details: body,
+        });
+        if (auditError) {
+          console.warn("admin audit log failed after snapshot due check", auditError);
         }
       } catch (error: unknown) {
         body.observability_log_error =

@@ -32,6 +32,6 @@ All existing `BL-*` items from the previous single backlog are preserved in
 
 ## Cross-Backlog Next 3
 
-1. `BL-015` Audit log for admin actions
-2. `UI-001` Add season switcher and remove hardcoded `2026`
-3. `BL-011` Season archive selector and year-over-year comparison page
+1. `UI-001` Add season switcher and remove hardcoded `2026`
+2. `BL-011` Season archive selector and year-over-year comparison page
+3. `BL-017` Optional SMS tipping reminders

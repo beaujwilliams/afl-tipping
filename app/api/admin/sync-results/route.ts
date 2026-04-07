@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { recordAdminAuditEvent } from "@/lib/admin-audit";
 import {
   requireAdminOrCron,
   resolveCompetitionIdForAdminRequest,
@@ -58,6 +59,8 @@ export async function GET(req: Request) {
   try {
     const gate = await requireAdminOrCron(req);
     if (!gate.ok) return NextResponse.json({ ok: false, ...gate.json }, { status: gate.status });
+    const actorMode = gate.mode;
+    const actorUserId = gate.mode === "bearer" ? gate.userId : null;
 
     const url = new URL(req.url);
     const season = Number(url.searchParams.get("season") ?? "2026");
@@ -77,6 +80,52 @@ export async function GET(req: Request) {
         { status: 404 }
       );
     }
+    const resolvedCompetitionId = competitionId;
+
+    async function respond(status: number, body: Record<string, unknown>) {
+      let resultStatus: "success" | "skipped" | "failed" = "success";
+      let summary = `Results sync finished for season ${season}.`;
+
+      if (body.ok !== true) {
+        resultStatus = "failed";
+        summary = String(body.error ?? "Results sync failed.");
+      } else {
+        const updatedCount = Number(body.updated ?? 0);
+        const roundsTargeted = Array.isArray(body.roundsTargeted)
+          ? body.roundsTargeted.filter((value) => Number.isFinite(Number(value)))
+          : [];
+        const roundsLabel = roundsTargeted.length > 0 ? roundsTargeted.join(", ") : "none";
+
+        if (Number.isFinite(updatedCount) && updatedCount > 0) {
+          summary = `Synced results for season ${season}: updated ${updatedCount} match${updatedCount === 1 ? "" : "es"} across round(s) ${roundsLabel}.`;
+        } else {
+          resultStatus = "skipped";
+          summary =
+            typeof body.note === "string" && body.note.trim()
+              ? body.note
+              : `Checked results for season ${season}: no match updates were needed.`;
+        }
+      }
+
+      const auditError = await recordAdminAuditEvent({
+        competitionId: resolvedCompetitionId,
+        season,
+        actionType: "sync_results",
+        resultStatus,
+        actorMode,
+        actorUserId,
+        targetType: "season",
+        targetLabel: `Season ${season}`,
+        summary,
+        requestPath: url.pathname + url.search,
+        details: body,
+      });
+      if (auditError) {
+        console.warn("admin audit log failed after sync-results", auditError);
+      }
+
+      return NextResponse.json(body, { status });
+    }
 
     const roundsQuery = await supabase
       .from("rounds")
@@ -86,9 +135,8 @@ export async function GET(req: Request) {
       .order("round_number", { ascending: true });
 
     if (roundsQuery.error) {
-      return NextResponse.json(
+      return respond(500,
         { ok: false, season, error: "Failed to load rounds", details: roundsQuery.error.message },
-        { status: 500 }
       );
     }
 
@@ -96,10 +144,10 @@ export async function GET(req: Request) {
     const roundIds = roundRows.map((r) => String(r.id));
 
     if (roundIds.length === 0) {
-      return NextResponse.json({
+      return respond(200, {
         ok: true,
         season,
-        competition_id: competitionId,
+        competition_id: resolvedCompetitionId,
         scope,
         roundsTargeted: [],
         roundsTargetedCount: 0,
@@ -125,9 +173,8 @@ export async function GET(req: Request) {
       .in("round_id", roundIds);
 
     if (matchesQuery.error) {
-      return NextResponse.json(
+      return respond(500,
         { ok: false, season, error: "Failed to load matches", details: matchesQuery.error.message },
-        { status: 500 }
       );
     }
 
@@ -157,10 +204,10 @@ export async function GET(req: Request) {
       .map((round) => Number(round.round_number));
 
     if (targetRoundIds.length === 0) {
-      return NextResponse.json({
+      return respond(200, {
         ok: true,
         season,
-        competition_id: competitionId,
+        competition_id: resolvedCompetitionId,
         scope,
         roundsTargeted: [],
         roundsTargetedCount: 0,
@@ -231,7 +278,7 @@ export async function GET(req: Request) {
 
     // ✅ If Squiggle returned an error/warning row in games[], surface it clearly
     if (first && (first.error || first.warning) && finalGamesFound === 1 && !firstGameIdGuess) {
-      return NextResponse.json({
+      return respond(502, {
         ok: false,
         season,
         error: "Squiggle returned an error/warning payload instead of a game row.",
@@ -246,7 +293,7 @@ export async function GET(req: Request) {
           firstGameKeys,
           firstGameSample: first,
         },
-      }, { status: 502 });
+      });
     }
 
     for (const g of finals) {
@@ -297,12 +344,12 @@ export async function GET(req: Request) {
     if (updated > 0) {
       try {
         await invalidateRoundTipStatusCache({
-          competitionId,
+          competitionId: resolvedCompetitionId,
           season,
           supabase,
         });
         await invalidateLeaderboardSnapshotCache({
-          competitionId,
+          competitionId: resolvedCompetitionId,
           season,
           supabase,
         });
@@ -311,7 +358,7 @@ export async function GET(req: Request) {
       }
     }
 
-    return NextResponse.json({
+    return respond(200, {
       ok: true,
       season,
       competition_id: competitionId,

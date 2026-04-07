@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { recordAdminAuditEvent } from "@/lib/admin-audit";
 import { createServiceClient } from "@/lib/supabase-server";
 import { requireAdminOrCron, resolveCompetitionIdForAdminRequest } from "@/lib/admin-auth";
 
@@ -89,6 +90,7 @@ export async function PATCH(req: Request) {
 
     const admin = await requireAdminOrCron(req, { competitionId });
     if (!admin.ok) return NextResponse.json(admin.json, { status: admin.status });
+    const actorUserId = admin.mode === "bearer" ? admin.userId : null;
 
     const check = await supabase
       .from("competitions")
@@ -123,6 +125,29 @@ export async function PATCH(req: Request) {
         { error: "Failed to save payment settings", details: error.message },
         { status: 500 }
       );
+    }
+
+    const previousValue = !!((check.data as CompetitionWithLock | null)?.enforce_unpaid_tip_lock);
+    const auditError = await recordAdminAuditEvent({
+      competitionId,
+      actionType: "payment_settings_updated",
+      actorMode: admin.mode,
+      actorUserId,
+      targetType: "competition",
+      targetLabel: "Unpaid tip lock",
+      summary: `Set unpaid tip lock ${body.enforce_unpaid_tip_lock ? "enabled" : "disabled"}.`,
+      requestPath: new URL(req.url).pathname + new URL(req.url).search,
+      details: {
+        before: {
+          enforce_unpaid_tip_lock: previousValue,
+        },
+        after: {
+          enforce_unpaid_tip_lock: body.enforce_unpaid_tip_lock,
+        },
+      },
+    });
+    if (auditError) {
+      console.warn("admin audit log failed after payment settings update", auditError);
     }
 
     return NextResponse.json({

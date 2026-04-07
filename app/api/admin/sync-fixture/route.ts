@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { recordAdminAuditEvent } from "@/lib/admin-audit";
 import { createServiceClient } from "@/lib/supabase-server";
 import { getDefaultCompetitionId, requireAdminOrCron } from "@/lib/admin-auth";
 import { invalidateRoundTipStatusCache } from "@/lib/round-tip-status-data";
@@ -160,6 +161,7 @@ async function fetchJson(url: string) {
 export async function GET(req: Request) {
   const gate = await requireAdminOrCron(req);
   if (!gate.ok) return NextResponse.json(gate.json, { status: gate.status });
+  const actorUserId = gate.mode === "bearer" ? gate.userId : null;
 
   const url = new URL(req.url);
   const season = Number(url.searchParams.get("season") || String(new Date().getFullYear()));
@@ -310,12 +312,35 @@ export async function GET(req: Request) {
     }
   }
 
-  return NextResponse.json({
+  const payload = {
     ok: true,
     season,
     competition_id: competitionId,
     roundsUpserted,
     matchesUpserted,
     skippedGames,
+  };
+
+  const resultStatus = roundsUpserted > 0 || matchesUpserted > 0 ? "success" : "skipped";
+  const auditError = await recordAdminAuditEvent({
+    competitionId,
+    season,
+    actionType: "sync_fixture",
+    resultStatus,
+    actorMode: gate.mode,
+    actorUserId,
+    targetType: "season",
+    targetLabel: `Season ${season}`,
+    summary:
+      resultStatus === "success"
+        ? `Synced fixture for season ${season}: ${roundsUpserted} rounds and ${matchesUpserted} matches upserted.`
+        : `Checked fixture for season ${season}: no rounds or matches were upserted.`,
+    requestPath: url.pathname + url.search,
+    details: payload,
   });
+  if (auditError) {
+    console.warn("admin audit log failed after sync-fixture", auditError);
+  }
+
+  return NextResponse.json(payload);
 }

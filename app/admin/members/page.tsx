@@ -65,8 +65,6 @@ type PaymentReminderSendResponse = {
 type ChampionSettingsResponse = {
   ok?: boolean;
   reigning_champion_user_id?: string | null;
-  champion_highlight_user_ids?: string[];
-  configured_champion_highlight_user_ids?: string[];
   override_user_id?: string | null;
   champion_seasons_by_user_id?: Record<string, number[]>;
   season_champions?: SeasonChampionSelection[];
@@ -126,27 +124,6 @@ function normalizeChampionSource(
     return source;
   }
   return "none";
-}
-
-function normalizeUserIdList(value: unknown) {
-  if (!Array.isArray(value)) return [];
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const item of value) {
-    const userId = typeof item === "string" ? item.trim() : "";
-    if (!userId || seen.has(userId)) continue;
-    seen.add(userId);
-    out.push(userId);
-  }
-  return out;
-}
-
-function sameUserIdList(a: string[], b: string[]) {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i += 1) {
-    if (a[i] !== b[i]) return false;
-  }
-  return true;
 }
 
 function roleChipStyle(role: MemberRole): React.CSSProperties {
@@ -214,8 +191,6 @@ export default function AdminMembersPage() {
 
   const [championResolvedUserId, setChampionResolvedUserId] = useState<string | null>(null);
   const [championResolvedSeason, setChampionResolvedSeason] = useState<number | null>(null);
-  const [championHighlightUserIds, setChampionHighlightUserIds] = useState<string[]>([]);
-  const [savedChampionHighlightUserIds, setSavedChampionHighlightUserIds] = useState<string[]>([]);
   const [championSeasonSelections, setChampionSeasonSelections] = useState<SeasonChampionSelection[]>([]);
   const [savedChampionSeasonSelections, setSavedChampionSeasonSelections] = useState<
     SeasonChampionSelection[]
@@ -274,9 +249,6 @@ export default function AdminMembersPage() {
   function applyChampionResponse(json: ChampionSettingsResponse | null) {
     const resolvedUserId =
       typeof json?.reigning_champion_user_id === "string" ? json.reigning_champion_user_id : null;
-    const configuredHighlightUserIds = normalizeUserIdList(
-      json?.configured_champion_highlight_user_ids ?? json?.champion_highlight_user_ids
-    );
     const source = normalizeChampionSource(json?.source);
     const resolvedSeason =
       typeof json?.champion_season === "number" && Number.isFinite(json.champion_season)
@@ -289,8 +261,6 @@ export default function AdminMembersPage() {
 
     setChampionResolvedUserId(resolvedUserId);
     setChampionResolvedSeason(resolvedSeason);
-    setChampionHighlightUserIds(configuredHighlightUserIds);
-    setSavedChampionHighlightUserIds(configuredHighlightUserIds);
     setChampionSeasonSelections(seasonSelections);
     setSavedChampionSeasonSelections(seasonSelections);
     setChampionSeasonsByUserId(nextChampionSeasonsByUserId);
@@ -645,7 +615,6 @@ export default function AdminMembersPage() {
       },
       body: JSON.stringify({
         season_champions: championSeasonSelections,
-        champion_highlight_user_ids: championHighlightUserIds,
       }),
     });
 
@@ -661,15 +630,6 @@ export default function AdminMembersPage() {
     applyChampionResponse(json);
   }
 
-  function toggleChampionHighlightUserId(userId: string, enabled: boolean) {
-    setChampionHighlightUserIds((prev) => {
-      const next = new Set(prev);
-      if (enabled) next.add(userId);
-      else next.delete(userId);
-      return Array.from(next);
-    });
-  }
-
   function setSeasonChampionSelection(season: number, userId: string | null) {
     setChampionSeasonSelections((prev) => {
       const next = prev.filter((entry) => entry.season !== season);
@@ -679,9 +639,10 @@ export default function AdminMembersPage() {
     });
   }
 
-  const championDirty =
-    !sameSeasonChampionSelections(championSeasonSelections, savedChampionSeasonSelections) ||
-    !sameUserIdList(championHighlightUserIds, savedChampionHighlightUserIds);
+  const championDirty = !sameSeasonChampionSelections(
+    championSeasonSelections,
+    savedChampionSeasonSelections
+  );
 
   const championNameByUserId = useMemo(() => {
     const out: Record<string, string> = {};
@@ -916,56 +877,6 @@ export default function AdminMembersPage() {
             >
               {savingChampion ? "Saving…" : "Save champion settings"}
             </button>
-          </div>
-        </div>
-
-        <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
-          <div style={{ fontWeight: 800 }}>Gold name highlights</div>
-          <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75 }}>
-            Select additional members to highlight in gold. Saved season winners are always gold.
-          </div>
-          <div
-            style={{
-              marginTop: 10,
-              maxHeight: 220,
-              overflowY: "auto",
-              border: "1px solid var(--border)",
-              borderRadius: 12,
-              background: "var(--card)",
-              padding: "8px 10px",
-              display: "grid",
-              gap: 8,
-            }}
-          >
-            {championMemberOptions.map((member) => {
-              const userId = member.user_id;
-              const checked = championHighlightUserIds.includes(userId);
-              return (
-                <label
-                  key={userId}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    fontSize: 14,
-                    cursor: "pointer",
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={(e) => toggleChampionHighlightUserId(userId, e.target.checked)}
-                  />
-                  <span style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                    <span>{championNameByUserId[userId] ?? shortId(userId)}</span>
-                    <ChampionSeasonLabels seasons={championSeasonsByUserId[userId]} />
-                  </span>
-                </label>
-              );
-            })}
-          </div>
-          <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
-            Selected highlights: <b>{championHighlightUserIds.length}</b>
           </div>
         </div>
 

@@ -13,19 +13,6 @@ function isMissingColumnError(message: string, columnName: string) {
   return m.includes(col) && (m.includes("column") || m.includes("does not exist"));
 }
 
-function normalizeUuidList(value: unknown) {
-  if (!Array.isArray(value)) return [];
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const item of value) {
-    const id = typeof item === "string" ? item.trim() : "";
-    if (!id || seen.has(id)) continue;
-    seen.add(id);
-    out.push(id);
-  }
-  return out;
-}
-
 async function getCompetitionId(
   supabase: ReturnType<typeof createServiceClient>,
   req: Request
@@ -103,20 +90,18 @@ export async function PATCH(req: Request) {
       | null
       | {
           reigning_champion_override_user_id?: string | null;
-          champion_highlight_user_ids?: unknown;
           season_champions?: unknown;
         };
 
     if (
       !body ||
       (!("reigning_champion_override_user_id" in body) &&
-        !("champion_highlight_user_ids" in body) &&
         !("season_champions" in body))
     ) {
       return NextResponse.json(
         {
           error:
-            "Missing update fields (provide season_champions and/or champion_highlight_user_ids)",
+            "Missing update fields (provide reigning_champion_override_user_id and/or season_champions)",
         },
         { status: 400 }
       );
@@ -170,56 +155,16 @@ export async function PATCH(req: Request) {
       .eq("id", competitionId)
       .single();
 
-    let highlightColumnAvailable = true;
-    let existingHighlightIds: string[] = [];
+    const highlightColumnAvailable = !checkHighlightColumn.error;
 
     if (
       checkHighlightColumn.error &&
-      isMissingColumnError(checkHighlightColumn.error.message, "champion_highlight_user_ids")
+      !isMissingColumnError(checkHighlightColumn.error.message, "champion_highlight_user_ids")
     ) {
-      highlightColumnAvailable = false;
-    } else if (checkHighlightColumn.error) {
       return NextResponse.json(
         { error: "Failed to read competition", details: checkHighlightColumn.error.message },
         { status: 500 }
       );
-    } else {
-      existingHighlightIds = normalizeUuidList(
-        checkHighlightColumn.data?.champion_highlight_user_ids
-      );
-    }
-
-    const hasHighlightsInput = "champion_highlight_user_ids" in body;
-    if (hasHighlightsInput && !highlightColumnAvailable) {
-      return NextResponse.json(
-        {
-          error: "Database is missing competitions.champion_highlight_user_ids",
-          hint: "Apply migration db/migrations/20260401_competition_champion_highlights.sql",
-        },
-        { status: 500 }
-      );
-    }
-
-    let championHighlightUserIds = existingHighlightIds;
-    if (hasHighlightsInput) {
-      const raw = body.champion_highlight_user_ids;
-      if (raw === null) {
-        championHighlightUserIds = [];
-      } else if (!Array.isArray(raw)) {
-        return NextResponse.json(
-          { error: "champion_highlight_user_ids must be an array of user ids" },
-          { status: 400 }
-        );
-      } else {
-        const hasInvalid = raw.some((item) => typeof item !== "string");
-        if (hasInvalid) {
-          return NextResponse.json(
-            { error: "champion_highlight_user_ids must contain only string user ids" },
-            { status: 400 }
-          );
-        }
-        championHighlightUserIds = normalizeUuidList(raw);
-      }
     }
 
     const seasonChampionSettings = await loadSeasonChampions({
@@ -253,7 +198,6 @@ export async function PATCH(req: Request) {
       new Set(
         [
           overrideUserId,
-          ...championHighlightUserIds,
           ...seasonChampionSelections.map((entry) => entry?.user_id ?? null),
         ]
           .map((value) => String(value ?? "").trim())
@@ -283,19 +227,6 @@ export async function PATCH(req: Request) {
           { status: 400 }
         );
       }
-
-      const invalidHighlightIds = championHighlightUserIds.filter((id) => !validIds.has(id));
-      if (invalidHighlightIds.length > 0) {
-        return NextResponse.json(
-          {
-            error:
-              "Champion highlight list must contain only existing competition members",
-            details: `Invalid user ids: ${invalidHighlightIds.join(", ")}`,
-          },
-          { status: 400 }
-        );
-      }
-
       const invalidSeasonChampionIds = seasonChampionSelections
         .map((entry) => entry?.user_id ?? null)
         .filter((userId): userId is string => !!userId && !validIds.has(userId));
@@ -317,8 +248,8 @@ export async function PATCH(req: Request) {
     if (overrideColumnAvailable && (hasOverrideInput || hasSeasonChampionsInput)) {
       updatePayload.reigning_champion_override_user_id = overrideUserId;
     }
-    if (highlightColumnAvailable) {
-      updatePayload.champion_highlight_user_ids = championHighlightUserIds;
+    if (highlightColumnAvailable && hasSeasonChampionsInput) {
+      updatePayload.champion_highlight_user_ids = [];
     }
 
     if (Object.keys(updatePayload).length > 0) {

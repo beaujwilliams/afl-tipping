@@ -17,19 +17,6 @@ function isMissingColumnError(message: string, columnName: string) {
   return m.includes(col) && (m.includes("column") || m.includes("does not exist"));
 }
 
-function normalizeUuidList(value: unknown) {
-  if (!Array.isArray(value)) return [];
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const item of value) {
-    const id = typeof item === "string" ? item.trim() : "";
-    if (!id || seen.has(id)) continue;
-    seen.add(id);
-    out.push(id);
-  }
-  return out;
-}
-
 export async function resolveReigningChampion(params: {
   competitionId: string;
   season?: number | null;
@@ -38,7 +25,6 @@ export async function resolveReigningChampion(params: {
   const supabase = params.supabase ?? createServiceClient();
 
   let overrideUserId: string | null = null;
-  let configuredHighlightUserIds: string[] = [];
   let championSeasonsByUserId: Record<string, number[]> = {};
   let latestSeasonChampion: { season: number; user_id: string | null } | null = null;
 
@@ -58,22 +44,6 @@ export async function resolveReigningChampion(params: {
     !isMissingColumnError(compWithOverride.error.message, "reigning_champion_override_user_id")
   ) {
     // Unknown error: fail open and continue without override.
-  }
-
-  const compWithHighlights = await supabase
-    .from("competitions")
-    .select("champion_highlight_user_ids")
-    .eq("id", params.competitionId)
-    .single();
-
-  if (!compWithHighlights.error) {
-    configuredHighlightUserIds = normalizeUuidList(
-      compWithHighlights.data?.champion_highlight_user_ids
-    );
-  } else if (
-    !isMissingColumnError(compWithHighlights.error.message, "champion_highlight_user_ids")
-  ) {
-    // Unknown error: fail open and continue without configured highlights.
   }
 
   try {
@@ -136,7 +106,6 @@ export async function resolveReigningChampion(params: {
 
   Object.keys(championSeasonsByUserId).forEach((userId) => pushHighlight(userId));
   pushHighlight(reigningChampionUserId);
-  configuredHighlightUserIds.forEach((userId) => pushHighlight(userId));
 
   if (effectiveHighlightUserIds.length > 0) {
     const memberRows = await supabase
@@ -155,13 +124,9 @@ export async function resolveReigningChampion(params: {
       const filteredEffectiveIds = effectiveHighlightUserIds.filter((id) =>
         validIds.has(id)
       );
-      const filteredConfiguredIds = configuredHighlightUserIds.filter((id) =>
-        validIds.has(id)
-      );
 
       effectiveHighlightUserIds.length = 0;
       effectiveHighlightUserIds.push(...filteredEffectiveIds);
-      configuredHighlightUserIds = filteredConfiguredIds;
       championSeasonsByUserId = filteredChampionSeasonsByUserId;
     }
   }
@@ -169,7 +134,7 @@ export async function resolveReigningChampion(params: {
   return {
     reigning_champion_user_id: reigningChampionUserId,
     champion_highlight_user_ids: effectiveHighlightUserIds,
-    configured_champion_highlight_user_ids: configuredHighlightUserIds,
+    configured_champion_highlight_user_ids: [],
     champion_seasons_by_user_id: championSeasonsByUserId,
     override_user_id: resolvedOverrideUserId,
     source,

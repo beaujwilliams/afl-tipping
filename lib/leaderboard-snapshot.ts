@@ -277,9 +277,11 @@ async function readTipsForScoredMatches(params: {
 export async function computeLeaderboardSnapshot(params: {
   season: number;
   competitionId?: string | null;
+  includeTrends?: boolean;
   supabase?: ReturnType<typeof createServiceClient>;
 }): Promise<LeaderboardResponse> {
   const supabase = params.supabase ?? createServiceClient();
+  const includeTrends = params.includeTrends ?? true;
   const { competitionId: resolvedCompetitionId, allSeasonRounds } =
     await resolveCompetitionIdForSeason({
       season: params.season,
@@ -682,58 +684,62 @@ export async function computeLeaderboardSnapshot(params: {
     };
   });
 
-  const rankTrendByUserId = new Map<string, LeaderboardTrendPoint[]>();
-  statsByUser.forEach((stats) => {
-    rankTrendByUserId.set(stats.user_id, []);
-  });
+  let rankTrends: LeaderboardTrendSeries[] = [];
 
-  for (const roundNo of roundsWithScores) {
-    const rankedAtRound = Array.from(statsByUser.values())
-      .map((stats) => {
-        const totalPointsAtRound = sumUpTo(stats.points_by_round, roundNo);
-        const correctTipsAtRound = sumUpTo(stats.correct_by_round, roundNo);
-        const tipsAtRound = sumUpTo(stats.tips_by_round, roundNo);
-        const accuracyAtRound = tipsAtRound > 0 ? (correctTipsAtRound / tipsAtRound) * 100 : 0;
-        return {
-          user_id: stats.user_id,
-          display_name: stats.display_name,
-          total_points: totalPointsAtRound,
-          accuracy_pct: accuracyAtRound,
-          correct_tips: correctTipsAtRound,
-        };
-      })
-      .sort((a, b) =>
-        leaderboardRankComparator(
-          {
-            total_points: a.total_points,
-            accuracy_pct: a.accuracy_pct,
-            correct_tips: a.correct_tips,
-            display_name: a.display_name,
-          },
-          {
-            total_points: b.total_points,
-            accuracy_pct: b.accuracy_pct,
-            correct_tips: b.correct_tips,
-            display_name: b.display_name,
-          }
-        )
-      );
-
-    rankedAtRound.forEach((row, index) => {
-      rankTrendByUserId.get(row.user_id)?.push({
-        round_number: roundNo,
-        rank: index + 1,
-        total_points: round2(row.total_points),
-      });
+  if (includeTrends) {
+    const rankTrendByUserId = new Map<string, LeaderboardTrendPoint[]>();
+    statsByUser.forEach((stats) => {
+      rankTrendByUserId.set(stats.user_id, []);
     });
-  }
 
-  const rankTrends: LeaderboardTrendSeries[] = rows.map((row) => ({
-    user_id: row.user_id,
-    display_name: row.display_name,
-    payment_status: row.payment_status,
-    points: rankTrendByUserId.get(row.user_id) ?? [],
-  }));
+    for (const roundNo of roundsWithScores) {
+      const rankedAtRound = Array.from(statsByUser.values())
+        .map((stats) => {
+          const totalPointsAtRound = sumUpTo(stats.points_by_round, roundNo);
+          const correctTipsAtRound = sumUpTo(stats.correct_by_round, roundNo);
+          const tipsAtRound = sumUpTo(stats.tips_by_round, roundNo);
+          const accuracyAtRound = tipsAtRound > 0 ? (correctTipsAtRound / tipsAtRound) * 100 : 0;
+          return {
+            user_id: stats.user_id,
+            display_name: stats.display_name,
+            total_points: totalPointsAtRound,
+            accuracy_pct: accuracyAtRound,
+            correct_tips: correctTipsAtRound,
+          };
+        })
+        .sort((a, b) =>
+          leaderboardRankComparator(
+            {
+              total_points: a.total_points,
+              accuracy_pct: a.accuracy_pct,
+              correct_tips: a.correct_tips,
+              display_name: a.display_name,
+            },
+            {
+              total_points: b.total_points,
+              accuracy_pct: b.accuracy_pct,
+              correct_tips: b.correct_tips,
+              display_name: b.display_name,
+            }
+          )
+        );
+
+      rankedAtRound.forEach((row, index) => {
+        rankTrendByUserId.get(row.user_id)?.push({
+          round_number: roundNo,
+          rank: index + 1,
+          total_points: round2(row.total_points),
+        });
+      });
+    }
+
+    rankTrends = rows.map((row) => ({
+      user_id: row.user_id,
+      display_name: row.display_name,
+      payment_status: row.payment_status,
+      points: rankTrendByUserId.get(row.user_id) ?? [],
+    }));
+  }
 
   return {
     ok: true,
@@ -859,9 +865,11 @@ export async function getLeaderboardSnapshot(params: {
   season: number;
   competitionId?: string | null;
   preferCached?: boolean;
+  includeTrends?: boolean;
   supabase?: ReturnType<typeof createServiceClient>;
 }) {
   const supabase = params.supabase ?? createServiceClient();
+  const includeTrends = params.includeTrends ?? true;
   const { competitionId: resolvedCompetitionId } = await resolveCompetitionIdForSeason({
     season: params.season,
     supabase,
@@ -893,8 +901,15 @@ export async function getLeaderboardSnapshot(params: {
         }
       : cached.payload;
 
+    const payload = includeTrends
+      ? enrichedCachedPayload
+      : {
+          ...enrichedCachedPayload,
+          rank_trends: [],
+        };
+
     if (params.preferCached) {
-      return enrichedCachedPayload;
+      return payload;
     }
 
     const computedAtMs = cached.computed_at ? new Date(cached.computed_at).getTime() : NaN;
@@ -903,8 +918,17 @@ export async function getLeaderboardSnapshot(params: {
       computedAtMs > 0 &&
       Date.now() - computedAtMs <= LEADERBOARD_CACHE_MAX_AGE_MS;
     if (fresh) {
-      return enrichedCachedPayload;
+      return payload;
     }
+  }
+
+  if (!includeTrends) {
+    return computeLeaderboardSnapshot({
+      competitionId,
+      season: params.season,
+      includeTrends: false,
+      supabase,
+    });
   }
 
   return refreshLeaderboardSnapshot({

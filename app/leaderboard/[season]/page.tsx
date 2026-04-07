@@ -1874,16 +1874,22 @@ export default function LeaderboardPage() {
                                 : r.display_name
                             }
                           >
-                            <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                            <span
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 6,
+                                minWidth: 0,
+                                flexWrap: "wrap",
+                                rowGap: 4,
+                              }}
+                            >
                               <UnpaidTag paymentStatus={r.payment_status ?? null} compact={isMobile} />
                               <span
                                 style={{
-                                  minWidth: 0,
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                  whiteSpace: "nowrap",
                                   display: "block",
                                   color: isChampion ? "var(--champion-gold)" : undefined,
+                                  overflowWrap: "anywhere",
                                 }}
                               >
                                 {r.display_name}

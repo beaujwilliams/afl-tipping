@@ -54,6 +54,8 @@ type ScoredMatch = MatchRow & {
   winner_odds: number;
 };
 
+const SUPABASE_PAGE_SIZE = 1000;
+
 const TEAM_NAME_ALIASES: Record<string, string> = {
   adelaide: "Adelaide",
   "adelaide crows": "Adelaide",
@@ -116,6 +118,41 @@ function pickTeamOdds(match: ScoredMatch, pickedTeam: string) {
   if (pickedTeam === match.home_team_normalized) return Number(match.home_odds ?? 0);
   if (pickedTeam === match.away_team_normalized) return Number(match.away_odds ?? 0);
   return 0;
+}
+
+async function readTipsForScoredMatches(params: {
+  supabase: ReturnType<typeof createServiceClient>;
+  competitionId: string;
+  scoredMatchIds: string[];
+}) {
+  if (!params.scoredMatchIds.length) return [] as TipRow[];
+
+  const out: TipRow[] = [];
+  let from = 0;
+
+  while (true) {
+    const to = from + SUPABASE_PAGE_SIZE - 1;
+
+    const { data, error } = await params.supabase
+      .from("tips")
+      .select("match_id, user_id, picked_team")
+      .eq("competition_id", params.competitionId)
+      .in("match_id", params.scoredMatchIds)
+      .order("id", { ascending: true })
+      .range(from, to);
+
+    if (error) {
+      throw new Error(`Failed to read tips: ${error.message}`);
+    }
+
+    const batch = (data ?? []) as TipRow[];
+    out.push(...batch);
+
+    if (batch.length < SUPABASE_PAGE_SIZE) break;
+    from += SUPABASE_PAGE_SIZE;
+  }
+
+  return out;
 }
 
 async function getUserFromBearer(req: Request) {
@@ -382,21 +419,18 @@ export async function GET(req: Request) {
     const scoredByMatchId = new Map(scoredMatches.map((m) => [String(m.id), m]));
 
     let allTips: TipRow[] = [];
-    if (scoredMatchIds.length > 0) {
-      const { data: tips, error: tipsErr } = await supabase
-        .from("tips")
-        .select("match_id, user_id, picked_team")
-        .eq("competition_id", competitionId)
-        .in("match_id", scoredMatchIds);
-
-      if (tipsErr) {
-        return NextResponse.json(
-          { error: "Failed to read tips", details: tipsErr.message },
-          { status: 500 }
-        );
-      }
-
-      allTips = (tips ?? []) as TipRow[];
+    try {
+      allTips = await readTipsForScoredMatches({
+        supabase,
+        competitionId,
+        scoredMatchIds,
+      });
+    } catch (error) {
+      const details = error instanceof Error ? error.message : "Unknown error";
+      return NextResponse.json(
+        { error: "Failed to read tips", details },
+        { status: 500 }
+      );
     }
 
     const myPickByMatchId = new Map<string, string>();

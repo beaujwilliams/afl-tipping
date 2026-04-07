@@ -65,10 +65,9 @@ type PaymentReminderSendResponse = {
 type ChampionSettingsResponse = {
   ok?: boolean;
   reigning_champion_user_id?: string | null;
-  override_user_id?: string | null;
   champion_seasons_by_user_id?: Record<string, number[]>;
   season_champions?: SeasonChampionSelection[];
-  source?: "override" | "season_champion" | "none";
+  source?: "season_champion" | "none";
   champion_season?: number | null;
   error?: string;
   details?: string;
@@ -119,8 +118,8 @@ function shortId(id: string) {
 
 function normalizeChampionSource(
   source: string | null | undefined
-): "override" | "season_champion" | "none" {
-  if (source === "override" || source === "season_champion" || source === "none") {
+): "season_champion" | "none" {
+  if (source === "season_champion" || source === "none") {
     return source;
   }
   return "none";
@@ -198,9 +197,7 @@ export default function AdminMembersPage() {
   const [championSeasonsByUserId, setChampionSeasonsByUserId] = useState<Record<string, number[]>>(
     {}
   );
-  const [championSource, setChampionSource] = useState<
-    "override" | "season_champion" | "none"
-  >("none");
+  const [championSource, setChampionSource] = useState<"season_champion" | "none">("none");
   const [championMsg, setChampionMsg] = useState("");
   const [savingChampion, setSavingChampion] = useState(false);
 
@@ -798,9 +795,6 @@ export default function AdminMembersPage() {
               </span>
               {championSource === "season_champion" && championResolvedSeason !== null && (
                 <span style={{ opacity: 0.75 }}>(season {championResolvedSeason} winner)</span>
-              )}
-              {championSource === "override" && (
-                <span style={{ opacity: 0.75 }}>(legacy manual override)</span>
               )}
               {championResolvedUserId && (
                 <ChampionSeasonLabels seasons={championSeasonsByUserId[championResolvedUserId]} />

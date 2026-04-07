@@ -89,65 +89,19 @@ export async function PATCH(req: Request) {
     const body = (await req.json().catch(() => null)) as
       | null
       | {
-          reigning_champion_override_user_id?: string | null;
           season_champions?: unknown;
         };
 
-    if (
-      !body ||
-      (!("reigning_champion_override_user_id" in body) &&
-        !("season_champions" in body))
-    ) {
+    if (!body || !("season_champions" in body)) {
       return NextResponse.json(
         {
-          error:
-            "Missing update fields (provide reigning_champion_override_user_id and/or season_champions)",
+          error: "Missing update fields (provide season_champions)",
         },
         { status: 400 }
       );
     }
 
-    const hasOverrideInput = "reigning_champion_override_user_id" in body;
     const hasSeasonChampionsInput = "season_champions" in body;
-    let overrideColumnAvailable = true;
-    let existingOverrideUserId: string | null = null;
-
-    if (hasOverrideInput || hasSeasonChampionsInput) {
-      const checkOverrideColumn = await supabase
-        .from("competitions")
-        .select("reigning_champion_override_user_id")
-        .eq("id", competitionId)
-        .single();
-
-      if (
-        checkOverrideColumn.error &&
-        isMissingColumnError(
-          checkOverrideColumn.error.message,
-          "reigning_champion_override_user_id"
-        )
-      ) {
-        overrideColumnAvailable = false;
-      } else if (checkOverrideColumn.error) {
-        return NextResponse.json(
-          { error: "Failed to read competition", details: checkOverrideColumn.error.message },
-          { status: 500 }
-        );
-      } else {
-        existingOverrideUserId =
-          typeof checkOverrideColumn.data?.reigning_champion_override_user_id === "string"
-            ? checkOverrideColumn.data.reigning_champion_override_user_id
-            : null;
-      }
-    }
-
-    const overrideUserIdRaw = body.reigning_champion_override_user_id;
-    const overrideUserId = hasOverrideInput
-      ? typeof overrideUserIdRaw === "string" && overrideUserIdRaw.trim().length
-        ? overrideUserIdRaw.trim()
-        : null
-      : hasSeasonChampionsInput && overrideColumnAvailable
-        ? null
-      : existingOverrideUserId;
 
     const checkHighlightColumn = await supabase
       .from("competitions")
@@ -196,10 +150,8 @@ export async function PATCH(req: Request) {
 
     const idsToValidate = Array.from(
       new Set(
-        [
-          overrideUserId,
-          ...seasonChampionSelections.map((entry) => entry?.user_id ?? null),
-        ]
+        seasonChampionSelections
+          .map((entry) => entry?.user_id ?? null)
           .map((value) => String(value ?? "").trim())
           .filter(Boolean)
       )
@@ -220,13 +172,6 @@ export async function PATCH(req: Request) {
       }
 
       const validIds = new Set((memberRows ?? []).map((row) => String(row.user_id)));
-
-      if (overrideUserId && !validIds.has(overrideUserId)) {
-        return NextResponse.json(
-          { error: "Champion override must be an existing competition member" },
-          { status: 400 }
-        );
-      }
       const invalidSeasonChampionIds = seasonChampionSelections
         .map((entry) => entry?.user_id ?? null)
         .filter((userId): userId is string => !!userId && !validIds.has(userId));
@@ -242,12 +187,8 @@ export async function PATCH(req: Request) {
     }
 
     const updatePayload: {
-      reigning_champion_override_user_id?: string | null;
       champion_highlight_user_ids?: string[];
     } = {};
-    if (overrideColumnAvailable && (hasOverrideInput || hasSeasonChampionsInput)) {
-      updatePayload.reigning_champion_override_user_id = overrideUserId;
-    }
     if (highlightColumnAvailable && hasSeasonChampionsInput) {
       updatePayload.champion_highlight_user_ids = [];
     }

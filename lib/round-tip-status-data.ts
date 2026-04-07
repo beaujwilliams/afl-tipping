@@ -93,6 +93,7 @@ export type RoundTipStatusResponse = {
 };
 
 const ROUND_TIP_STATUS_CACHE_TABLE = "round_tip_status_cache";
+const SUPABASE_PAGE_SIZE = 1000;
 
 function isMissingColumnError(message: string, columnName: string) {
   const m = message.toLowerCase();
@@ -112,6 +113,41 @@ function normalizePaymentStatus(status: string | null | undefined) {
     .toLowerCase();
   if (s === "paid" || s === "pending" || s === "waived") return s;
   return null;
+}
+
+async function readCompetitionTipsForMatches(params: {
+  supabase: ReturnType<typeof createServiceClient>;
+  competitionId: string;
+  matchIds: string[];
+}) {
+  if (!params.matchIds.length) return [] as TipRow[];
+
+  const out: TipRow[] = [];
+  let from = 0;
+
+  while (true) {
+    const to = from + SUPABASE_PAGE_SIZE - 1;
+
+    const { data, error } = await params.supabase
+      .from("tips")
+      .select("user_id, match_id")
+      .eq("competition_id", params.competitionId)
+      .in("match_id", params.matchIds)
+      .order("id", { ascending: true })
+      .range(from, to);
+
+    if (error) {
+      throw new Error(`Failed to read tips: ${error.message}`);
+    }
+
+    const batch = (data ?? []) as TipRow[];
+    out.push(...batch);
+
+    if (batch.length < SUPABASE_PAGE_SIZE) break;
+    from += SUPABASE_PAGE_SIZE;
+  }
+
+  return out;
 }
 
 async function computeRoundTipStatusAggregate(params: {
@@ -233,17 +269,13 @@ async function computeRoundTipStatusAggregate(params: {
   const tipCountByRoundUser = new Map<string, Map<string, number>>();
 
   if (matchIds.length) {
-    const { data: tips, error: tErr } = await supabase
-      .from("tips")
-      .select("user_id, match_id")
-      .eq("competition_id", params.competitionId)
-      .in("match_id", matchIds);
+    const tips = await readCompetitionTipsForMatches({
+      supabase,
+      competitionId: params.competitionId,
+      matchIds,
+    });
 
-    if (tErr) {
-      throw new Error(`Failed to read tips: ${tErr.message}`);
-    }
-
-    (tips as TipRow[] | null)?.forEach((t) => {
+    tips.forEach((t) => {
       const uid = String(t.user_id);
       const rid = matchToRound.get(String(t.match_id));
       if (!rid) return;

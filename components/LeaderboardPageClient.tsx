@@ -6,6 +6,15 @@ import { supabaseBrowser } from "@/lib/supabase-browser";
 import { ChampionSeasonLabels } from "@/components/ChampionSeasonLabels";
 import { UnpaidTag } from "@/components/UnpaidTag";
 import {
+  DEFAULT_LEADERBOARD_SORT_DIR,
+  DEFAULT_LEADERBOARD_SORT_DIRECTION,
+  DEFAULT_LEADERBOARD_SORT_KEY,
+  buildLeaderboardScopeRankMeta,
+  type LeaderboardSortDirection,
+  type LeaderboardSortKey,
+  sortLeaderboardRows,
+} from "@/lib/leaderboard-sort";
+import {
   UiButton,
   UiCard,
   UiSkeleton,
@@ -15,7 +24,6 @@ import {
   UiTableShell,
 } from "@/components/ui";
 import { normalizeChampionSeasonsByUserId } from "@/lib/champion-metadata";
-import { leaderboardRankComparator } from "@/lib/scoring-lock-rules";
 
 type LeaderboardRow = {
   user_id: string;
@@ -102,20 +110,8 @@ type MemberDirectoryEntry = {
   display_name: string;
 };
 
-type SortKey =
-  | "rank"
-  | "display_name"
-  | "total_points"
-  | "correct_tips"
-  | "accuracy_pct"
-  | "round_score"
-  | "movement"
-  | "behind_leader"
-  | "current_streak"
-  | "avg_winning_odds";
-
-type SortDirection = "asc" | "desc";
-type NumericSortKey = Exclude<SortKey, "display_name">;
+type SortKey = LeaderboardSortKey;
+type SortDirection = LeaderboardSortDirection;
 type TrendMetric = "rank" | "points";
 
 type LeaderboardPageClientProps = {
@@ -123,19 +119,6 @@ type LeaderboardPageClientProps = {
   initialLeaderboard: LeaderboardResponse | null;
   initialMessage?: string | null;
   initialViewMode?: "overall" | "groups";
-};
-
-const DEFAULT_SORT_DIR: Record<SortKey, SortDirection> = {
-  rank: "asc",
-  display_name: "asc",
-  total_points: "desc",
-  correct_tips: "desc",
-  accuracy_pct: "desc",
-  round_score: "desc",
-  movement: "desc",
-  behind_leader: "asc",
-  current_streak: "desc",
-  avg_winning_odds: "desc",
 };
 
 function fmtPts(n: number) {
@@ -168,18 +151,6 @@ function fmtInviteTimestamp(iso: string | null | undefined) {
     hour: "numeric",
     minute: "2-digit",
   });
-}
-
-function numericSortValue(row: LeaderboardRow, key: NumericSortKey) {
-  if (key === "rank") return row.rank;
-  if (key === "total_points") return row.total_points;
-  if (key === "correct_tips") return row.correct_tips;
-  if (key === "accuracy_pct") return row.accuracy_pct;
-  if (key === "round_score") return row.round_score;
-  if (key === "movement") return row.movement;
-  if (key === "behind_leader") return row.behind_leader;
-  if (key === "current_streak") return row.current_streak;
-  return row.avg_winning_odds;
 }
 
 const TREND_COLORS = [
@@ -672,8 +643,10 @@ export default function LeaderboardPageClient({
   const [trendSearch, setTrendSearch] = useState("");
   const [trendMetric, setTrendMetric] = useState<TrendMetric>("rank");
   const [msg, setMsg] = useState(initialMessage ?? "");
-  const [sortBy, setSortBy] = useState<SortKey>("total_points");
-  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [sortBy, setSortBy] = useState<SortKey>(DEFAULT_LEADERBOARD_SORT_KEY);
+  const [sortDirection, setSortDirection] = useState<SortDirection>(
+    DEFAULT_LEADERBOARD_SORT_DIRECTION
+  );
   const [isMobile, setIsMobile] = useState(false);
   const [viewMode, setViewMode] = useState<"overall" | "groups">(initialViewMode);
   const [groups, setGroups] = useState<LeaderboardGroup[]>([]);
@@ -1268,32 +1241,7 @@ export default function LeaderboardPageClient({
     return rows.filter((row) => selectedGroupUserIdSet.has(row.user_id));
   }, [rows, selectedGroup, selectedGroupUserIdSet, viewMode]);
   const scopeRankMetaByUserId = useMemo(() => {
-    const ranked = [...scopedRows].sort((a, b) =>
-      leaderboardRankComparator(
-        {
-          total_points: a.total_points,
-          accuracy_pct: a.accuracy_pct,
-          correct_tips: a.correct_tips,
-          display_name: a.display_name,
-        },
-        {
-          total_points: b.total_points,
-          accuracy_pct: b.accuracy_pct,
-          correct_tips: b.correct_tips,
-          display_name: b.display_name,
-        }
-      )
-    );
-
-    const leaderPoints = ranked.length ? Number(ranked[0].total_points) : 0;
-    const byUserId = new Map<string, { rank: number; behind: number }>();
-    ranked.forEach((row, index) => {
-      byUserId.set(row.user_id, {
-        rank: index + 1,
-        behind: Math.max(0, leaderPoints - Number(row.total_points ?? 0)),
-      });
-    });
-    return byUserId;
+    return buildLeaderboardScopeRankMeta(scopedRows);
   }, [scopedRows]);
 
   const rankByUserId = useMemo(() => {
@@ -1333,45 +1281,8 @@ export default function LeaderboardPageClient({
   }
 
   const sortedRows = useMemo(() => {
-    const list = [...scopedRows];
-
-    function scopedNumericValue(row: LeaderboardRow, key: NumericSortKey) {
-      if (key === "rank") {
-        return scopeRankMetaByUserId.get(row.user_id)?.rank ?? row.rank;
-      }
-      if (key === "behind_leader") {
-        return scopeRankMetaByUserId.get(row.user_id)?.behind ?? row.behind_leader;
-      }
-      return numericSortValue(row, key);
-    }
-
-    list.sort((a, b) => {
-      let primaryCmp = 0;
-
-      if (activeSortBy === "display_name") {
-        primaryCmp = a.display_name.localeCompare(b.display_name, "en", { sensitivity: "base" });
-      } else {
-        primaryCmp = scopedNumericValue(a, activeSortBy) - scopedNumericValue(b, activeSortBy);
-      }
-
-      const directionalPrimary = activeSortDirection === "asc" ? primaryCmp : -primaryCmp;
-      if (directionalPrimary !== 0) {
-        return directionalPrimary;
-      }
-
-      // Keep scope rank as a stable reference when values tie.
-      const rankTieBreak =
-        (scopeRankMetaByUserId.get(a.user_id)?.rank ?? a.rank) -
-        (scopeRankMetaByUserId.get(b.user_id)?.rank ?? b.rank);
-      if (rankTieBreak !== 0) {
-        return rankTieBreak;
-      }
-
-      return a.display_name.localeCompare(b.display_name, "en", { sensitivity: "base" });
-    });
-
-    return list;
-  }, [activeSortBy, activeSortDirection, scopedRows, scopeRankMetaByUserId]);
+    return sortLeaderboardRows(scopedRows, activeSortBy, activeSortDirection);
+  }, [activeSortBy, activeSortDirection, scopedRows]);
 
   const scopedTrendSeries = useMemo(() => {
     if (viewMode !== "groups") return trendSeries;
@@ -1447,7 +1358,7 @@ export default function LeaderboardPageClient({
       return;
     }
     setSortBy(nextKey);
-    setSortDirection(DEFAULT_SORT_DIR[nextKey]);
+    setSortDirection(DEFAULT_LEADERBOARD_SORT_DIR[nextKey]);
   }
 
   function sortMarker(key: SortKey) {

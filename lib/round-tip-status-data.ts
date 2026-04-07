@@ -1,5 +1,6 @@
 import { createServiceClient } from "@/lib/supabase-server";
 import { resolveReigningChampion } from "@/lib/reigning-champion";
+import { buildRoundTipStatusPlayerLists } from "@/lib/round-tip-status-rules";
 
 type RoundRow = {
   id: string;
@@ -111,20 +112,6 @@ function normalizePaymentStatus(status: string | null | undefined) {
     .toLowerCase();
   if (s === "paid" || s === "pending" || s === "waived") return s;
   return null;
-}
-
-function sortPlayersByName(a: RoundPlayerStatusRow, b: RoundPlayerStatusRow) {
-  const aName = String(a.display_name ?? "").trim();
-  const bName = String(b.display_name ?? "").trim();
-  if (aName && bName) {
-    const cmp = aName.localeCompare(bName, "en", { sensitivity: "base" });
-    if (cmp !== 0) return cmp;
-  } else if (aName) {
-    return -1;
-  } else if (bName) {
-    return 1;
-  }
-  return String(a.user_id).localeCompare(String(b.user_id));
 }
 
 async function computeRoundTipStatusAggregate(params: {
@@ -274,31 +261,14 @@ async function computeRoundTipStatusAggregate(params: {
     const completedMatches = completedMatchesByRound.get(r.id) ?? 0;
     const roundComplete = totalMatches > 0 && completedMatches >= totalMatches;
     const tipsByUser = tipCountByRoundUser.get(r.id) ?? new Map<string, number>();
-    const hasCompletedTips = (uid: string) =>
-      totalMatches > 0 && (tipsByUser.get(uid) ?? 0) >= totalMatches;
-
-    const tippedCount = memberIds.reduce((acc, uid) => {
-      return acc + (hasCompletedTips(uid) ? 1 : 0);
-    }, 0);
-
-    const missingPlayers: RoundPlayerStatusRow[] = [];
-    const tippedPlayers: RoundPlayerStatusRow[] = [];
-
-    for (const uid of memberIds) {
-      const tipsEntered = Math.min(tipsByUser.get(uid) ?? 0, totalMatches);
-      const row: RoundPlayerStatusRow = {
-        user_id: uid,
-        display_name: profileMap.get(uid) ?? null,
-        payment_status: paymentStatusByUserId.get(uid) ?? null,
-        tips_entered: tipsEntered,
-      };
-
-      if (hasCompletedTips(uid)) tippedPlayers.push(row);
-      else missingPlayers.push(row);
-    }
-
-    missingPlayers.sort(sortPlayersByName);
-    tippedPlayers.sort(sortPlayersByName);
+    const { missingPlayers, tippedPlayers, tippedCount, missingCount } =
+      buildRoundTipStatusPlayerLists({
+        memberIds,
+        totalMatches,
+        profileNameByUserId: profileMap,
+        paymentStatusByUserId,
+        tipCountByUserId: tipsByUser,
+      });
 
     return {
       round_id: r.id,
@@ -309,7 +279,7 @@ async function computeRoundTipStatusAggregate(params: {
       round_complete: roundComplete,
       total_players: memberIds.length,
       tipped_players: tippedCount,
-      missing_count: Math.max(0, memberIds.length - tippedCount),
+      missing_count: missingCount,
       match_ids: matchIdsByRound.get(r.id) ?? [],
       missing_players: missingPlayers,
       tipped_players_list: tippedPlayers,

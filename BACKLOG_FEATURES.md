@@ -7,7 +7,7 @@ Last updated: 2026-04-07
 | ID | Priority | Status | Feature | Why it helps | Effort | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
 | BL-011 | P1 | Deferred | Season archive selector and year-over-year comparison page | Keeps site useful across seasons | M | Post-season only |
-| BL-014 | P2 | Doing | Automated regression tests for scoring logic and lock-time behavior | Prevents subtle scoring errors | M | Baseline suite + CI scheduling in progress |
+| BL-014 | P2 | Done | Automated regression tests for scoring logic and lock-time behavior | Prevents subtle scoring errors | M | Shipped on 2026-04-07. Regression suite now covers scoring math, lock boundaries, snapshot timing, post-lock visibility, and round-results ordering/math with 30 passing tests |
 | BL-015 | P2 | Idea | Add audit log for admin actions (sync, snapshot, recalc, member changes) | Better traceability when results look wrong | M | Ops visibility |
 | BL-016 | P2 | Idea | Add observability: structured logs + alerting when sync/snapshot jobs fail | Faster incident response during rounds | M | Ops reliability |
 | BL-018 | P1 | Done | Server-render leaderboard first, then lazy-load trends and private groups | Biggest real load-time improvement on the slowest high-traffic page | L | Shipped on 2026-04-07. Initial leaderboard now renders on the server; trends and private groups hydrate after first paint without changing ranking logic |

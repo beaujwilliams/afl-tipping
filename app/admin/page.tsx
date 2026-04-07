@@ -18,6 +18,30 @@ type AutomationStatusCard = {
   detail: string;
 };
 
+type AutomationHealthRun = {
+  id: string;
+  job_kind: string;
+  job_label: string;
+  trigger_mode: string;
+  run_status: string;
+  started_at_utc: string;
+  summary: string;
+};
+
+type AutomationHealthResponse = {
+  ok?: boolean;
+  healthy?: boolean;
+  failure_window_hours?: number;
+  latest?: AutomationHealthRun[];
+  recent_failures?: AutomationHealthRun[];
+  error?: string;
+  details?: string;
+  sources?: {
+    automation_job_runs?: { ok?: boolean; hint?: string | null };
+    scoring_automation_runs?: { ok?: boolean; hint?: string | null };
+  };
+};
+
 const AUTOMATION_STATUS_CARDS: AutomationStatusCard[] = [
   {
     title: "Scoring refresh",
@@ -95,6 +119,9 @@ export default function AdminPage() {
   const [result, setResult] = useState<unknown>(null);
   const [loading, setLoading] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
+  const [healthLoading, setHealthLoading] = useState(false);
+  const [healthData, setHealthData] = useState<AutomationHealthResponse | null>(null);
+  const [healthMsg, setHealthMsg] = useState("");
   const isRunning = loading !== null;
 
   useEffect(() => {
@@ -110,8 +137,20 @@ export default function AdminPage() {
     };
   }, []);
 
+  useEffect(() => {
+    void loadAutomationHealth();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [season]);
+
   const resultSummary = useMemo(() => summarizeResult(result), [result]);
   const runningLabel = useMemo(() => describeRunningAction(loading), [loading]);
+  const healthFailureCount = healthData?.recent_failures?.length ?? 0;
+  const healthWarning =
+    (healthData?.sources?.automation_job_runs?.ok === false &&
+      healthData?.sources?.automation_job_runs?.hint) ||
+    (healthData?.sources?.scoring_automation_runs?.ok === false &&
+      healthData?.sources?.scoring_automation_runs?.hint) ||
+    "";
 
   async function getToken() {
     const { data } = await supabaseBrowser.auth.getSession();
@@ -128,6 +167,47 @@ export default function AdminPage() {
 
     const json = await res.json().catch(() => ({}));
     return { ok: res.ok, status: res.status, json };
+  }
+
+  async function loadAutomationHealth() {
+    try {
+      setHealthLoading(true);
+      setHealthMsg("");
+
+      const token = await getToken();
+      if (!token) {
+        setHealthData(null);
+        setHealthMsg("Sign in again to load automation health.");
+        return;
+      }
+
+      const params = new URLSearchParams({
+        season: String(season),
+        limit: "12",
+      });
+      const res = await fetch(`/api/admin/automation-health?${params.toString()}`, {
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const json = (await res.json().catch(() => null)) as AutomationHealthResponse | null;
+
+      if (!res.ok || !json?.ok) {
+        const parts = [json?.error ?? "Could not load automation health."];
+        if (json?.details) parts.push(json.details);
+        setHealthData(json);
+        setHealthMsg(parts.join(" - "));
+        return;
+      }
+
+      setHealthData(json);
+    } catch (error: unknown) {
+      setHealthData(null);
+      setHealthMsg(error instanceof Error ? error.message : "Could not load automation health.");
+    } finally {
+      setHealthLoading(false);
+    }
   }
 
   async function run(path: string) {
@@ -421,6 +501,75 @@ export default function AdminPage() {
           <div className="ui-admin-summary">
             If anything looks off, start here before reaching for a manual fix.
           </div>
+
+          <UiCard className="ui-admin-tool">
+            <div className="ui-row-wrap" style={{ justifyContent: "space-between", gap: 8 }}>
+              <div className="ui-admin-subtitle">Automation health</div>
+              <span
+                className="ui-badge"
+                style={{
+                  background:
+                    healthData?.healthy === false
+                      ? "rgba(239, 68, 68, 0.14)"
+                      : "rgba(16, 185, 129, 0.14)",
+                  color:
+                    healthData?.healthy === false ? "rgb(153, 27, 27)" : "rgb(6, 95, 70)",
+                  border: "1px solid rgba(0,0,0,0.08)",
+                }}
+              >
+                {healthLoading
+                  ? "CHECKING"
+                  : healthData?.healthy === false
+                    ? "ATTENTION NEEDED"
+                    : "ALL CLEAR"}
+              </span>
+            </div>
+            <div className="ui-admin-summary ui-admin-summary--tight">
+              {healthMsg
+                ? healthMsg
+                : healthData?.healthy === false
+                  ? `${healthFailureCount} failed automation run${healthFailureCount === 1 ? "" : "s"} found in the last ${healthData?.failure_window_hours ?? 72} hours.`
+                  : `No failed automation runs found in the last ${healthData?.failure_window_hours ?? 72} hours.`}
+            </div>
+            {healthWarning && (
+              <div className="ui-admin-summary ui-admin-summary--tight" style={{ color: "rgb(146, 64, 14)" }}>
+                {healthWarning}
+              </div>
+            )}
+            {!healthLoading && !healthMsg && (healthData?.recent_failures?.length ?? 0) > 0 && (
+              <div className="ui-admin-stack" style={{ marginTop: 10 }}>
+                {healthData?.recent_failures?.slice(0, 3).map((run) => (
+                  <div key={run.id} className="ui-admin-summary ui-admin-summary--tight">
+                    <b>{run.job_label}</b>: {run.summary}
+                  </div>
+                ))}
+              </div>
+            )}
+            {!healthLoading && !healthMsg && (healthData?.latest?.length ?? 0) > 0 && (
+              <div className="ui-admin-stack" style={{ marginTop: 10 }}>
+                {healthData?.latest?.slice(0, 3).map((run) => (
+                  <div key={`latest-${run.id}`} className="ui-caption">
+                    {run.job_label}: {run.run_status} • {run.summary}
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="ui-admin-two-col" style={{ marginTop: 12 }}>
+              <UiButtonLink
+                href={`/admin/automation-health?season=${encodeURIComponent(String(season))}`}
+                className="ui-admin-btn ui-admin-btn--full"
+              >
+                Open Automation Health
+              </UiButtonLink>
+              <UiButton
+                disabled={healthLoading}
+                onClick={() => void loadAutomationHealth()}
+                className="ui-admin-btn ui-admin-btn--full"
+              >
+                {healthLoading ? "Refreshing..." : "Refresh Health"}
+              </UiButton>
+            </div>
+          </UiCard>
 
           <UiCard className="ui-admin-tool">
             <div className="ui-admin-subtitle">Scoring run log</div>

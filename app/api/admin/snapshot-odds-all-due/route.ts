@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase-server";
 import { requireAdminOrCron, resolveCompetitionIdForAdminRequest } from "@/lib/admin-auth";
+import {
+  classifySnapshotRun,
+  recordAutomationJobRun,
+} from "@/lib/automation-observability";
 import { isSameInstant } from "@/lib/snapshot-time";
 
 // ✅ Must match snapshot-odds/route.ts
@@ -24,9 +28,13 @@ type RoundRow = {
 };
 
 export async function GET(req: Request) {
+  const startedAtUtc = new Date().toISOString();
   try {
     const gate = await requireAdminOrCron(req);
     if (!gate.ok) return NextResponse.json(gate.json, { status: gate.status });
+    const triggerMode = gate.mode;
+    const cronSecret = gate.mode === "cron" ? gate.secret : null;
+    const bearerToken = gate.mode === "bearer" ? gate.token : null;
 
     const url = new URL(req.url);
     const season = Number(url.searchParams.get("season") || "2026");
@@ -42,6 +50,33 @@ export async function GET(req: Request) {
 
     if (!competitionId) {
       return NextResponse.json({ error: "No competition" }, { status: 404 });
+    }
+    const resolvedCompetitionId = competitionId;
+
+    async function respond(status: number, body: Record<string, unknown>) {
+      try {
+        const classification = classifySnapshotRun(body, status);
+        const logError = await recordAutomationJobRun({
+          competitionId: resolvedCompetitionId,
+          season,
+          jobKind: "snapshot_odds_due",
+          triggerMode,
+          requestPath: url.pathname + url.search,
+          startedAtUtc,
+          finishedAtUtc: new Date().toISOString(),
+          runStatus: classification.runStatus,
+          summary: classification.summary,
+          details: body,
+        });
+        if (logError) {
+          body.observability_log_error = logError;
+        }
+      } catch (error: unknown) {
+        body.observability_log_error =
+          error instanceof Error ? error.message : "Failed to record automation run";
+      }
+
+      return NextResponse.json(body, { status });
     }
 
     const competitionFromQuery = url.searchParams.get("competition_id")?.trim() ?? "";
@@ -86,10 +121,10 @@ export async function GET(req: Request) {
     }
 
     if (!rounds?.length) {
-      return NextResponse.json({
+      return respond(200, {
         ok: true,
         season,
-        competition_id: competitionId,
+        competition_id: resolvedCompetitionId,
         processedDueRounds: 0,
         capturedRounds: 0,
         next: null,
@@ -139,10 +174,10 @@ export async function GET(req: Request) {
     }
 
     if (!target) {
-      return NextResponse.json({
+      return respond(200, {
         ok: true,
         season,
-        competition_id: competitionId,
+        competition_id: resolvedCompetitionId,
         processedDueRounds: 0,
         capturedRounds: 0,
         skipped_reason: "no_due_rounds_pending_capture",
@@ -166,10 +201,10 @@ export async function GET(req: Request) {
       const skippedReason = target.due
         ? "already_captured_for_due_snapshot"
         : "not_due_yet";
-      return NextResponse.json({
+      return respond(200, {
         ok: true,
         season,
-        competition_id: competitionId,
+        competition_id: resolvedCompetitionId,
         processedDueRounds: 0,
         capturedRounds: 0,
         skipped_reason: skippedReason,
@@ -198,19 +233,19 @@ export async function GET(req: Request) {
 
     // Run snapshot for the chosen target
     const secretQS =
-      gate.mode === "cron"
-        ? `&secret=${encodeURIComponent(gate.secret ?? "")}`
+      triggerMode === "cron"
+        ? `&secret=${encodeURIComponent(cronSecret ?? "")}`
         : "";
 
     // ✅ IMPORTANT: pass force to snapshot-odds when force=1
     const forceQS = force ? `&force=1` : "";
 
     const snapUrl = `${url.origin}/api/admin/snapshot-odds?season=${season}&round=${target.round_number}${forceQS}${secretQS}`;
-    const snapUrlWithComp = `${snapUrl}&competition_id=${encodeURIComponent(competitionId)}`;
+    const snapUrlWithComp = `${snapUrl}&competition_id=${encodeURIComponent(resolvedCompetitionId)}`;
 
     const headers: Record<string, string> = {};
-    if (gate.mode === "bearer" && gate.token) {
-      headers["Authorization"] = `Bearer ${gate.token}`;
+    if (triggerMode === "bearer" && bearerToken) {
+      headers["Authorization"] = `Bearer ${bearerToken}`;
     }
 
     const res = await fetch(snapUrlWithComp, { headers, cache: "no-store" });
@@ -234,10 +269,10 @@ export async function GET(req: Request) {
       (json as { ok?: unknown }).ok === true;
     const capturedRounds = res.status === 200 && jsonOk ? 1 : 0;
 
-    return NextResponse.json({
+    return respond(200, {
       ok: true,
       season,
-      competition_id: competitionId,
+      competition_id: resolvedCompetitionId,
       processedDueRounds: 1,
       capturedRounds,
       snapshotHoursBeforeLock: SNAPSHOT_HOURS_BEFORE_LOCK,
@@ -262,7 +297,7 @@ export async function GET(req: Request) {
   } catch (e: unknown) {
     const details = e instanceof Error ? e.message : String(e);
     return NextResponse.json(
-      { error: "Unexpected error", details },
+      { error: "Unexpected error", details, started_at_utc: startedAtUtc },
       { status: 500 }
     );
   }

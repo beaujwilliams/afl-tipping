@@ -1,6 +1,11 @@
 import { createServiceClient } from "@/lib/supabase-server";
 import { resolveCompetitionIdForSeasonRound } from "@/lib/competition-resolver";
+import { isPostLockDataVisible } from "@/lib/post-lock-visibility";
 import { resolveReigningChampion } from "@/lib/reigning-champion";
+import {
+  buildRoundResultsSnapshot,
+  pickFirstOddsByMatch,
+} from "@/lib/round-results-rules";
 
 type MatchRow = {
   id: string;
@@ -147,10 +152,9 @@ export async function getRoundResultsResponse(params: {
   const roundId = String(roundRow.id);
   const snapshotForTimeUtc = roundRow.odds_snapshot_for_time_utc ?? null;
   const lockTimeUtc = roundRow.lock_time_utc ?? null;
-  const lockMs = lockTimeUtc ? new Date(lockTimeUtc).getTime() : NaN;
   const nowMs = params.nowMs ?? Date.now();
 
-  if (!Number.isFinite(lockMs) || nowMs < lockMs) {
+  if (!isPostLockDataVisible(lockTimeUtc, nowMs)) {
     throw new Error("Round results are available only after the round locks.");
   }
 
@@ -166,10 +170,6 @@ export async function getRoundResultsResponse(params: {
 
   const matchList = (matches ?? []) as MatchRow[];
   const matchIds = matchList.map((m) => String(m.id));
-  const completedGamesInRound = matchList.reduce((acc, m) => {
-    return acc + (String(m.winner_team ?? "").trim() ? 1 : 0);
-  }, 0);
-
   if (!matchIds.length) {
     return {
       ok: true,
@@ -287,143 +287,18 @@ export async function getRoundResultsResponse(params: {
     throw new Error(oErr.message);
   }
 
-  const oddsByMatchId: Record<string, { home_odds: number; away_odds: number }> = {};
-  (oddsRows as OddsRow[] | null)?.forEach((row) => {
-    const mid = String(row.match_id);
-    if (!oddsByMatchId[mid]) {
-      oddsByMatchId[mid] = {
-        home_odds: Number(row.home_odds ?? 0),
-        away_odds: Number(row.away_odds ?? 0),
-      };
-    }
+  const oddsByMatchId = pickFirstOddsByMatch((oddsRows ?? []) as OddsRow[]);
+  const eligiblePlayers = Array.from(eligibleUserIds).map((userId) => ({
+    user_id: userId,
+    display_name: nameByUserId[userId] ?? "Anonymous tipster",
+    payment_status: paymentStatusByUserId[userId] ?? null,
+  }));
+  const snapshot = buildRoundResultsSnapshot({
+    matches: matchList,
+    tips: tipRows,
+    eligiblePlayers,
+    oddsByMatchId,
   });
-
-  const teamCountByMatch: Record<string, Record<string, number>> = {};
-  const totalTipsByMatch: Record<string, number> = {};
-  const playersById: Record<
-    string,
-    {
-      user_id: string;
-      display_name: string;
-      payment_status: string | null;
-      round_score: number;
-      potential_score: number;
-      correct_tips: number;
-      total_tips: number;
-      correct_odds_sum: number;
-      picks: Record<string, string>;
-    }
-  > = {};
-
-  const matchById: Record<string, MatchRow> = {};
-  for (const match of matchList) matchById[match.id] = match;
-
-  for (const tip of tipRows) {
-    const uid = String(tip.user_id);
-    if (!eligibleUserIds.has(uid)) continue;
-    const matchId = String(tip.match_id);
-    const pickedTeam = String(tip.picked_team ?? "").trim();
-    if (!pickedTeam || !matchById[matchId]) continue;
-
-    const match = matchById[matchId];
-    const winner = String(match.winner_team ?? "").trim();
-    const isFinished = !!winner;
-
-    if (!teamCountByMatch[matchId]) teamCountByMatch[matchId] = {};
-    teamCountByMatch[matchId][pickedTeam] = (teamCountByMatch[matchId][pickedTeam] ?? 0) + 1;
-    totalTipsByMatch[matchId] = (totalTipsByMatch[matchId] ?? 0) + 1;
-
-    const odds = oddsByMatchId[matchId];
-    let pickedOdds = 0;
-    if (odds) {
-      if (pickedTeam === match.home_team) pickedOdds = Number(odds.home_odds ?? 0);
-      else if (pickedTeam === match.away_team) pickedOdds = Number(odds.away_odds ?? 0);
-    }
-
-    let points = 0;
-    let isCorrect: boolean | null = null;
-    if (isFinished) {
-      isCorrect = pickedTeam === winner;
-      if (isCorrect) points = pickedOdds;
-    }
-
-    if (!playersById[uid]) {
-      playersById[uid] = {
-        user_id: uid,
-        display_name: nameByUserId[uid] ?? "Anonymous tipster",
-        payment_status: paymentStatusByUserId[uid] ?? null,
-        round_score: 0,
-        potential_score: 0,
-        correct_tips: 0,
-        total_tips: 0,
-        correct_odds_sum: 0,
-        picks: {},
-      };
-    }
-
-    playersById[uid].total_tips += 1;
-    playersById[uid].potential_score += pickedOdds;
-    playersById[uid].picks[matchId] = pickedTeam;
-
-    if (isCorrect) {
-      playersById[uid].correct_tips += 1;
-      playersById[uid].round_score += points;
-      playersById[uid].correct_odds_sum += points;
-    }
-  }
-
-  const matchesOut: MatchResultRow[] = matchList.map((match) => {
-    const matchId = match.id;
-    const totalTips = totalTipsByMatch[matchId] ?? 0;
-    const byTeam = teamCountByMatch[matchId] ?? {};
-    const homeCount = byTeam[match.home_team] ?? 0;
-    const awayCount = byTeam[match.away_team] ?? 0;
-    const homePct = totalTips ? Math.round((homeCount / totalTips) * 100) : 0;
-    const awayPct = totalTips ? Math.round((awayCount / totalTips) * 100) : 0;
-
-    return {
-      ...match,
-      home_odds: oddsByMatchId[matchId]?.home_odds ?? null,
-      away_odds: oddsByMatchId[matchId]?.away_odds ?? null,
-      total_tips: totalTips,
-      tipping: {
-        home_team: match.home_team,
-        away_team: match.away_team,
-        home_count: homeCount,
-        away_count: awayCount,
-        home_pct: homePct,
-        away_pct: awayPct,
-      },
-    };
-  });
-
-  const players: PlayerRoundScore[] = Object.values(playersById)
-    .map((player) => {
-      const accuracyBase = completedGamesInRound > 0 ? completedGamesInRound : 0;
-      const accuracyCorrect = accuracyBase > 0 ? Math.min(player.correct_tips, accuracyBase) : 0;
-      const accuracyPct = accuracyBase > 0 ? (accuracyCorrect / accuracyBase) * 100 : 0;
-      const avgCorrectOdds =
-        player.correct_tips > 0 ? player.correct_odds_sum / player.correct_tips : 0;
-      const differenceScore = player.potential_score - player.round_score;
-      return {
-        user_id: player.user_id,
-        display_name: player.display_name,
-        payment_status: player.payment_status,
-        round_score: player.round_score,
-        potential_score: player.potential_score,
-        difference_score: differenceScore,
-        correct_tips: player.correct_tips,
-        total_tips: player.total_tips,
-        accuracy_pct: accuracyPct,
-        avg_correct_odds: avgCorrectOdds,
-        picks: player.picks,
-      };
-    })
-    .sort((a, b) => {
-      if (b.round_score !== a.round_score) return b.round_score - a.round_score;
-      if (b.correct_tips !== a.correct_tips) return b.correct_tips - a.correct_tips;
-      return a.display_name.localeCompare(b.display_name);
-    });
 
   return {
     ok: true,
@@ -435,7 +310,7 @@ export async function getRoundResultsResponse(params: {
     champion_seasons_by_user_id: reigningChampion.champion_seasons_by_user_id,
     lock_time_utc: lockTimeUtc,
     snapshot_for_time_utc: snapshotForTimeUtc,
-    matches: matchesOut,
-    players,
+    matches: snapshot.matches as MatchResultRow[],
+    players: snapshot.players as PlayerRoundScore[],
   };
 }

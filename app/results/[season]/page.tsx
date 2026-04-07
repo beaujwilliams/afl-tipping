@@ -1,34 +1,14 @@
-"use client";
-
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
-import { supabaseBrowser } from "@/lib/supabase-browser";
-import { waitForSession } from "@/lib/session-client";
-import { UiBadge, UiCard, UiSectionHeader, UiSkeleton } from "@/components/ui";
+import { redirect } from "next/navigation";
+import { UiBadge, UiCard, UiSectionHeader } from "@/components/ui";
+import { resolveCompetitionIdForSeason } from "@/lib/competition-resolver";
+import { getRoundTipStatusResponse } from "@/lib/round-tip-status-data";
+import { createClient, createServiceClient } from "@/lib/supabase-server";
 
-type RoundRow = {
-  id: string;
-  round_number: number;
-  lock_time_utc: string | null;
-};
-
-type MatchMini = {
-  round_id: string;
-  winner_team: string | null;
-};
-
-type TipStatusRound = {
-  round_id: string;
-  round_number: number;
-  lock_time_utc: string | null;
-};
-
-type TipStatusResponse = {
-  ok: boolean;
-  competition_id: string;
-  rounds: TipStatusRound[];
-  error?: string;
+type SeasonResultsPageProps = {
+  params: Promise<{
+    season: string;
+  }>;
 };
 
 function melbourneMs(iso: string | null) {
@@ -51,147 +31,74 @@ function fmtMelbourneShort(iso: string | null) {
   }).format(d);
 }
 
-function SeasonResultsLoadingSkeleton() {
-  return (
-    <div className="ui-grid ui-mt-4">
-      {Array.from({ length: 4 }).map((_, index) => (
-        <UiCard
-          key={`results-round-skeleton-${index}`}
-          soft
-          className="ui-row-between"
-          style={{ minHeight: 68, padding: "14px 14px" }}
-        >
-          <div className="ui-grid" style={{ gap: 6, minWidth: 0, flex: 1 }}>
-            <UiSkeleton width={110} height={20} />
-            <UiSkeleton width="52%" height={12} />
-            <UiSkeleton width="40%" height={12} />
-          </div>
-          <UiSkeleton width={92} height={28} radius={999} />
-        </UiCard>
-      ))}
-    </div>
-  );
+function roundStatusTone(total: number, finished: number, locked: boolean) {
+  if (total > 0 && finished === total) return "success" as const;
+  if (locked) return "warning" as const;
+  return "info" as const;
 }
 
-export default function SeasonResultsPage() {
-  const params = useParams<{ season: string }>();
-  const season = Number(params.season);
+function roundStatusLabel(total: number, finished: number, locked: boolean) {
+  if (total > 0 && finished === total) return "COMPLETE";
+  if (locked) return "IN PROGRESS";
+  return "NOT STARTED";
+}
 
-  const [rows, setRows] = useState<RoundRow[]>([]);
-  const [msg, setMsg] = useState("Checking session…");
-  const [ready, setReady] = useState(false);
-  const [sessionToken, setSessionToken] = useState<string | null>(null);
-  const [statsByRoundId, setStatsByRoundId] = useState<
-    Record<string, { total: number; finished: number }>
-  >({});
+function getNowMs() {
+  return Date.now();
+}
 
-  useEffect(() => {
-    let alive = true;
+export default async function SeasonResultsPage(props: SeasonResultsPageProps) {
+  const { season: seasonParam } = await props.params;
+  const season = Number(seasonParam);
 
-    async function ensureSessionOrRedirect() {
-      const session = await waitForSession(3000, 180);
-      if (!alive) return;
+  const authClient = await createClient();
+  const {
+    data: { user },
+  } = await authClient.auth.getUser();
 
-      if (!session) {
-        window.location.href = "/login";
-        return;
+  if (!user) {
+    redirect("/login");
+  }
+
+  let rows = [] as Awaited<ReturnType<typeof getRoundTipStatusResponse>>["rounds"];
+  let msg = "";
+
+  if (!Number.isFinite(season)) {
+    msg = "Invalid season.";
+  } else {
+    try {
+      const supabase = createServiceClient();
+      const competitionId = await resolveCompetitionIdForSeason({
+        season,
+        userId: user.id,
+        supabase,
+      });
+
+      if (!competitionId) {
+        msg = "No competition found.";
+      } else {
+        const response = await getRoundTipStatusResponse({
+          competitionId,
+          season,
+          userId: user.id,
+          admin: false,
+          supabase,
+        });
+        rows = response.rounds;
       }
-
-      setSessionToken(session.access_token);
-      setReady(true);
-      setMsg("");
+    } catch (error) {
+      msg = error instanceof Error ? error.message : "Could not load rounds.";
     }
+  }
 
-    ensureSessionOrRedirect();
-
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!ready || !sessionToken) return;
-
-    (async () => {
-      setMsg("Loading results rounds…");
-
-      const statusRes = await fetch(`/api/round-tip-status?season=${encodeURIComponent(String(season))}`, {
-        headers: { Authorization: `Bearer ${sessionToken}` },
-        cache: "no-store",
-      });
-      const statusJson = (await statusRes.json().catch(() => null)) as TipStatusResponse | null;
-
-      if (!statusRes.ok || !statusJson?.ok) {
-        setMsg(statusJson?.error ?? "Could not load rounds.");
-        return;
-      }
-
-      const roundRows: RoundRow[] = (statusJson.rounds ?? []).map((r) => ({
-        id: r.round_id,
-        round_number: r.round_number,
-        lock_time_utc: r.lock_time_utc,
-      }));
-      setRows(roundRows);
-
-      const roundIds = roundRows.map((r) => r.id);
-      if (!roundIds.length) {
-        setStatsByRoundId({});
-        setMsg("");
-        return;
-      }
-
-      const { data: matchRows, error: mErr } = await supabaseBrowser
-        .from("matches")
-        .select("round_id, winner_team")
-        .in("round_id", roundIds);
-
-      if (mErr) {
-        setMsg(`Loaded rounds, but match stats failed: ${mErr.message}`);
-        return;
-      }
-
-      const stats: Record<string, { total: number; finished: number }> = {};
-      for (const rid of roundIds) stats[rid] = { total: 0, finished: 0 };
-
-      (matchRows as MatchMini[] | null)?.forEach((m) => {
-        const rid = String(m.round_id);
-        if (!stats[rid]) stats[rid] = { total: 0, finished: 0 };
-        stats[rid].total += 1;
-        if (String(m.winner_team ?? "").trim()) stats[rid].finished += 1;
-      });
-
-      setStatsByRoundId(stats);
-      setMsg("");
-    })();
-  }, [ready, season, sessionToken]);
-
-  const hasRows = useMemo(() => rows.length > 0, [rows.length]);
-  const [nowMs] = useState<number>(() => Date.now());
-  const visibleRows = useMemo(() => {
-    return rows
-      .filter((r) => {
-        const lock = melbourneMs(r.lock_time_utc);
-        return lock ? nowMs >= lock : false;
-      })
-      .sort((a, b) => b.round_number - a.round_number);
-  }, [rows, nowMs]);
+  const nowMs = getNowMs();
+  const visibleRows = rows
+    .filter((row) => {
+      const lock = melbourneMs(row.lock_time_utc);
+      return lock ? nowMs >= lock : false;
+    })
+    .sort((a, b) => b.round_number - a.round_number);
   const hiddenCount = rows.length - visibleRows.length;
-  const showResultsSkeleton =
-    !!msg &&
-    (msg.startsWith("Checking") || msg.startsWith("Loading")) &&
-    rows.length === 0;
-
-  function roundStatusTone(total: number, finished: number, locked: boolean) {
-    if (total > 0 && finished === total) return "success" as const;
-    if (locked) return "warning" as const;
-    return "info" as const;
-  }
-
-  function roundStatusLabel(total: number, finished: number, locked: boolean) {
-    if (total > 0 && finished === total) return "COMPLETE";
-    if (locked) return "IN PROGRESS";
-    return "NOT STARTED";
-  }
 
   return (
     <main className="ui-page ui-page--narrow">
@@ -200,11 +107,10 @@ export default function SeasonResultsPage() {
         subtitle="All times shown in Melbourne"
       />
 
-      {showResultsSkeleton && <SeasonResultsLoadingSkeleton />}
-      {!!msg && !showResultsSkeleton && <p className="ui-caption ui-mt-4">{msg}</p>}
+      {!!msg && <p className="ui-caption ui-mt-4">{msg}</p>}
 
-      {!msg && !hasRows && <div className="ui-caption ui-mt-4">No rounds found.</div>}
-      {!msg && hasRows && visibleRows.length === 0 && (
+      {!msg && rows.length === 0 && <div className="ui-caption ui-mt-4">No rounds found.</div>}
+      {!msg && rows.length > 0 && visibleRows.length === 0 && (
         <div className="ui-caption ui-mt-4">
           No round results are visible yet. Results appear once each round locks.
         </div>
@@ -217,35 +123,34 @@ export default function SeasonResultsPage() {
 
       {!msg && visibleRows.length > 0 && (
         <div className="ui-grid ui-mt-4">
-          {visibleRows.map((r) => {
-            const lock = melbourneMs(r.lock_time_utc);
+          {visibleRows.map((row) => {
+            const lock = melbourneMs(row.lock_time_utc);
             const locked = lock ? nowMs >= lock : false;
-            const stats = statsByRoundId[r.id] ?? { total: 0, finished: 0 };
 
             return (
               <Link
-                key={r.id}
-                href={`/results/${season}/${r.round_number}`}
+                key={row.round_id}
+                href={`/results/${season}/${row.round_number}`}
                 style={{ WebkitTapHighlightColor: "transparent" }}
               >
                 <UiCard soft className="ui-row-between" style={{ minHeight: 68, padding: "14px 14px" }}>
-                <div className="ui-grid" style={{ gap: 6 }}>
-                  <div style={{ fontWeight: 950, fontSize: 18, letterSpacing: -0.2 }}>
-                    Round {r.round_number}
+                  <div className="ui-grid" style={{ gap: 6 }}>
+                    <div style={{ fontWeight: 950, fontSize: 18, letterSpacing: -0.2 }}>
+                      Round {row.round_number}
+                    </div>
+
+                    <div style={{ opacity: 0.75, fontSize: 12 }}>
+                      Locked: <span style={{ opacity: 0.95 }}>{fmtMelbourneShort(row.lock_time_utc)}</span>
+                    </div>
+
+                    <div style={{ opacity: 0.8, fontSize: 12 }}>
+                      Finished matches: <b>{row.completed_matches}</b>/<b>{row.total_matches}</b>
+                    </div>
                   </div>
 
-                  <div style={{ opacity: 0.75, fontSize: 12 }}>
-                    Locked: <span style={{ opacity: 0.95 }}>{fmtMelbourneShort(r.lock_time_utc)}</span>
-                  </div>
-
-                  <div style={{ opacity: 0.8, fontSize: 12 }}>
-                    Finished matches: <b>{stats.finished}</b>/<b>{stats.total}</b>
-                  </div>
-                </div>
-
-                <UiBadge tone={roundStatusTone(stats.total, stats.finished, locked)}>
-                  {roundStatusLabel(stats.total, stats.finished, locked)}
-                </UiBadge>
+                  <UiBadge tone={roundStatusTone(row.total_matches, row.completed_matches, locked)}>
+                    {roundStatusLabel(row.total_matches, row.completed_matches, locked)}
+                  </UiBadge>
                 </UiCard>
               </Link>
             );

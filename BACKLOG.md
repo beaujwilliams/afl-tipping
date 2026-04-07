@@ -32,9 +32,9 @@ All existing `BL-*` items from the previous single backlog are preserved in
 
 ## Cross-Backlog Next 6
 
-1. `BL-019` Server-render results pages
-2. `BL-014` Regression tests for scoring and lock-time behavior
-3. `BL-020` Defer non-essential chat boot data
-4. `BL-016` Observability: logs + alerting for job failures
-5. `BL-015` Audit log for admin actions
-6. `UI-006` Admin IA cleanup into sections (Data Sync, Comms, Members, Scoring)
+1. `BL-014` Regression tests for scoring and lock-time behavior
+2. `BL-020` Defer non-essential chat boot data
+3. `BL-016` Observability: logs + alerting for job failures
+4. `BL-015` Audit log for admin actions
+5. `UI-006` Admin IA cleanup into sections (Data Sync, Comms, Members, Scoring)
+6. `UI-007` Standardized toast/status feedback

@@ -76,10 +76,17 @@ export default function InfoPage() {
         </div>
 
         <div>
-          <h2 style={{ marginBottom: 8 }}>7. Prize money split</h2>
-          <p>
-            Final prize distribution is set after Round 3 once total entries are confirmed. It may be
-            winner-takes-all or split across 1st, 2nd, and 3rd.
+          <h2 style={{ marginBottom: 8 }}>7. Prize money payout</h2>
+          <p style={{ marginBottom: 8 }}>
+            Total prize money for the 2026 season is $990. Distribution of this pool is:
+          </p>
+          <div>
+            <div>1st $790</div>
+            <div>2nd $150</div>
+            <div>3rd $50.</div>
+          </div>
+          <p style={{ marginTop: 8 }}>
+            All prizes will be paid within 3 days of the Grand Final being completed.
           </p>
         </div>
       </section>

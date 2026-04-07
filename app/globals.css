@@ -572,6 +572,55 @@ button {
   font-size: 18px;
 }
 
+.ui-admin-kicker {
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.ui-admin-hero-title {
+  margin: 0;
+  font-size: 30px;
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+}
+
+.ui-admin-overview-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.95fr);
+  align-items: start;
+}
+
+.ui-admin-status-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ui-admin-status-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+  background: var(--card);
+  display: grid;
+  gap: 6px;
+  min-height: 104px;
+}
+
+.ui-admin-status-title {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.ui-admin-status-detail {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
 .ui-admin-summary {
   margin-top: 6px;
   font-size: 13px;
@@ -709,6 +758,15 @@ button {
   transform: rotate(90deg);
 }
 
+.ui-admin-maintenance-note {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
 .ui-summary-plain {
   list-style: none;
 }
@@ -790,6 +848,14 @@ button {
     padding: 12px;
   }
 
+  .ui-admin-overview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ui-admin-status-grid {
+    grid-template-columns: 1fr;
+  }
+
   .ui-admin-btn {
     white-space: normal;
     line-height: 1.2;
@@ -816,6 +882,15 @@ button {
     max-width: none;
     min-width: 0;
     flex: 1 1 auto;
+  }
+
+  .ui-admin-hero-title {
+    font-size: 24px;
+  }
+
+  .ui-admin-result-summary {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 
@@ -853,6 +928,21 @@ button {
   margin-top: 30px;
   font-size: 13px;
   overflow-x: auto;
+}
+
+.ui-admin-result-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.ui-admin-result-toggle {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
 }
 
 .ui-admin-result-pre {

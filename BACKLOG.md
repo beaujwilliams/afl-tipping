@@ -1,6 +1,6 @@
 # AFL Tipping Backlog
 
-Last updated: 2026-03-26
+Last updated: 2026-04-07
 
 The backlog is now split into three tracks:
 
@@ -31,9 +31,9 @@ All existing `BL-*` items from the previous single backlog are preserved in
 
 ## Cross-Backlog Next 6
 
-1. `BL-014` Regression tests for scoring and lock-time behavior
-2. `BL-015` Admin audit log
-3. `BL-016` Observability: logs + alerting for job failures
-4. `UI-006` Admin IA cleanup into sections (Data Sync, Comms, Members, Scoring)
-5. `UI-007` Standardized toast/status feedback for saves, syncs, reminders
-6. `BUG-005` Automated checks for leaderboard sort default and tip-list grouping rules
+1. `BL-018` Server-render leaderboard first, then lazy-load trends/groups
+2. `BL-019` Server-render results pages
+3. `BL-014` Regression tests for scoring and lock-time behavior
+4. `BL-020` Defer non-essential chat boot data
+5. `BL-016` Observability: logs + alerting for job failures
+6. `UI-006` Admin IA cleanup into sections (Data Sync, Comms, Members, Scoring)

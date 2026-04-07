@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { waitForSession } from "@/lib/session-client";
-import { UiBadge, UiCard, UiSectionHeader } from "@/components/ui";
+import { UiBadge, UiCard, UiSectionHeader, UiSkeleton } from "@/components/ui";
 
 type RoundRow = {
   id: string;
@@ -49,6 +49,28 @@ function fmtMelbourneShort(iso: string | null) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(d);
+}
+
+function SeasonResultsLoadingSkeleton() {
+  return (
+    <div className="ui-grid ui-mt-4">
+      {Array.from({ length: 4 }).map((_, index) => (
+        <UiCard
+          key={`results-round-skeleton-${index}`}
+          soft
+          className="ui-row-between"
+          style={{ minHeight: 68, padding: "14px 14px" }}
+        >
+          <div className="ui-grid" style={{ gap: 6, minWidth: 0, flex: 1 }}>
+            <UiSkeleton width={110} height={20} />
+            <UiSkeleton width="52%" height={12} />
+            <UiSkeleton width="40%" height={12} />
+          </div>
+          <UiSkeleton width={92} height={28} radius={999} />
+        </UiCard>
+      ))}
+    </div>
+  );
 }
 
 export default function SeasonResultsPage() {
@@ -154,6 +176,10 @@ export default function SeasonResultsPage() {
       .sort((a, b) => b.round_number - a.round_number);
   }, [rows, nowMs]);
   const hiddenCount = rows.length - visibleRows.length;
+  const showResultsSkeleton =
+    !!msg &&
+    (msg.startsWith("Checking") || msg.startsWith("Loading")) &&
+    rows.length === 0;
 
   function roundStatusTone(total: number, finished: number, locked: boolean) {
     if (total > 0 && finished === total) return "success" as const;
@@ -174,7 +200,8 @@ export default function SeasonResultsPage() {
         subtitle="All times shown in Melbourne"
       />
 
-      {msg && <p className="ui-caption ui-mt-4">{msg}</p>}
+      {showResultsSkeleton && <SeasonResultsLoadingSkeleton />}
+      {!!msg && !showResultsSkeleton && <p className="ui-caption ui-mt-4">{msg}</p>}
 
       {!msg && !hasRows && <div className="ui-caption ui-mt-4">No rounds found.</div>}
       {!msg && hasRows && visibleRows.length === 0 && (

@@ -10,6 +10,7 @@ import {
   UiButtonLink,
   UiCard,
   UiCardGrid,
+  UiSkeleton,
   UiTableCell,
   UiTableHeadCell,
   UiTableScroll,
@@ -203,6 +204,97 @@ function myTipStatusClassName(status: MyTipStatus) {
   return "ui-badge ui-badge--info";
 }
 
+function RoundResultsLoadingSkeleton({ isMobile }: { isMobile: boolean }) {
+  return (
+    <div className="ui-grid ui-mt-4" style={{ gap: 14 }}>
+      <UiCardGrid columns={2} style={{ gap: 10 }}>
+        {Array.from({ length: 2 }).map((_, index) => (
+          <UiCard key={`round-results-metric-skeleton-${index}`} soft>
+            <UiSkeleton width="42%" height={12} />
+            <UiSkeleton width="34%" height={26} className="ui-mt-2" />
+          </UiCard>
+        ))}
+      </UiCardGrid>
+
+      <UiCard soft>
+        <div className="ui-grid" style={{ gap: 10 }}>
+          <UiSkeleton width="32%" height={16} />
+          <UiSkeleton width="48%" height={12} />
+          <div className="ui-grid" style={{ gap: 8 }}>
+            {Array.from({ length: isMobile ? 4 : 5 }).map((_, index) => (
+              <div
+                key={`round-results-summary-skeleton-${index}`}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  alignItems: "center",
+                }}
+              >
+                <UiSkeleton width={index % 2 === 0 ? "42%" : "36%"} height={16} />
+                <UiSkeleton width={76} height={24} radius={999} />
+              </div>
+            ))}
+          </div>
+        </div>
+      </UiCard>
+
+      <UiTableShell>
+        <UiTableScroll>
+          <table className={`ui-table ${isMobile ? "ui-table--compact" : ""}`} style={{ minWidth: isMobile ? 760 : 920 }}>
+            <thead>
+              <tr className="ui-table-head-row">
+                <UiTableHeadCell>Rank</UiTableHeadCell>
+                <UiTableHeadCell>Name</UiTableHeadCell>
+                <UiTableHeadCell>Score</UiTableHeadCell>
+                <UiTableHeadCell>Correct</UiTableHeadCell>
+                <UiTableHeadCell>Accuracy</UiTableHeadCell>
+                <UiTableHeadCell>Avg Odds</UiTableHeadCell>
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from({ length: 6 }).map((_, index) => (
+                <tr key={`round-results-table-skeleton-${index}`}>
+                  <UiTableCell><UiSkeleton width={36} height={20} /></UiTableCell>
+                  <UiTableCell><UiSkeleton width={index === 0 ? 156 : 132} height={20} /></UiTableCell>
+                  <UiTableCell><UiSkeleton width={54} height={20} /></UiTableCell>
+                  <UiTableCell><UiSkeleton width={34} height={20} /></UiTableCell>
+                  <UiTableCell><UiSkeleton width={56} height={20} /></UiTableCell>
+                  <UiTableCell><UiSkeleton width={46} height={20} /></UiTableCell>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </UiTableScroll>
+      </UiTableShell>
+    </div>
+  );
+}
+
+function RoundRecapLoadingSkeleton() {
+  return (
+    <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+      <UiSkeleton width="28%" height={12} />
+      <div
+        style={{
+          border: "1px solid var(--border)",
+          borderRadius: 12,
+          padding: 12,
+          background: "var(--card)",
+          display: "grid",
+          gap: 10,
+        }}
+      >
+        <UiSkeleton width="24%" height={16} />
+        <UiSkeleton width="100%" height={12} />
+        <UiSkeleton width="94%" height={12} />
+        <UiSkeleton width="88%" height={12} />
+        <UiSkeleton width="62%" height={12} />
+      </div>
+    </div>
+  );
+}
+
 export default function RoundResultsDetailPage() {
   const params = useParams<{ season: string; round: string }>();
   const season = Number(params.season);
@@ -232,6 +324,11 @@ export default function RoundResultsDetailPage() {
   >({});
   const everyoneTipsRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const invalidParams = !Number.isFinite(season) || !Number.isFinite(round);
+  const showRoundResultsSkeleton =
+    !!msg &&
+    (msg.startsWith("Checking") || msg.startsWith("Loading")) &&
+    matches.length === 0 &&
+    players.length === 0;
 
   useEffect(() => {
     let alive = true;
@@ -661,7 +758,12 @@ export default function RoundResultsDetailPage() {
       </div>
 
       {invalidParams && <div className="ui-caption ui-mt-4">Invalid season/round.</div>}
-      {!invalidParams && msg && <div className="ui-caption ui-mt-4">{msg}</div>}
+      {!invalidParams && showRoundResultsSkeleton && (
+        <RoundResultsLoadingSkeleton isMobile={isMobile} />
+      )}
+      {!invalidParams && !!msg && !showRoundResultsSkeleton && (
+        <div className="ui-caption ui-mt-4">{msg}</div>
+      )}
 
       {!invalidParams && !msg && (
         <>
@@ -1330,9 +1432,7 @@ export default function RoundResultsDetailPage() {
               <div style={{ fontWeight: 900, fontSize: 16 }}>Admin Round Recap</div>
 
               {recapLoading && (
-                <div style={{ marginTop: 8, opacity: 0.75, fontSize: 13 }}>
-                  Loading recap…
-                </div>
+                <RoundRecapLoadingSkeleton />
               )}
 
               {!recapLoading && recapError && (

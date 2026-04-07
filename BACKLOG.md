@@ -34,6 +34,6 @@ All existing `BL-*` items from the previous single backlog are preserved in
 1. `BL-014` Regression tests for scoring and lock-time behavior
 2. `BL-015` Admin audit log
 3. `BL-016` Observability: logs + alerting for job failures
-4. `UI-005` Skeleton loading states for round/leaderboard/results
-5. `UI-006` Admin IA cleanup into sections (Data Sync, Comms, Members, Scoring)
-6. `UI-007` Standardized toast/status feedback for saves, syncs, reminders
+4. `UI-006` Admin IA cleanup into sections (Data Sync, Comms, Members, Scoring)
+5. `UI-007` Standardized toast/status feedback for saves, syncs, reminders
+6. `BUG-005` Automated checks for leaderboard sort default and tip-list grouping rules

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { UiSkeleton } from "@/components/ui";
 
 type RoundRow = {
   id: string;
@@ -164,6 +165,53 @@ function isMissingColumnError(message: string, columnName: string) {
   const m = message.toLowerCase();
   const col = columnName.toLowerCase();
   return m.includes(col) && (m.includes("column") || m.includes("does not exist"));
+}
+
+function RoundLoadingSkeleton() {
+  return (
+    <div className="ui-grid ui-mt-3" style={{ gap: 18 }}>
+      <div className="ui-card-grid ui-card-grid--3">
+        {Array.from({ length: 3 }).map((_, index) => (
+          <div key={`round-card-skeleton-${index}`} className="ui-card ui-card-soft">
+            <UiSkeleton width="34%" height={12} />
+            <UiSkeleton width="72%" height={30} className="ui-mt-2" />
+            <UiSkeleton width="46%" height={12} className="ui-mt-2" />
+          </div>
+        ))}
+      </div>
+
+      <div className="ui-card ui-card-soft">
+        <div className="ui-row-between-start">
+          <div className="ui-grid" style={{ gap: 8, minWidth: 220, flex: 1 }}>
+            <UiSkeleton width="34%" height={18} />
+            <UiSkeleton width="44%" height={12} />
+          </div>
+          <UiSkeleton width={74} height={28} radius={999} />
+        </div>
+
+        <div className="ui-grid ui-mt-3" style={{ gap: 12 }}>
+          {Array.from({ length: 5 }).map((_, index) => (
+            <div
+              key={`round-match-skeleton-${index}`}
+              style={{
+                borderTop: index === 0 ? "none" : "1px solid var(--border)",
+                paddingTop: index === 0 ? 0 : 12,
+                display: "grid",
+                gap: 10,
+              }}
+            >
+              <UiSkeleton width="38%" height={12} />
+              <div style={{ display: "grid", gap: 10 }}>
+                <UiSkeleton width="100%" height={70} radius={16} />
+                <UiSkeleton width="100%" height={70} radius={16} />
+              </div>
+              <UiSkeleton width="26%" height={12} />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function RoundPage() {
@@ -666,12 +714,15 @@ export default function RoundPage() {
   const showRefreshHint =
     oddsPollingStopped && oddsPollingReason === "timeout" && oddsMissing;
   const showSnapshotMissedAlert = isLocked && !!matches.length && oddsMissing;
+  const showRoundSkeleton = !!msg && msg.startsWith("Loading") && !roundRow && matches.length === 0;
 
   return (
     <main className="ui-page ui-page--content">
       <h1 className="ui-title">
         Round {round} • {season}
       </h1>
+
+      {showRoundSkeleton && <RoundLoadingSkeleton />}
 
       {roundRow && (
         <div className="ui-card-grid ui-card-grid--3 ui-mt-3">
@@ -751,7 +802,7 @@ export default function RoundPage() {
         </div>
       )}
 
-      {msg && <p className="ui-caption ui-mt-4">{msg}</p>}
+      {!!msg && !showRoundSkeleton && <p className="ui-caption ui-mt-4">{msg}</p>}
 
       {!!matches.length && (
         <div className="ui-card ui-card-soft ui-mt-5">

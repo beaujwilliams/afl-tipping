@@ -5,7 +5,15 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { ChampionSeasonLabels } from "@/components/ChampionSeasonLabels";
 import { UnpaidTag } from "@/components/UnpaidTag";
-import { UiButton, UiCard, UiTableCell, UiTableHeadCell, UiTableScroll, UiTableShell } from "@/components/ui";
+import {
+  UiButton,
+  UiCard,
+  UiSkeleton,
+  UiTableCell,
+  UiTableHeadCell,
+  UiTableScroll,
+  UiTableShell,
+} from "@/components/ui";
 import { normalizeChampionSeasonsByUserId } from "@/lib/champion-metadata";
 import { leaderboardRankComparator } from "@/lib/scoring-lock-rules";
 
@@ -456,6 +464,67 @@ function TrendChart(props: {
   );
 }
 
+function LeaderboardLoadingSkeleton({ isMobile }: { isMobile: boolean }) {
+  const tableMinWidth = isMobile ? 860 : 1000;
+
+  return (
+    <div className="ui-mt-4 ui-grid" style={{ gap: 14 }}>
+      <UiCard soft>
+        <div className="ui-row-between" style={{ alignItems: "flex-end" }}>
+          <div className="ui-grid" style={{ gap: 8, flex: 1, minWidth: 220 }}>
+            <UiSkeleton width="28%" height={12} />
+            <UiSkeleton width="48%" height={28} radius={12} />
+            <UiSkeleton width="62%" height={12} />
+          </div>
+          <UiSkeleton width={isMobile ? 110 : 160} height={34} radius={999} />
+        </div>
+      </UiCard>
+
+      <UiTableShell>
+        <UiTableScroll>
+          <table className={`ui-table ${isMobile ? "ui-table--compact" : ""}`} style={{ minWidth: tableMinWidth }}>
+            <thead>
+              <tr className="ui-table-head-row">
+                <UiTableHeadCell style={{ width: isMobile ? 56 : 68 }}>Rank</UiTableHeadCell>
+                <UiTableHeadCell style={{ width: isMobile ? 148 : 188 }}>Name</UiTableHeadCell>
+                <UiTableHeadCell>Total Pts</UiTableHeadCell>
+                <UiTableHeadCell>Behind</UiTableHeadCell>
+                <UiTableHeadCell>Move</UiTableHeadCell>
+                <UiTableHeadCell>Accuracy</UiTableHeadCell>
+                <UiTableHeadCell>Streak</UiTableHeadCell>
+                <UiTableHeadCell>Avg Odds</UiTableHeadCell>
+                <UiTableHeadCell>Correct</UiTableHeadCell>
+                <UiTableHeadCell>Current Round</UiTableHeadCell>
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from({ length: 7 }).map((_, index) => (
+                <tr key={`leaderboard-skeleton-${index}`}>
+                  <UiTableCell><UiSkeleton width={44} height={22} /></UiTableCell>
+                  <UiTableCell>
+                    <div className="ui-row-wrap" style={{ gap: 8 }}>
+                      <UiSkeleton width={index === 0 ? 128 : 150} height={20} />
+                      <UiSkeleton width={92} height={14} radius={999} />
+                    </div>
+                  </UiTableCell>
+                  <UiTableCell><UiSkeleton width={54} height={20} /></UiTableCell>
+                  <UiTableCell><UiSkeleton width={40} height={20} /></UiTableCell>
+                  <UiTableCell><UiSkeleton width={46} height={20} /></UiTableCell>
+                  <UiTableCell><UiSkeleton width={58} height={20} /></UiTableCell>
+                  <UiTableCell><UiSkeleton width={26} height={20} /></UiTableCell>
+                  <UiTableCell><UiSkeleton width={46} height={20} /></UiTableCell>
+                  <UiTableCell><UiSkeleton width={34} height={20} /></UiTableCell>
+                  <UiTableCell><UiSkeleton width={54} height={20} /></UiTableCell>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </UiTableScroll>
+      </UiTableShell>
+    </div>
+  );
+}
+
 export default function LeaderboardPage() {
   const params = useParams<{ season: string }>();
   const router = useRouter();
@@ -496,6 +565,7 @@ export default function LeaderboardPage() {
   const [deletingGroup, setDeletingGroup] = useState(false);
   const [hasSyncedGroupFromQuery, setHasSyncedGroupFromQuery] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const showLeaderboardSkeleton = !!msg && msg.startsWith("Loading") && rows.length === 0;
 
   function applyLeaderboardData(json: LeaderboardResponse) {
     const nextRows = Array.isArray(json.rows) ? json.rows : [];
@@ -1486,7 +1556,8 @@ export default function LeaderboardPage() {
         </div>
       </div>
 
-      {msg && <p className="ui-caption ui-mt-4">{msg}</p>}
+      {showLeaderboardSkeleton && <LeaderboardLoadingSkeleton isMobile={isMobile} />}
+      {!!msg && !showLeaderboardSkeleton && <p className="ui-caption ui-mt-4">{msg}</p>}
 
       {!msg && (
         <>

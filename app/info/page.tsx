@@ -55,7 +55,7 @@ export default function InfoPage() {
 
         <div>
           <h2 style={{ marginBottom: 8 }}>4. Wrong or missing tips score 0</h2>
-          <p>Only correct tips earn points.</p>
+          <p>Draws, wrong tips, and missing tips score 0.</p>
         </div>
 
         <div>

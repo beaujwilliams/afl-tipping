@@ -1880,8 +1880,6 @@ export default function LeaderboardPage() {
                                 alignItems: "center",
                                 gap: 6,
                                 minWidth: 0,
-                                flexWrap: "wrap",
-                                rowGap: 4,
                               }}
                             >
                               <UnpaidTag paymentStatus={r.payment_status ?? null} compact={isMobile} />
@@ -1889,12 +1887,17 @@ export default function LeaderboardPage() {
                                 style={{
                                   display: "block",
                                   color: isChampion ? "var(--champion-gold)" : undefined,
-                                  overflowWrap: "anywhere",
+                                  fontSize: isMobile ? 13 : 14,
+                                  lineHeight: 1.15,
+                                  whiteSpace: "nowrap",
                                 }}
                               >
                                 {r.display_name}
                               </span>
-                              <ChampionSeasonLabels seasons={championSeasonsByUserId[r.user_id]} />
+                              <ChampionSeasonLabels
+                                seasons={championSeasonsByUserId[r.user_id]}
+                                fontSize={11}
+                              />
                             </span>
                           </UiTableCell>
                           <UiTableCell style={{ fontWeight: 800, width: 92, minWidth: 92 }}>

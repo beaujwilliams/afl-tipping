@@ -2,9 +2,13 @@ import { championSeasonLabels } from "@/lib/champion-metadata";
 
 type ChampionSeasonLabelsProps = {
   seasons?: number[] | null;
+  fontSize?: number;
 };
 
-export function ChampionSeasonLabels({ seasons }: ChampionSeasonLabelsProps) {
+export function ChampionSeasonLabels({
+  seasons,
+  fontSize = 12,
+}: ChampionSeasonLabelsProps) {
   const labels = championSeasonLabels(seasons);
   if (!labels.length) return null;
 
@@ -14,7 +18,7 @@ export function ChampionSeasonLabels({ seasons }: ChampionSeasonLabelsProps) {
         <span
           key={label}
           style={{
-            fontSize: 12,
+            fontSize,
             fontWeight: 400,
             opacity: 0.72,
             whiteSpace: "nowrap",

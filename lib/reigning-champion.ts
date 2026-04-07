@@ -1,11 +1,13 @@
 import { createServiceClient } from "@/lib/supabase-server";
+import { buildChampionSeasonsByUserId, getLatestSeasonChampion, loadSeasonChampions } from "@/lib/season-champions";
 
 export type ReigningChampionResult = {
   reigning_champion_user_id: string | null;
   champion_highlight_user_ids: string[];
   configured_champion_highlight_user_ids: string[];
+  champion_seasons_by_user_id: Record<string, number[]>;
   override_user_id: string | null;
-  source: "override" | "none";
+  source: "override" | "season_champion" | "none";
   champion_season: number | null;
 };
 
@@ -37,6 +39,8 @@ export async function resolveReigningChampion(params: {
 
   let overrideUserId: string | null = null;
   let configuredHighlightUserIds: string[] = [];
+  let championSeasonsByUserId: Record<string, number[]> = {};
+  let latestSeasonChampion: { season: number; user_id: string | null } | null = null;
 
   const compWithOverride = await supabase
     .from("competitions")
@@ -72,10 +76,27 @@ export async function resolveReigningChampion(params: {
     // Unknown error: fail open and continue without configured highlights.
   }
 
+  try {
+    const seasonChampions = await loadSeasonChampions({
+      competitionId: params.competitionId,
+      supabase,
+    });
+    championSeasonsByUserId = buildChampionSeasonsByUserId(seasonChampions.rows);
+    latestSeasonChampion = getLatestSeasonChampion(seasonChampions.rows, params.season);
+  } catch {
+    // Unknown season champion error: fail open and continue without historical champions.
+  }
+
   let reigningChampionUserId: string | null = null;
   let resolvedOverrideUserId: string | null = null;
-  let source: "override" | "none" = "none";
-  const championSeason: number | null = null;
+  let source: "override" | "season_champion" | "none" = "none";
+  let championSeason: number | null = null;
+
+  if (latestSeasonChampion?.user_id) {
+    reigningChampionUserId = latestSeasonChampion.user_id;
+    championSeason = latestSeasonChampion.season;
+    source = "season_champion";
+  }
 
   if (overrideUserId && !reigningChampionUserId) {
     const memberCheck = await supabase
@@ -113,6 +134,7 @@ export async function resolveReigningChampion(params: {
     effectiveHighlightUserIds.push(id);
   };
 
+  Object.keys(championSeasonsByUserId).forEach((userId) => pushHighlight(userId));
   pushHighlight(reigningChampionUserId);
   configuredHighlightUserIds.forEach((userId) => pushHighlight(userId));
 
@@ -127,6 +149,9 @@ export async function resolveReigningChampion(params: {
       const validIds = new Set(
         (memberRows.data ?? []).map((row) => String(row.user_id))
       );
+      const filteredChampionSeasonsByUserId = Object.fromEntries(
+        Object.entries(championSeasonsByUserId).filter(([userId]) => validIds.has(userId))
+      );
       const filteredEffectiveIds = effectiveHighlightUserIds.filter((id) =>
         validIds.has(id)
       );
@@ -137,6 +162,7 @@ export async function resolveReigningChampion(params: {
       effectiveHighlightUserIds.length = 0;
       effectiveHighlightUserIds.push(...filteredEffectiveIds);
       configuredHighlightUserIds = filteredConfiguredIds;
+      championSeasonsByUserId = filteredChampionSeasonsByUserId;
     }
   }
 
@@ -144,6 +170,7 @@ export async function resolveReigningChampion(params: {
     reigning_champion_user_id: reigningChampionUserId,
     champion_highlight_user_ids: effectiveHighlightUserIds,
     configured_champion_highlight_user_ids: configuredHighlightUserIds,
+    champion_seasons_by_user_id: championSeasonsByUserId,
     override_user_id: resolvedOverrideUserId,
     source,
     champion_season: championSeason,

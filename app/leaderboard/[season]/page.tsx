@@ -3,8 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { ChampionSeasonLabels } from "@/components/ChampionSeasonLabels";
 import { UnpaidTag } from "@/components/UnpaidTag";
 import { UiButton, UiCard, UiTableCell, UiTableHeadCell, UiTableScroll, UiTableShell } from "@/components/ui";
+import { normalizeChampionSeasonsByUserId } from "@/lib/champion-metadata";
 import { leaderboardRankComparator } from "@/lib/scoring-lock-rules";
 
 type LeaderboardRow = {
@@ -31,6 +33,7 @@ type LeaderboardResponse = {
   season: number;
   reigning_champion_user_id?: string | null;
   champion_highlight_user_ids?: string[];
+  champion_seasons_by_user_id?: Record<string, number[]>;
   latest_scored_round: number | null;
   previous_round_for_movement: number | null;
   matches_scored: number;
@@ -461,6 +464,9 @@ export default function LeaderboardPage() {
 
   const [rows, setRows] = useState<LeaderboardRow[]>([]);
   const [championHighlightUserIds, setChampionHighlightUserIds] = useState<string[]>([]);
+  const [championSeasonsByUserId, setChampionSeasonsByUserId] = useState<Record<string, number[]>>(
+    {}
+  );
   const [trendRounds, setTrendRounds] = useState<number[]>([]);
   const [trendSeries, setTrendSeries] = useState<LeaderboardTrendSeries[]>([]);
   const [selectedTrendUserIds, setSelectedTrendUserIds] = useState<string[]>([]);
@@ -508,6 +514,9 @@ export default function LeaderboardPage() {
       nextChampionHighlightUserIds.unshift(reigningChampionUserId);
     }
     setChampionHighlightUserIds(nextChampionHighlightUserIds);
+    setChampionSeasonsByUserId(
+      normalizeChampionSeasonsByUserId(json.champion_seasons_by_user_id)
+    );
 
     const nextRounds = Array.isArray(json.scored_rounds)
       ? json.scored_rounds
@@ -1879,6 +1888,7 @@ export default function LeaderboardPage() {
                               >
                                 {r.display_name}
                               </span>
+                              <ChampionSeasonLabels seasons={championSeasonsByUserId[r.user_id]} />
                             </span>
                           </UiTableCell>
                           <UiTableCell style={{ fontWeight: 800, width: 92, minWidth: 92 }}>

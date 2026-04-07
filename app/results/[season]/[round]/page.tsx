@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
+import { ChampionSeasonLabels } from "@/components/ChampionSeasonLabels";
 import { UnpaidTag } from "@/components/UnpaidTag";
+import { normalizeChampionSeasonsByUserId } from "@/lib/champion-metadata";
 import { waitForSession } from "@/lib/session-client";
 import {
   UiButtonLink,
@@ -55,6 +57,7 @@ type RoundResultsResponse = {
   round: number;
   reigning_champion_user_id?: string | null;
   champion_highlight_user_ids?: string[];
+  champion_seasons_by_user_id?: Record<string, number[]>;
   lock_time_utc: string | null;
   snapshot_for_time_utc: string | null;
   matches: MatchResultRow[];
@@ -211,6 +214,10 @@ export default function RoundResultsDetailPage() {
   const [matches, setMatches] = useState<MatchResultRow[]>([]);
   const [players, setPlayers] = useState<PlayerRoundScore[]>([]);
   const [championHighlightUserIds, setChampionHighlightUserIds] = useState<string[]>([]);
+  const [championSeasonsByUserId, setChampionSeasonsByUserId] = useState<Record<string, number[]>>(
+    {}
+  );
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const [lockTimeUtc, setLockTimeUtc] = useState<string | null>(null);
   const [isRecapAdmin, setIsRecapAdmin] = useState(false);
   const [recapLoading, setRecapLoading] = useState(false);
@@ -294,6 +301,9 @@ export default function RoundResultsDetailPage() {
           championIds.unshift(reigningChampionUserId);
         }
         setChampionHighlightUserIds(Array.from(new Set(championIds)));
+        setChampionSeasonsByUserId(
+          normalizeChampionSeasonsByUserId(json.champion_seasons_by_user_id)
+        );
         setLockTimeUtc(json.lock_time_utc ?? null);
 
         setRecapLoading(true);
@@ -382,12 +392,17 @@ export default function RoundResultsDetailPage() {
     return players.filter((p) => Number(p.total_tips ?? 0) > 0).length;
   }, [players]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   const isRoundLocked = useMemo(() => {
     if (!lockTimeUtc) return false;
     const ms = new Date(lockTimeUtc).getTime();
     if (Number.isNaN(ms)) return false;
-    return Date.now() >= ms;
-  }, [lockTimeUtc]);
+    return nowMs >= ms;
+  }, [lockTimeUtc, nowMs]);
 
   const myRoundRow = useMemo(() => {
     if (!currentUserId) return null;
@@ -903,6 +918,7 @@ export default function RoundResultsDetailPage() {
                               >
                                 {p.display_name}
                               </span>
+                              <ChampionSeasonLabels seasons={championSeasonsByUserId[p.user_id]} />
                             </span>
                           </UiTableCell>
                           <UiTableCell style={{ fontWeight: 800, width: 84, minWidth: 84 }}>
@@ -1208,6 +1224,7 @@ export default function RoundResultsDetailPage() {
                                   >
                                     {p.display_name?.trim() ? p.display_name : "(no display name)"}
                                   </span>
+                                  <ChampionSeasonLabels seasons={championSeasonsByUserId[p.user_id]} />
                                   <UnpaidTag paymentStatus={p.payment_status ?? null} />
                                 </div>
                                 <div style={{ fontSize: 12, opacity: 0.95 }}>

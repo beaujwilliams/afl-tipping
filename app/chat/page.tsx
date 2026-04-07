@@ -3,8 +3,10 @@
 import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { ChampionSeasonLabels } from "@/components/ChampionSeasonLabels";
 import { ReactionPill } from "@/components/ReactionPill";
 import { UnpaidTag } from "@/components/UnpaidTag";
+import { normalizeChampionSeasonsByUserId } from "@/lib/champion-metadata";
 
 type MsgRow = {
   id: string;
@@ -50,6 +52,7 @@ type ReigningChampionResponse = {
   ok?: boolean;
   reigning_champion_user_id?: string | null;
   champion_highlight_user_ids?: string[];
+  champion_seasons_by_user_id?: Record<string, number[]>;
 };
 
 type ComposerMentionStatus = {
@@ -282,6 +285,9 @@ export default function ChatPage() {
   const [mentionCandidates, setMentionCandidates] = useState<MentionCandidate[]>([]);
   const [paymentStatusByUserId, setPaymentStatusByUserId] = useState<Record<string, string | null>>({});
   const [championHighlightUserIds, setChampionHighlightUserIds] = useState<string[]>([]);
+  const [championSeasonsByUserId, setChampionSeasonsByUserId] = useState<Record<string, number[]>>(
+    {}
+  );
   const [reactions, setReactions] = useState<ReactionRow[]>([]);
 
   const [text, setText] = useState("");
@@ -1139,6 +1145,7 @@ export default function ChatPage() {
 
         if (!res.ok || !json?.ok) {
           setChampionHighlightUserIds([]);
+          setChampionSeasonsByUserId({});
           return;
         }
 
@@ -1155,9 +1162,13 @@ export default function ChatPage() {
           championIds.unshift(reigningChampionUserId);
         }
         setChampionHighlightUserIds(Array.from(new Set(championIds)));
+        setChampionSeasonsByUserId(
+          normalizeChampionSeasonsByUserId(json.champion_seasons_by_user_id)
+        );
       } catch {
         if (!alive) return;
         setChampionHighlightUserIds([]);
+        setChampionSeasonsByUserId({});
       }
     })();
 
@@ -1558,6 +1569,7 @@ export default function ChatPage() {
                           >
                             {who}
                           </span>
+                          <ChampionSeasonLabels seasons={championSeasonsByUserId[m.user_id]} />
                           <UnpaidTag paymentStatus={paymentStatus} />
                         </div>
                         {team && (

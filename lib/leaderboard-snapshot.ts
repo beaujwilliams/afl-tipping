@@ -116,6 +116,7 @@ export type LeaderboardResponse = {
   competition_id: string;
   reigning_champion_user_id?: string | null;
   champion_highlight_user_ids?: string[];
+  champion_seasons_by_user_id?: Record<string, number[]>;
   latest_scored_round: number | null;
   previous_round_for_movement: number | null;
   matches_scored: number;
@@ -302,6 +303,7 @@ export async function computeLeaderboardSnapshot(params: {
       competition_id: competitionId,
       reigning_champion_user_id: reigningChampion.reigning_champion_user_id,
       champion_highlight_user_ids: reigningChampion.champion_highlight_user_ids,
+      champion_seasons_by_user_id: reigningChampion.champion_seasons_by_user_id,
       latest_scored_round: null,
       previous_round_for_movement: null,
       matches_scored: 0,
@@ -739,6 +741,7 @@ export async function computeLeaderboardSnapshot(params: {
     competition_id: competitionId,
     reigning_champion_user_id: reigningChampion.reigning_champion_user_id,
     champion_highlight_user_ids: reigningChampion.champion_highlight_user_ids,
+    champion_seasons_by_user_id: reigningChampion.champion_seasons_by_user_id,
     latest_scored_round: latestScoredRound,
     previous_round_for_movement: previousRoundForMovement,
     matches_scored: scoredMatches.length,
@@ -872,8 +875,26 @@ export async function getLeaderboardSnapshot(params: {
   });
 
   if (cached?.payload?.ok) {
+    const enrichedCachedPayload = !cached.payload.champion_seasons_by_user_id
+      ? {
+          ...cached.payload,
+          ...(await (async () => {
+            const reigningChampion = await resolveReigningChampion({
+              competitionId,
+              season: params.season,
+              supabase,
+            });
+            return {
+              reigning_champion_user_id: reigningChampion.reigning_champion_user_id,
+              champion_highlight_user_ids: reigningChampion.champion_highlight_user_ids,
+              champion_seasons_by_user_id: reigningChampion.champion_seasons_by_user_id,
+            };
+          })()),
+        }
+      : cached.payload;
+
     if (params.preferCached) {
-      return cached.payload;
+      return enrichedCachedPayload;
     }
 
     const computedAtMs = cached.computed_at ? new Date(cached.computed_at).getTime() : NaN;
@@ -882,7 +903,7 @@ export async function getLeaderboardSnapshot(params: {
       computedAtMs > 0 &&
       Date.now() - computedAtMs <= LEADERBOARD_CACHE_MAX_AGE_MS;
     if (fresh) {
-      return cached.payload;
+      return enrichedCachedPayload;
     }
   }
 

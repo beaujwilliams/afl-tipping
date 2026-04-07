@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { UnpaidTag } from "@/components/UnpaidTag";
+import { ChampionSeasonLabels } from "@/components/ChampionSeasonLabels";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { UiButtonLink, UiCard } from "@/components/ui";
 
@@ -64,6 +65,7 @@ type SeasonRoundsPageClientProps = {
   statusByRoundId: Record<string, SeasonTipStatusRound>;
   isAdmin: boolean;
   championHighlightUserIds: string[];
+  championSeasonsByUserId: Record<string, number[]>;
   initialMessage?: string | null;
 };
 
@@ -105,6 +107,7 @@ export default function SeasonRoundsPageClient({
   statusByRoundId,
   isAdmin,
   championHighlightUserIds,
+  championSeasonsByUserId,
   initialMessage,
 }: SeasonRoundsPageClientProps) {
   const msg = initialMessage ?? "";
@@ -510,6 +513,7 @@ export default function SeasonRoundsPageClient({
                               >
                                 {p.display_name?.trim() ? p.display_name : "(no display name)"}
                               </span>
+                              <ChampionSeasonLabels seasons={championSeasonsByUserId[p.user_id]} />
                               <UnpaidTag paymentStatus={p.payment_status ?? null} />
                             </div>
                             <div style={{ fontSize: 12, opacity: 0.75, whiteSpace: "nowrap" }}>

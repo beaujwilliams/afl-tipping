@@ -57,6 +57,9 @@ type CachedRoundStatusRow = {
 
 type RoundTipStatusCacheRow = {
   payload: {
+    reigning_champion_user_id?: string | null;
+    champion_highlight_user_ids?: string[];
+    champion_seasons_by_user_id?: Record<string, number[]>;
     rounds: CachedRoundStatusRow[];
   };
   computed_at: string | null;
@@ -83,6 +86,7 @@ export type RoundTipStatusResponse = {
   competition_id: string;
   reigning_champion_user_id?: string | null;
   champion_highlight_user_ids?: string[];
+  champion_seasons_by_user_id?: Record<string, number[]>;
   admin: boolean;
   rounds: RoundTipStatusRound[];
 };
@@ -378,6 +382,20 @@ async function getRoundTipStatusAggregate(params: {
   });
 
   if (cached?.payload?.rounds) {
+    if (!cached.payload.champion_seasons_by_user_id) {
+      const reigningChampion = await resolveReigningChampion({
+        competitionId: params.competitionId,
+        season: params.season,
+        supabase,
+      });
+
+      return {
+        ...cached.payload,
+        reigning_champion_user_id: reigningChampion.reigning_champion_user_id,
+        champion_highlight_user_ids: reigningChampion.champion_highlight_user_ids,
+        champion_seasons_by_user_id: reigningChampion.champion_seasons_by_user_id,
+      };
+    }
     return cached.payload;
   }
 
@@ -465,6 +483,7 @@ export async function getRoundTipStatusResponse(params: {
     competition_id: params.competitionId,
     reigning_champion_user_id: reigningChampion.reigning_champion_user_id,
     champion_highlight_user_ids: reigningChampion.champion_highlight_user_ids,
+    champion_seasons_by_user_id: reigningChampion.champion_seasons_by_user_id,
     admin: params.admin,
     rounds,
   };

@@ -3,6 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { UiTableHeadCell, UiTableScroll, UiTableShell } from "@/components/ui";
+import { ChampionSeasonLabels } from "@/components/ChampionSeasonLabels";
+import {
+  editableChampionSeasons,
+  normalizeChampionSeasonsByUserId,
+  normalizeSeasonChampionSelections,
+  sameSeasonChampionSelections,
+  type SeasonChampionSelection,
+} from "@/lib/champion-metadata";
 
 type Member = {
   user_id: string;
@@ -60,10 +68,10 @@ type ChampionSettingsResponse = {
   champion_highlight_user_ids?: string[];
   configured_champion_highlight_user_ids?: string[];
   override_user_id?: string | null;
-  source?: "override" | "none";
-  previous_season?: number | null;
-  previous_season_champion_user_id?: string | null;
-  previous_season_champion_not_member?: boolean;
+  champion_seasons_by_user_id?: Record<string, number[]>;
+  season_champions?: SeasonChampionSelection[];
+  source?: "override" | "season_champion" | "none";
+  champion_season?: number | null;
   error?: string;
   details?: string;
 };
@@ -111,8 +119,10 @@ function shortId(id: string) {
   return `${id.slice(0, 8)}…`;
 }
 
-function normalizeChampionSource(source: string | null | undefined): "override" | "none" {
-  if (source === "override" || source === "none") {
+function normalizeChampionSource(
+  source: string | null | undefined
+): "override" | "season_champion" | "none" {
+  if (source === "override" || source === "season_champion" || source === "none") {
     return source;
   }
   return "none";
@@ -203,14 +213,19 @@ export default function AdminMembersPage() {
   const [sendingPaymentReminders, setSendingPaymentReminders] = useState(false);
 
   const [championResolvedUserId, setChampionResolvedUserId] = useState<string | null>(null);
-  const [championOverrideUserId, setChampionOverrideUserId] = useState<string | null>(null);
-  const [savedChampionOverrideUserId, setSavedChampionOverrideUserId] = useState<string | null>(null);
+  const [championResolvedSeason, setChampionResolvedSeason] = useState<number | null>(null);
   const [championHighlightUserIds, setChampionHighlightUserIds] = useState<string[]>([]);
   const [savedChampionHighlightUserIds, setSavedChampionHighlightUserIds] = useState<string[]>([]);
-  const [championSource, setChampionSource] = useState<"override" | "none">("none");
-  const [previousSeason, setPreviousSeason] = useState<number | null>(null);
-  const [previousSeasonChampionUserId, setPreviousSeasonChampionUserId] = useState<string | null>(null);
-  const [previousSeasonChampionNotMember, setPreviousSeasonChampionNotMember] = useState(false);
+  const [championSeasonSelections, setChampionSeasonSelections] = useState<SeasonChampionSelection[]>([]);
+  const [savedChampionSeasonSelections, setSavedChampionSeasonSelections] = useState<
+    SeasonChampionSelection[]
+  >([]);
+  const [championSeasonsByUserId, setChampionSeasonsByUserId] = useState<Record<string, number[]>>(
+    {}
+  );
+  const [championSource, setChampionSource] = useState<
+    "override" | "season_champion" | "none"
+  >("none");
   const [championMsg, setChampionMsg] = useState("");
   const [savingChampion, setSavingChampion] = useState(false);
 
@@ -259,29 +274,27 @@ export default function AdminMembersPage() {
   function applyChampionResponse(json: ChampionSettingsResponse | null) {
     const resolvedUserId =
       typeof json?.reigning_champion_user_id === "string" ? json.reigning_champion_user_id : null;
-    const overrideUserId = typeof json?.override_user_id === "string" ? json.override_user_id : null;
     const configuredHighlightUserIds = normalizeUserIdList(
       json?.configured_champion_highlight_user_ids ?? json?.champion_highlight_user_ids
     );
     const source = normalizeChampionSource(json?.source);
-    const previousSeasonValue =
-      typeof json?.previous_season === "number" && Number.isFinite(json.previous_season)
-        ? json.previous_season
+    const resolvedSeason =
+      typeof json?.champion_season === "number" && Number.isFinite(json.champion_season)
+        ? json.champion_season
         : null;
-    const previousSeasonUserId =
-      typeof json?.previous_season_champion_user_id === "string"
-        ? json.previous_season_champion_user_id
-        : null;
+    const seasonSelections = normalizeSeasonChampionSelections(json?.season_champions);
+    const nextChampionSeasonsByUserId = normalizeChampionSeasonsByUserId(
+      json?.champion_seasons_by_user_id
+    );
 
     setChampionResolvedUserId(resolvedUserId);
-    setChampionOverrideUserId(overrideUserId);
-    setSavedChampionOverrideUserId(overrideUserId);
+    setChampionResolvedSeason(resolvedSeason);
     setChampionHighlightUserIds(configuredHighlightUserIds);
     setSavedChampionHighlightUserIds(configuredHighlightUserIds);
+    setChampionSeasonSelections(seasonSelections);
+    setSavedChampionSeasonSelections(seasonSelections);
+    setChampionSeasonsByUserId(nextChampionSeasonsByUserId);
     setChampionSource(source);
-    setPreviousSeason(previousSeasonValue);
-    setPreviousSeasonChampionUserId(previousSeasonUserId);
-    setPreviousSeasonChampionNotMember(!!json?.previous_season_champion_not_member);
   }
 
   async function fetchChampionSettings(token: string) {
@@ -618,7 +631,7 @@ export default function AdminMembersPage() {
     );
   }
 
-  async function saveChampionOverride() {
+  async function saveChampionSettings() {
     if (!sessionToken) return;
 
     setSavingChampion(true);
@@ -631,7 +644,7 @@ export default function AdminMembersPage() {
         Authorization: `Bearer ${sessionToken}`,
       },
       body: JSON.stringify({
-        reigning_champion_override_user_id: championOverrideUserId,
+        season_champions: championSeasonSelections,
         champion_highlight_user_ids: championHighlightUserIds,
       }),
     });
@@ -648,52 +661,6 @@ export default function AdminMembersPage() {
     applyChampionResponse(json);
   }
 
-  async function importPreviousSeasonChampion() {
-    if (!sessionToken || savingChampion) return;
-
-    if (!previousSeasonChampionUserId) {
-      if (previousSeasonChampionNotMember && previousSeason !== null) {
-        setChampionMsg(
-          `No import available: season ${previousSeason} winner is not currently a member in this competition.`
-        );
-      } else if (previousSeason !== null) {
-        setChampionMsg(`No import available: no recorded winner found for season ${previousSeason}.`);
-      } else {
-        setChampionMsg("No import available.");
-      }
-      return;
-    }
-
-    setSavingChampion(true);
-    setChampionMsg("");
-
-    const res = await fetch(`/api/admin/champion-settings?season=${CURRENT_SEASON}`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${sessionToken}`,
-      },
-      body: JSON.stringify({
-        reigning_champion_override_user_id: previousSeasonChampionUserId,
-        champion_highlight_user_ids: championHighlightUserIds,
-      }),
-    });
-
-    const json = (await res.json().catch(() => null)) as ChampionSettingsResponse | null;
-    setSavingChampion(false);
-
-    if (!res.ok) {
-      const detail = json?.details ? `: ${json.details}` : "";
-      setChampionMsg((json?.error ?? "Failed to import previous season winner") + detail);
-      return;
-    }
-
-    applyChampionResponse(json);
-    setChampionMsg(
-      `Imported season ${previousSeason ?? "previous"} winner as reigning champion.`
-    );
-  }
-
   function toggleChampionHighlightUserId(userId: string, enabled: boolean) {
     setChampionHighlightUserIds((prev) => {
       const next = new Set(prev);
@@ -703,8 +670,17 @@ export default function AdminMembersPage() {
     });
   }
 
+  function setSeasonChampionSelection(season: number, userId: string | null) {
+    setChampionSeasonSelections((prev) => {
+      const next = prev.filter((entry) => entry.season !== season);
+      next.push({ season, user_id: userId });
+      next.sort((a, b) => a.season - b.season);
+      return next;
+    });
+  }
+
   const championDirty =
-    championOverrideUserId !== savedChampionOverrideUserId ||
+    !sameSeasonChampionSelections(championSeasonSelections, savedChampionSeasonSelections) ||
     !sameUserIdList(championHighlightUserIds, savedChampionHighlightUserIds);
 
   const championNameByUserId = useMemo(() => {
@@ -732,6 +708,10 @@ export default function AdminMembersPage() {
   const championResolvedLabel = championResolvedUserId
     ? championNameByUserId[championResolvedUserId] ?? shortId(championResolvedUserId)
     : "None";
+  const championEditableSeasons = useMemo(
+    () => editableChampionSeasons(CURRENT_SEASON, championSeasonSelections),
+    [championSeasonSelections]
+  );
 
   const cardStyle: React.CSSProperties = {
     border: "1px solid var(--border)",
@@ -837,70 +817,93 @@ export default function AdminMembersPage() {
 
         <div style={{ marginTop: 12, display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div style={{ minWidth: 260 }}>
-            <div style={{ fontWeight: 800 }}>Reigning champion</div>
+            <div style={{ fontWeight: 800 }}>Previous seasons winners</div>
             <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75 }}>
-              Manual selection only. Optionally import last season&apos;s winner once.
+              Choose the winner for each season. Saved winners are highlighted in gold across
+              the site.
             </div>
-            <div style={{ marginTop: 8, fontSize: 12 }}>
-              Current: <b>{championResolvedLabel}</b>{" "}
-              {championSource === "override" && <span style={{ opacity: 0.75 }}>(manual override)</span>}
+            <div
+              style={{
+                marginTop: 8,
+                fontSize: 12,
+                display: "flex",
+                gap: 6,
+                alignItems: "center",
+                flexWrap: "wrap",
+              }}
+            >
+              <span>
+                Current reigning champion: <b>{championResolvedLabel}</b>
+              </span>
+              {championSource === "season_champion" && championResolvedSeason !== null && (
+                <span style={{ opacity: 0.75 }}>(season {championResolvedSeason} winner)</span>
+              )}
+              {championSource === "override" && (
+                <span style={{ opacity: 0.75 }}>(legacy manual override)</span>
+              )}
+              {championResolvedUserId && (
+                <ChampionSeasonLabels seasons={championSeasonsByUserId[championResolvedUserId]} />
+              )}
               {championSource === "none" && <span style={{ opacity: 0.75 }}>(not set)</span>}
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start" }}>
-            <button
-              type="button"
-              disabled={savingChampion || !previousSeasonChampionUserId}
-              onClick={importPreviousSeasonChampion}
-              title={
-                previousSeasonChampionUserId
-                  ? undefined
-                  : previousSeasonChampionNotMember
-                    ? "Previous season winner is not in this competition"
-                    : "No previous season winner found"
-              }
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "flex-start" }}>
+            <div
               style={{
-                padding: "10px 12px",
-                borderRadius: 10,
-                border: "1px solid var(--border)",
-                background: "var(--card)",
-                color: "var(--foreground)",
-                fontWeight: 900,
-                cursor: savingChampion || !previousSeasonChampionUserId ? "not-allowed" : "pointer",
-                opacity: savingChampion || !previousSeasonChampionUserId ? 0.7 : 1,
+                display: "grid",
+                gap: 10,
+                minWidth: 320,
+                flex: "1 1 320px",
+                maxWidth: 460,
               }}
             >
-              {savingChampion ? "Saving…" : `Import season ${previousSeason ?? CURRENT_SEASON - 1} winner`}
-            </button>
+              {championEditableSeasons.map((seasonValue) => {
+                const selectedUserId =
+                  championSeasonSelections.find((entry) => entry.season === seasonValue)?.user_id ??
+                  null;
 
-            <select
-              value={championOverrideUserId ?? ""}
-              onChange={(e) => setChampionOverrideUserId(e.target.value || null)}
-              style={{
-                minWidth: 280,
-                maxWidth: 360,
-                padding: "10px 12px",
-                borderRadius: 10,
-                border: "1px solid var(--border)",
-                background: "var(--card)",
-                color: "var(--foreground)",
-                fontWeight: 700,
-              }}
-            >
-              <option value="">No champion selected</option>
-              {championMemberOptions.map((m) => (
-                <option key={m.user_id} value={m.user_id}>
-                  {championNameByUserId[m.user_id] ?? shortId(m.user_id)}
-                </option>
-              ))}
-            </select>
+                return (
+                  <label
+                    key={seasonValue}
+                    style={{ display: "grid", gap: 4 }}
+                  >
+                    <span style={{ fontSize: 12, fontWeight: 800, opacity: 0.78 }}>
+                      {seasonValue} winner
+                    </span>
+                    <select
+                      value={selectedUserId ?? ""}
+                      onChange={(e) =>
+                        setSeasonChampionSelection(seasonValue, e.target.value || null)
+                      }
+                      style={{
+                        width: "100%",
+                        padding: "10px 12px",
+                        borderRadius: 10,
+                        border: "1px solid var(--border)",
+                        background: "var(--card)",
+                        color: "var(--foreground)",
+                        fontWeight: 700,
+                      }}
+                    >
+                      <option value="">No winner selected</option>
+                      {championMemberOptions.map((m) => (
+                        <option key={m.user_id} value={m.user_id}>
+                          {championNameByUserId[m.user_id] ?? shortId(m.user_id)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                );
+              })}
+            </div>
 
             <button
               type="button"
               disabled={savingChampion || !championDirty}
-              onClick={saveChampionOverride}
+              onClick={saveChampionSettings}
               style={{
+                alignSelf: "flex-start",
                 padding: "10px 12px",
                 borderRadius: 10,
                 border: "1px solid var(--border)",
@@ -911,7 +914,7 @@ export default function AdminMembersPage() {
                 opacity: savingChampion || !championDirty ? 0.7 : 1,
               }}
             >
-              {savingChampion ? "Saving…" : "Save champion"}
+              {savingChampion ? "Saving…" : "Save champion settings"}
             </button>
           </div>
         </div>
@@ -919,7 +922,7 @@ export default function AdminMembersPage() {
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
           <div style={{ fontWeight: 800 }}>Gold name highlights</div>
           <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75 }}>
-            Select additional members to highlight in gold. The reigning champion is always gold.
+            Select additional members to highlight in gold. Saved season winners are always gold.
           </div>
           <div
             style={{
@@ -953,7 +956,10 @@ export default function AdminMembersPage() {
                     checked={checked}
                     onChange={(e) => toggleChampionHighlightUserId(userId, e.target.checked)}
                   />
-                  <span>{championNameByUserId[userId] ?? shortId(userId)}</span>
+                  <span style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                    <span>{championNameByUserId[userId] ?? shortId(userId)}</span>
+                    <ChampionSeasonLabels seasons={championSeasonsByUserId[userId]} />
+                  </span>
                 </label>
               );
             })}
@@ -1120,21 +1126,7 @@ export default function AdminMembersPage() {
                             >
                               {draft.payment_status}
                             </span>
-                            {m.user_id === championResolvedUserId && (
-                              <span
-                                style={{
-                                  fontSize: 11,
-                                  fontWeight: 800,
-                                  borderRadius: 999,
-                                  padding: "2px 8px",
-                                  background: "rgba(245, 158, 11, 0.15)",
-                                  color: "rgb(146, 64, 14)",
-                                  border: "1px solid rgba(245, 158, 11, 0.35)",
-                                }}
-                              >
-                                champion
-                              </span>
-                            )}
+                            <ChampionSeasonLabels seasons={championSeasonsByUserId[m.user_id]} />
                             {draft.is_test_account && (
                               <span
                                 style={{

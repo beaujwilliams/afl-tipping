@@ -3,6 +3,7 @@ import SeasonRoundsPageClient from "@/components/SeasonRoundsPageClient";
 import { createClient, createServiceClient } from "@/lib/supabase-server";
 import { userHasAdminRole } from "@/lib/admin-auth";
 import { resolveCompetitionIdForSeason } from "@/lib/competition-resolver";
+import { normalizeChampionSeasonsByUserId } from "@/lib/champion-metadata";
 import { getRoundTipStatusResponse } from "@/lib/round-tip-status-data";
 
 type SeasonRoundsPageProps = {
@@ -23,6 +24,7 @@ export default async function SeasonRoundsPage(props: SeasonRoundsPageProps) {
         statusByRoundId={{}}
         isAdmin={false}
         championHighlightUserIds={[]}
+        championSeasonsByUserId={{}}
         initialMessage="Invalid season."
       />
     );
@@ -46,6 +48,7 @@ export default async function SeasonRoundsPage(props: SeasonRoundsPageProps) {
   let statusByRoundId: Record<string, Awaited<ReturnType<typeof getRoundTipStatusResponse>>["rounds"][number]> = {};
   let isAdmin = false;
   let championHighlightUserIds: string[] = [];
+  let championSeasonsByUserId: Record<string, number[]> = {};
   let initialMessage: string | null = null;
 
   try {
@@ -96,6 +99,9 @@ export default async function SeasonRoundsPage(props: SeasonRoundsPageProps) {
           championHighlightUserIds.unshift(reigningChampionUserId);
         }
       }
+      championSeasonsByUserId = normalizeChampionSeasonsByUserId(
+        payload.champion_seasons_by_user_id
+      );
     }
   } catch (error) {
     initialMessage =
@@ -109,6 +115,7 @@ export default async function SeasonRoundsPage(props: SeasonRoundsPageProps) {
       statusByRoundId={statusByRoundId}
       isAdmin={isAdmin}
       championHighlightUserIds={championHighlightUserIds}
+      championSeasonsByUserId={championSeasonsByUserId}
       initialMessage={initialMessage}
     />
   );

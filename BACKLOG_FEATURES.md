@@ -6,7 +6,7 @@ Last updated: 2026-04-07
 
 | ID | Priority | Status | Feature | Why it helps | Effort | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| BL-021 | P1 | Idea | Server-render round page initial payload and keep tip save client-side | Biggest remaining speed win on the core tipping page | L | Remove the long client boot chain for round load, but keep existing tip-save, lock, and odds behavior unchanged |
+| BL-021 | P1 | Done | Server-render round page initial payload and keep tip save client-side | Biggest remaining speed win on the core tipping page | L | Shipped on 2026-04-07. The round page now server-renders the initial round, membership, saved tip, and locked-odds payload, while preserving the existing client tip-save flow and odds polling behavior |
 | BL-022 | P1 | Idea | Move layout auth/admin state server-side and trim global unread polling | Reduces client work that every logged-in page pays before feeling ready | M | Keep the same nav, badges, and admin visibility; only change where auth state and polling are resolved |
 | BL-023 | P1 | Idea | Server-render stats and merge/cache season stats payload | Makes My Stats load faster and avoids duplicate season recomputation | L | Preserve the same stats math and outputs while collapsing the current two-request client boot path |
 | BL-024 | P2 | Idea | Server-render first chat batch and lazy-load reactions, mention extras, and admin-only extras | Makes chat open faster without changing message behavior or realtime updates | L | Keep the same chat rules and moderation capabilities; shift non-essential boot work later |

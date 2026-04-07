@@ -32,6 +32,6 @@ All existing `BL-*` items from the previous single backlog are preserved in
 
 ## Cross-Backlog Next 3
 
-1. `BL-021` Server-render round page initial payload and keep tip save client-side
-2. `BL-022` Move layout auth/admin state server-side and trim global unread polling
-3. `BL-023` Server-render stats and merge/cache season stats payload
+1. `BL-022` Move layout auth/admin state server-side and trim global unread polling
+2. `BL-023` Server-render stats and merge/cache season stats payload
+3. `BL-024` Server-render first chat batch and lazy-load reactions, mention extras, and admin-only extras

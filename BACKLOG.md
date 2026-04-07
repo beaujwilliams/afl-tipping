@@ -34,4 +34,4 @@ All existing `BL-*` items from the previous single backlog are preserved in
 
 1. `BL-016` Observability: logs + alerting for job failures
 2. `BL-015` Audit log for admin actions
-3. `UI-007` Standardized toast/status feedback
+3. `UI-001` Add season switcher and remove hardcoded `2026`

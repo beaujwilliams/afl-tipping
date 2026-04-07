@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { useToast } from "@/components/ToastProvider";
 import { UiButton, UiButtonLink, UiCard } from "@/components/ui";
 import { NEXT_SEASON } from "@/lib/season-config";
 
@@ -87,6 +88,7 @@ function describeRunningAction(value: string | null) {
 }
 
 export default function AdminPage() {
+  const toast = useToast();
   const [season, setSeason] = useState<number>(2026);
   const [recapRound, setRecapRound] = useState<number>(1);
   const [recapToEmail, setRecapToEmail] = useState<string>("");
@@ -137,13 +139,25 @@ export default function AdminPage() {
 
       if (!token) {
         setResult({ error: "Not authenticated." });
+        toast.error("Not authenticated. Please sign in again.");
         return;
       }
 
-      const { json } = await callAdmin(path, token);
+      const { ok, status, json } = await callAdmin(path, token);
       setResult(json);
+      if (!ok) {
+        const message =
+          (json && typeof json === "object" && typeof (json as { error?: unknown }).error === "string"
+            ? (json as { error?: string }).error
+            : null) ?? `Request failed (${status}).`;
+        toast.error(message);
+      } else {
+        toast.success(summarizeResult(json));
+      }
     } catch (err: unknown) {
-      setResult({ error: err instanceof Error ? err.message : "Unknown error" });
+      const message = err instanceof Error ? err.message : "Unknown error";
+      setResult({ error: message });
+      toast.error(message);
     } finally {
       setLoading(null);
     }
@@ -157,6 +171,7 @@ export default function AdminPage() {
       const token = await getToken();
       if (!token) {
         setResult({ error: "Not authenticated." });
+        toast.error("Not authenticated. Please sign in again.");
         return;
       }
 
@@ -168,6 +183,11 @@ export default function AdminPage() {
           status: sync.status,
           result: sync.json,
         });
+        toast.error(
+          (sync.json && typeof sync.json === "object" && typeof sync.json.error === "string"
+            ? sync.json.error
+            : null) ?? "Sync results failed."
+        );
         return;
       }
 
@@ -187,19 +207,34 @@ export default function AdminPage() {
           recalcSkipped: true,
           note: "Skipped recalculate leaderboard because sync-results.updated was 0.",
         });
+        toast.info("Results checked. Leaderboard refresh was skipped because nothing changed.");
         return;
       }
 
       const recalc = await callAdmin(`/api/admin/recalc-leaderboard?season=${season}`, token);
-      setResult({
+      const nextResult = {
         ok: recalc.ok,
         season,
         action: "sync-results-and-recalc-leaderboard",
         syncResults: sync.json,
         recalcLeaderboard: recalc.json,
-      });
+      };
+      setResult(nextResult);
+      if (recalc.ok) {
+        toast.success("Results sync and leaderboard refresh completed.");
+      } else {
+        toast.error(
+          (recalc.json &&
+          typeof recalc.json === "object" &&
+          typeof (recalc.json as { error?: unknown }).error === "string"
+            ? (recalc.json as { error?: string }).error
+            : null) ?? "Leaderboard refresh failed."
+        );
+      }
     } catch (err: unknown) {
-      setResult({ error: err instanceof Error ? err.message : "Unknown error" });
+      const message = err instanceof Error ? err.message : "Unknown error";
+      setResult({ error: message });
+      toast.error(message);
     } finally {
       setLoading(null);
     }
@@ -215,11 +250,13 @@ export default function AdminPage() {
     const toEmail = recapToEmail.trim();
     if (!toEmail) {
       setResult({ error: "Enter an email for recap delivery." });
+      toast.error("Enter an email for recap delivery.");
       return;
     }
     const round = Math.trunc(recapRound);
     if (!Number.isFinite(round) || round < 0) {
       setResult({ error: "Recap round must be 0 or higher." });
+      toast.error("Recap round must be 0 or higher.");
       return;
     }
     run(

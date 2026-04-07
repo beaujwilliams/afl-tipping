@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
+import { useToast } from "@/components/ToastProvider";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { UiSkeleton } from "@/components/ui";
 
@@ -215,6 +216,7 @@ function RoundLoadingSkeleton() {
 }
 
 export default function RoundPage() {
+  const toast = useToast();
   const params = useParams<{ season: string; round: string }>();
   const season = Number(params.season);
   const round = Number(params.round);
@@ -356,7 +358,7 @@ export default function RoundPage() {
     if (!compId || !userId) return;
     if (isLocked) return;
     if (paymentLocked) {
-      alert("Tipping is disabled while your payment status is pending.");
+      toast.error("Tipping is disabled while your payment status is pending.");
       return;
     }
 
@@ -365,7 +367,7 @@ export default function RoundPage() {
       const { data: session } = await supabaseBrowser.auth.getSession();
       const token = session.session?.access_token ?? null;
       if (!token) {
-        alert("Not authenticated. Please sign in again.");
+        toast.error("Not authenticated. Please sign in again.");
         return;
       }
 
@@ -395,11 +397,13 @@ export default function RoundPage() {
             setPaymentStatus(normalizePaymentStatus(json.payment_status));
           }
         }
-        alert(json?.error ?? "Could not save tip.");
+        toast.error(json?.error ?? "Could not save tip.");
         return;
       }
 
       setTipsByMatchId((prev) => ({ ...prev, [matchId]: pickedTeam }));
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Could not save tip.");
     } finally {
       setSavingMatchId(null);
     }

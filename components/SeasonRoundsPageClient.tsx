@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { useToast } from "@/components/ToastProvider";
 import { UnpaidTag } from "@/components/UnpaidTag";
 import { ChampionSeasonLabels } from "@/components/ChampionSeasonLabels";
 import { supabaseBrowser } from "@/lib/supabase-browser";
@@ -110,6 +111,7 @@ export default function SeasonRoundsPageClient({
   championSeasonsByUserId,
   initialMessage,
 }: SeasonRoundsPageClientProps) {
+  const toast = useToast();
   const msg = initialMessage ?? "";
   const championHighlightSet = useMemo(
     () => new Set(championHighlightUserIds),
@@ -137,6 +139,7 @@ export default function SeasonRoundsPageClient({
     const sessionToken = data.session?.access_token ?? null;
     if (!sessionToken) {
       setRoundReminderStatus(roundId, "Not authenticated.");
+      toast.error("Not authenticated. Please sign in again.");
       return;
     }
 
@@ -163,7 +166,9 @@ export default function SeasonRoundsPageClient({
       const json = (await res.json().catch(() => null)) as ReminderApiResponse | null;
 
       if (!res.ok || !json) {
-        setRoundReminderStatus(roundId, json?.error ?? "Reminder request failed.");
+        const message = json?.error ?? "Reminder request failed.";
+        setRoundReminderStatus(roundId, message);
+        toast.error(message);
         return;
       }
 
@@ -175,20 +180,22 @@ export default function SeasonRoundsPageClient({
 
       if (roundError) {
         setRoundReminderStatus(roundId, `Error: ${roundError}`);
+        toast.error(roundError);
         return;
       }
 
       if (!row) {
         setRoundReminderStatus(roundId, "No reminder result returned for this round.");
+        toast.error("No reminder result returned for this round.");
         return;
       }
 
-      setRoundReminderStatus(
-        roundId,
-        `Sent ${row.sent}. Already reminded ${row.already_reminded}. No email ${row.no_email}. Failed ${row.failed}.`
-      );
+      const summary = `Sent ${row.sent}. Already reminded ${row.already_reminded}. No email ${row.no_email}. Failed ${row.failed}.`;
+      setRoundReminderStatus(roundId, summary);
+      toast.info(`Round ${roundNumber} reminders: ${summary}`, { durationMs: 5200 });
     } catch {
       setRoundReminderStatus(roundId, "Reminder request failed.");
+      toast.error("Reminder request failed.");
     } finally {
       setReminderRunningRoundId(null);
     }

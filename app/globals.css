@@ -990,6 +990,79 @@ button {
   flex-wrap: wrap;
 }
 
+.ui-toast-viewport {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 1200;
+  display: grid;
+  gap: 10px;
+  width: min(360px, calc(100vw - 32px));
+  pointer-events: none;
+}
+
+.ui-toast {
+  pointer-events: auto;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.18);
+  padding: 12px 12px 12px 14px;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.ui-toast--success {
+  border-color: rgba(34, 197, 94, 0.28);
+  background: color-mix(in srgb, var(--card) 88%, rgb(220, 252, 231));
+}
+
+.ui-toast--error {
+  border-color: rgba(239, 68, 68, 0.28);
+  background: color-mix(in srgb, var(--card) 88%, rgb(254, 226, 226));
+}
+
+.ui-toast--info {
+  border-color: rgba(59, 130, 246, 0.24);
+  background: color-mix(in srgb, var(--card) 90%, rgb(219, 234, 254));
+}
+
+.ui-toast__body {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  flex: 1;
+}
+
+.ui-toast__title {
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+
+.ui-toast__message {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.ui-toast__close {
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  margin-top: -2px;
+  font-size: 20px;
+  line-height: 1;
+  opacity: 0.65;
+}
+
+.ui-toast__close:hover {
+  opacity: 1;
+}
+
 /* ===============================
    Home Dashboard
 ================================ */

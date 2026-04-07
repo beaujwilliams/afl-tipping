@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { useToast } from "@/components/ToastProvider";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { UiButton, UiCard, UiTableCell, UiTableHeadCell, UiTableScroll, UiTableShell } from "@/components/ui";
 import { NEXT_SEASON } from "@/lib/season-config";
@@ -119,6 +120,7 @@ function downloadCsv(filename: string, content: string) {
 }
 
 export default function AdminInterestedMembersPage() {
+  const toast = useToast();
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [season, setSeason] = useState<number>(NEXT_SEASON);
   const [statusFilter, setStatusFilter] = useState<"all" | InterestStatus>("all");
@@ -295,11 +297,12 @@ export default function AdminInterestedMembersPage() {
 
     if (!res.ok || !json?.ok || !json.row) {
       const detail = json?.details ? `: ${json.details}` : "";
-      setMsg((json?.error ?? "Failed to save row") + detail);
+      toast.error((json?.error ?? "Failed to save row") + detail);
       return;
     }
 
     setRows((prev) => prev.map((row) => (row.id === id ? json.row ?? row : row)));
+    toast.success("Interested member updated.");
   }
 
   async function deleteRow(id: string) {
@@ -324,7 +327,7 @@ export default function AdminInterestedMembersPage() {
 
     if (!res.ok || !json?.ok) {
       const detail = json?.details ? `: ${json.details}` : "";
-      setMsg((json?.error ?? "Failed to delete row") + detail);
+      toast.error((json?.error ?? "Failed to delete row") + detail);
       return;
     }
 
@@ -334,6 +337,7 @@ export default function AdminInterestedMembersPage() {
       delete next[id];
       return next;
     });
+    toast.success("Interested member deleted.");
   }
 
   async function sendSeasonOpenBulkEmail() {
@@ -360,14 +364,14 @@ export default function AdminInterestedMembersPage() {
 
     if (!res.ok || !json?.ok) {
       const detail = json?.details ? `: ${json.details}` : "";
-      setMsg((json?.error ?? "Failed to send bulk email") + detail);
+      toast.error((json?.error ?? "Failed to send bulk email") + detail);
       return;
     }
 
     const totals = json.totals ?? {};
     const summary = `Season-open email run complete. Targeted ${json.recipients_targeted ?? 0}, sent ${totals.sent ?? 0}, failed ${totals.failed ?? 0}.`;
     await load();
-    setMsg(summary);
+    toast.info(summary, { durationMs: 5200 });
   }
 
   function exportCsv() {

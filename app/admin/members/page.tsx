@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useToast } from "@/components/ToastProvider";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { UiTableHeadCell, UiTableScroll, UiTableShell } from "@/components/ui";
 import { ChampionSeasonLabels } from "@/components/ChampionSeasonLabels";
@@ -170,6 +171,7 @@ function paymentChipStyle(status: PaymentStatus): React.CSSProperties {
 }
 
 export default function AdminMembersPage() {
+  const toast = useToast();
   const [sessionToken, setSessionToken] = useState<string | null>(null);
 
   const [members, setMembers] = useState<Member[]>([]);
@@ -460,7 +462,7 @@ export default function AdminMembersPage() {
 
     if (!res.ok) {
       const detail = json?.details ? `: ${json.details}` : "";
-      setMsg((json?.error ?? "Failed to save member") + detail);
+      toast.error((json?.error ?? "Failed to save member") + detail);
       return;
     }
 
@@ -497,6 +499,7 @@ export default function AdminMembersPage() {
           : m
       )
     );
+    toast.success("Member updated.");
   }
 
   async function removeMember(userId: string) {
@@ -521,7 +524,7 @@ export default function AdminMembersPage() {
 
     if (!res.ok) {
       const detail = json?.details ? `: ${json.details}` : "";
-      setMsg((json?.error ?? "Failed to remove member") + detail);
+      toast.error((json?.error ?? "Failed to remove member") + detail);
       return;
     }
 
@@ -538,6 +541,8 @@ export default function AdminMembersPage() {
     } catch (e: unknown) {
       setChampionMsg(e instanceof Error ? e.message : "Failed to refresh champion settings.");
     }
+
+    toast.success("Member removed.");
   }
 
   async function saveSettings(nextValue: boolean) {
@@ -559,11 +564,12 @@ export default function AdminMembersPage() {
 
     if (!res.ok) {
       const detail = json?.details ? `: ${json.details}` : "";
-      setMsg((json?.error ?? "Failed to save payment settings") + detail);
+      toast.error((json?.error ?? "Failed to save payment settings") + detail);
       return;
     }
 
     setEnforceUnpaidTipLock(nextValue);
+    toast.success(`Unpaid tip lock ${nextValue ? "enabled" : "disabled"}.`);
   }
 
   async function sendPaymentReminders() {
@@ -588,13 +594,14 @@ export default function AdminMembersPage() {
 
     if (!res.ok) {
       const detail = json?.details ? `: ${json.details}` : "";
-      setMsg((json?.error ?? "Failed to send payment reminders") + detail);
+      toast.error((json?.error ?? "Failed to send payment reminders") + detail);
       return;
     }
 
     const totals = json?.totals ?? {};
-    setMsg(
-      `Payment reminders: sent ${totals.sent ?? 0}. Already sent ${totals.skipped_already_sent ?? 0}. No email ${totals.no_email ?? 0}. Failed ${totals.failed ?? 0}.`
+    toast.info(
+      `Payment reminders: sent ${totals.sent ?? 0}. Already sent ${totals.skipped_already_sent ?? 0}. No email ${totals.no_email ?? 0}. Failed ${totals.failed ?? 0}.`,
+      { durationMs: 5200 }
     );
   }
 
@@ -620,11 +627,12 @@ export default function AdminMembersPage() {
 
     if (!res.ok) {
       const detail = json?.details ? `: ${json.details}` : "";
-      setChampionMsg((json?.error ?? "Failed to save champion settings") + detail);
+      toast.error((json?.error ?? "Failed to save champion settings") + detail);
       return;
     }
 
     applyChampionResponse(json);
+    toast.success("Champion settings saved.");
   }
 
   function setSeasonChampionSelection(season: number, userId: string | null) {

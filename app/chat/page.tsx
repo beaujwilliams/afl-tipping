@@ -2,6 +2,7 @@
 
 import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useToast } from "@/components/ToastProvider";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { ChampionSeasonLabels } from "@/components/ChampionSeasonLabels";
 import { ReactionPill } from "@/components/ReactionPill";
@@ -271,6 +272,7 @@ function pickMostFrequentCompetition(rows: RoundCompetitionRow[]) {
 }
 
 export default function ChatPage() {
+  const toast = useToast();
   const [ready, setReady] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [competitionId, setCompetitionId] = useState<string | null>(null);
@@ -1494,7 +1496,7 @@ export default function ChatPage() {
 
     const { error } = await del;
     if (error) {
-      alert(error.message);
+      toast.error(error.message);
       return;
     }
 

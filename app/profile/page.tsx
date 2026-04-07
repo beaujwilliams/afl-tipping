@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AFL_TEAMS } from "@/lib/afl-teams";
 import { normalizeUsername, validateUsername } from "@/lib/username";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { useToast } from "@/components/ToastProvider";
 import { UiBadge, UiCard } from "@/components/ui";
 
 const CURRENT_SEASON = 2026;
@@ -28,6 +29,7 @@ type UsernameCheckState =
   | { status: "error"; text: string };
 
 export default function ProfilePage() {
+  const toast = useToast();
   const [email, setEmail] = useState<string | null>(null);
   const [username, setUsername] = useState("");
   const [initialUsername, setInitialUsername] = useState("");
@@ -187,6 +189,7 @@ export default function ProfilePage() {
     if (!token) {
       setSaving(false);
       setMsg("Not authenticated");
+      toast.error("Not authenticated. Please sign in again.");
       return;
     }
 
@@ -209,7 +212,7 @@ export default function ProfilePage() {
 
     if (!res.ok) {
       const detail = body?.details ? ` (${body.details})` : "";
-      setMsg(`${body?.error ?? "Failed to save profile."}${detail}`);
+      toast.error(`${body?.error ?? "Failed to save profile."}${detail}`);
       return;
     }
 
@@ -218,7 +221,7 @@ export default function ProfilePage() {
     setInitialUsername(nextUsername);
     setDisplayName(body?.profile?.display_name ?? "");
     setFavoriteTeam(body?.profile?.favorite_team ?? "");
-    setMsg("Profile saved.");
+    toast.success("Profile saved.");
   }
 
   if (loadingProfile) {

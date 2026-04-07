@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { ChatActivityProvider } from "@/components/ChatActivityProvider";
 import AppLayoutChrome from "@/components/AppLayoutChrome";
+import { ToastProvider } from "@/components/ToastProvider";
 
 export const metadata: Metadata = {
   title: "Complicated Tips",
@@ -20,9 +21,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           fontFamily: "var(--font-sans)",
         }}
       >
-        <ChatActivityProvider>
-          <AppLayoutChrome>{children}</AppLayoutChrome>
-        </ChatActivityProvider>
+        <ToastProvider>
+          <ChatActivityProvider>
+            <AppLayoutChrome>{children}</AppLayoutChrome>
+          </ChatActivityProvider>
+        </ToastProvider>
       </body>
     </html>
   );

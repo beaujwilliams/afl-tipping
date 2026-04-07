@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useToast } from "@/components/ToastProvider";
 import { UiButton } from "@/components/ui";
 
 type NextSeasonInterestFormProps = {
@@ -30,11 +31,11 @@ function writeCooldownNow() {
 }
 
 export default function NextSeasonInterestForm({ season }: NextSeasonInterestFormProps) {
+  const toast = useToast();
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
   const [website, setWebsite] = useState("");
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
   const [cooldownLeftMs, setCooldownLeftMs] = useState<number>(() => readCooldownLeft());
 
   const canSubmit = useMemo(() => !busy && cooldownLeftMs <= 0, [busy, cooldownLeftMs]);
@@ -51,12 +52,11 @@ export default function NextSeasonInterestForm({ season }: NextSeasonInterestFor
     const left = readCooldownLeft();
     if (left > 0) {
       setCooldownLeftMs(left);
-      setMsg(`Please wait ${Math.ceil(left / 1000)}s before trying again.`);
+      toast.info(`Please wait ${Math.ceil(left / 1000)}s before trying again.`);
       return;
     }
 
     setBusy(true);
-    setMsg(null);
 
     const response = await fetch("/api/next-season-interest", {
       method: "POST",
@@ -72,7 +72,7 @@ export default function NextSeasonInterestForm({ season }: NextSeasonInterestFor
     setBusy(false);
 
     if (!response.ok || !json?.ok) {
-      setMsg(json?.error ?? "Could not save your interest right now.");
+      toast.error(json?.error ?? "Could not save your interest right now.");
       return;
     }
 
@@ -81,7 +81,7 @@ export default function NextSeasonInterestForm({ season }: NextSeasonInterestFor
     setEmail("");
     setFullName("");
     setWebsite("");
-    setMsg(`Thanks. We will notify you when ${season} signup opens.`);
+    toast.success(`Thanks. We will notify you when ${season} signup opens.`);
   }
 
   return (
@@ -147,8 +147,6 @@ export default function NextSeasonInterestForm({ season }: NextSeasonInterestFor
             ? `Notify me (wait ${Math.ceil(cooldownLeftMs / 1000)}s)`
             : `Notify me for ${season}`}
       </UiButton>
-
-      {msg && <p className="ui-caption">{msg}</p>}
     </form>
   );
 }

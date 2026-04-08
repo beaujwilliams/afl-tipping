@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import { supabaseBrowser } from "@/lib/supabase-browser";
 import { useChatActivity } from "@/components/ChatActivityProvider";
 import LogoutButton from "@/components/LogoutButton";
 
@@ -173,59 +172,24 @@ function DesktopDropdown({
   );
 }
 
-export default function AppLayoutChrome({ children }: { children: React.ReactNode }) {
+type AppLayoutChromeProps = {
+  children: React.ReactNode;
+  initialEmail?: string | null;
+  initialIsAdmin?: boolean;
+};
+
+export default function AppLayoutChrome({
+  children,
+  initialEmail = null,
+  initialIsAdmin = false,
+}: AppLayoutChromeProps) {
   const pathname = usePathname() ?? "";
-  const [email, setEmail] = useState<string | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [openMenu, setOpenMenu] = useState<MenuKey | null>(null);
   const navRef = useRef<HTMLDivElement | null>(null);
   const hoverCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { unreadChat, unreadMentions, unreadAnnouncements, unreadLeaderboardInvites } =
     useChatActivity();
-
-  useEffect(() => {
-    let mounted = true;
-
-    async function load() {
-      const { data } = await supabaseBrowser.auth.getUser();
-      if (!mounted) return;
-      const user = data.user;
-      setEmail(user?.email ?? null);
-
-      if (!user?.id) {
-        setIsAdmin(false);
-        return;
-      }
-
-      const { data: adminMembership, error: adminErr } = await supabaseBrowser
-        .from("memberships")
-        .select("user_id")
-        .eq("user_id", user.id)
-        .in("role", ["owner", "admin"])
-        .limit(1)
-        .maybeSingle();
-
-      if (!mounted) return;
-      if (adminErr) {
-        setIsAdmin(false);
-        return;
-      }
-
-      setIsAdmin(!!adminMembership);
-    }
-
-    load();
-
-    const { data: sub } = supabaseBrowser.auth.onAuthStateChange(() => {
-      load();
-    });
-
-    return () => {
-      mounted = false;
-      sub.subscription.unsubscribe();
-    };
-  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -279,8 +243,8 @@ export default function AppLayoutChrome({ children }: { children: React.ReactNod
     };
   }, [openMenu]);
 
-  const profileHref = email ? "/profile" : "/login";
-  const statsHref = email ? "/stats" : "/login";
+  const profileHref = initialEmail ? "/profile" : "/login";
+  const statsHref = initialEmail ? "/stats" : "/login";
   const profileLabel = "My Profile";
 
   const tippingActive =
@@ -302,11 +266,11 @@ export default function AppLayoutChrome({ children }: { children: React.ReactNod
       { href: "/announcements", label: "Announcements", badge: unreadAnnouncements },
       { href: "/info", label: "How it works" },
     ];
-    if (isAdmin) {
+    if (initialIsAdmin) {
       items.push({ href: "/admin", label: "Admin", tone: "danger" });
     }
     return items;
-  }, [isAdmin, unreadAnnouncements]);
+  }, [initialIsAdmin, unreadAnnouncements]);
 
   const mobileOpenItems = openMenu === "tipping" ? tippingItems : infoItems;
   const unreadAnnouncementsLabel = `${unreadAnnouncements} new announcement${
@@ -459,7 +423,7 @@ export default function AppLayoutChrome({ children }: { children: React.ReactNod
                 </div>
               </div>
 
-              {!isMobile && email && (
+              {!isMobile && initialEmail && (
                 <div
                   style={{
                     display: "flex",
@@ -479,7 +443,7 @@ export default function AppLayoutChrome({ children }: { children: React.ReactNod
                       whiteSpace: "nowrap",
                     }}
                   >
-                    {email}
+                    {initialEmail}
                   </div>
                   <div style={{ fontSize: 12, opacity: 0.45 }}>{BUILD_LABEL}</div>
                 </div>
@@ -513,7 +477,7 @@ export default function AppLayoutChrome({ children }: { children: React.ReactNod
                   );
                 })}
 
-                {openMenu === "info" && email && (
+                {openMenu === "info" && initialEmail && (
                   <>
                     <div style={{ flexBasis: "100%" }} />
                     <div

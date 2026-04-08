@@ -49,8 +49,10 @@ function isMissingRelationError(message: string, relationName: string) {
 
 export function ChatActivityProvider({
   children,
+  initialAuthenticated = false,
 }: {
   children: React.ReactNode;
+  initialAuthenticated?: boolean;
 }) {
   const pathname = usePathname();
   const viewingChat = pathname?.startsWith("/chat") ?? false;
@@ -59,22 +61,86 @@ export function ChatActivityProvider({
   const [unreadMentions, setUnreadMentions] = useState(0);
   const [unreadAnnouncements, setUnreadAnnouncements] = useState(0);
   const [unreadLeaderboardInvites, setUnreadLeaderboardInvites] = useState(0);
-  const [authTick, setAuthTick] = useState(0);
+  const [sessionState, setSessionState] = useState<{
+    accessToken: string;
+    userId: string;
+  } | null>(null);
+  const [isPageVisible, setIsPageVisible] = useState(() => {
+    if (typeof document === "undefined") return true;
+    return document.visibilityState === "visible";
+  });
 
   useEffect(() => {
-    const { data: sub } = supabaseBrowser.auth.onAuthStateChange(() => {
-      setAuthTick((prev) => prev + 1);
+    let mounted = true;
+
+    async function syncSession() {
+      if (!initialAuthenticated) {
+        if (mounted) {
+          setSessionState(null);
+          setUnreadChat(0);
+          setUnreadMentions(0);
+          setUnreadAnnouncements(0);
+          setUnreadLeaderboardInvites(0);
+        }
+        return;
+      }
+
+      const { data } = await supabaseBrowser.auth.getSession();
+      if (!mounted) return;
+      if (!data.session) {
+        setSessionState(null);
+        setUnreadChat(0);
+        setUnreadMentions(0);
+        setUnreadAnnouncements(0);
+        setUnreadLeaderboardInvites(0);
+        return;
+      }
+
+      setSessionState({
+        accessToken: data.session.access_token,
+        userId: data.session.user.id,
+      });
+    }
+
+    void syncSession();
+
+    const { data: sub } = supabaseBrowser.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return;
+      if (!session) {
+        setSessionState(null);
+        setUnreadChat(0);
+        setUnreadMentions(0);
+        setUnreadAnnouncements(0);
+        setUnreadLeaderboardInvites(0);
+        return;
+      }
+      setSessionState({
+        accessToken: session.access_token,
+        userId: session.user.id,
+      });
     });
 
     return () => {
+      mounted = false;
       sub.subscription.unsubscribe();
     };
+  }, [initialAuthenticated]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    const onVisibilityChange = () => {
+      setIsPageVisible(document.visibilityState === "visible");
+    };
+
+    onVisibilityChange();
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
   }, []);
 
   useEffect(() => {
     async function refreshChatActivity() {
-      const { data } = await supabaseBrowser.auth.getSession();
-      if (!data.session) {
+      if (!sessionState) {
         setUnreadChat(0);
         setUnreadMentions(0);
         setUnreadAnnouncements(0);
@@ -97,7 +163,7 @@ export function ChatActivityProvider({
       const { count: mentionCount, error: mentionErr } = await supabaseBrowser
         .from("chat_message_mentions")
         .select("id", { count: "exact", head: true })
-        .eq("mentioned_user_id", data.session.user.id)
+        .eq("mentioned_user_id", sessionState.userId)
         .gt("created_at", sinceIso);
 
       if (mentionErr) {
@@ -113,7 +179,7 @@ export function ChatActivityProvider({
         const announcementsRes = await fetch("/api/announcements", {
           cache: "no-store",
           headers: {
-            Authorization: `Bearer ${data.session.access_token}`,
+            Authorization: `Bearer ${sessionState.accessToken}`,
           },
         });
         const announcementsJson = (await announcementsRes
@@ -141,7 +207,7 @@ export function ChatActivityProvider({
         const invitesRes = await fetch("/api/leaderboard-group-invites", {
           cache: "no-store",
           headers: {
-            Authorization: `Bearer ${data.session.access_token}`,
+            Authorization: `Bearer ${sessionState.accessToken}`,
           },
         });
         const invitesJson = (await invitesRes.json().catch(() => null)) as
@@ -171,11 +237,17 @@ export function ChatActivityProvider({
       markAnnouncementsSeenNow();
     }
 
-    refreshChatActivity();
+    if (!sessionState) return;
 
-    const t = setInterval(refreshChatActivity, 30000);
+    if (!isPageVisible) return;
+
+    void refreshChatActivity();
+
+    const t = setInterval(() => {
+      void refreshChatActivity();
+    }, 30000);
     return () => clearInterval(t);
-  }, [authTick, pathname, viewingChat, viewingAnnouncements]);
+  }, [isPageVisible, pathname, sessionState, viewingChat, viewingAnnouncements]);
 
   const value = useMemo(
     () => ({

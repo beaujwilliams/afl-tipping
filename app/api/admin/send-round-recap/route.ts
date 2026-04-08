@@ -56,6 +56,15 @@ type LeaderboardRow = {
 type LeaderboardResponse = {
   ok: boolean;
   rows?: LeaderboardRow[];
+  rank_trends?: Array<{
+    user_id: string;
+    display_name: string;
+    points: Array<{
+      round_number: number;
+      rank: number;
+      total_points: number;
+    }>;
+  }>;
   error?: string;
 };
 
@@ -114,6 +123,18 @@ type PlayerRoundStat = {
   accuracy_pct: number;
   avg_correct_odds: number;
   underdog_points: number;
+};
+
+type RoundAggregateStat = {
+  round_number: number;
+  difficulty_pct: number;
+  average_score: number;
+  majority_wins: number;
+  game_count: number;
+  minority_winner_count: number;
+  most_picked_team: string | null;
+  most_picked_count: number;
+  most_picked_pct: number;
 };
 
 function round2(v: number) {
@@ -355,6 +376,66 @@ function computeRoundAverage(players: Array<{ round_score: number }>) {
   return (
     players.reduce((sum, p) => sum + Number(p.round_score ?? 0), 0) / players.length
   );
+}
+
+function summarizeRoundAggregateStat(params: {
+  roundNumber: number;
+  matches: RoundResultsMatch[];
+  players: Array<{ correct_tips: number; total_tips: number; round_score: number }>;
+}): RoundAggregateStat {
+  const { roundNumber, matches, players } = params;
+  const difficultyPct = computeDifficultyPct(players);
+  const averageScore = computeRoundAverage(players);
+
+  let majorityWins = 0;
+  const minorityBackedWinners: Array<{ winner: string; winnerPct: number }> = [];
+  const teamPickCounts: Record<string, number> = {};
+
+  for (const m of matches) {
+    const winner = String(m.winner_team ?? "").trim();
+    if (!winner) continue;
+
+    const homeCount = Number(m.tipping.home_count ?? 0);
+    const awayCount = Number(m.tipping.away_count ?? 0);
+    const totalTips = Number(m.total_tips ?? 0);
+
+    const majorityTeam = homeCount >= awayCount ? m.home_team : m.away_team;
+    if (winner === majorityTeam) majorityWins += 1;
+
+    const winnerCount = winner === m.home_team ? homeCount : winner === m.away_team ? awayCount : 0;
+    const winnerPct = totalTips > 0 ? (winnerCount / totalTips) * 100 : 0;
+    if (winnerPct < 50) minorityBackedWinners.push({ winner, winnerPct });
+
+    const homeTeam = String(m.home_team ?? "").trim();
+    const awayTeam = String(m.away_team ?? "").trim();
+    if (homeTeam) teamPickCounts[homeTeam] = (teamPickCounts[homeTeam] ?? 0) + homeCount;
+    if (awayTeam) teamPickCounts[awayTeam] = (teamPickCounts[awayTeam] ?? 0) + awayCount;
+  }
+
+  const roundTipsTotal = matches.reduce((sum, m) => sum + Number(m.total_tips ?? 0), 0);
+  const mostPicked = Object.entries(teamPickCounts).sort((a, b) => b[1] - a[1])[0] ?? null;
+  const mostPickedCount = mostPicked ? Number(mostPicked[1]) : 0;
+  const mostPickedPct = roundTipsTotal > 0 ? (mostPickedCount / roundTipsTotal) * 100 : 0;
+
+  return {
+    round_number: roundNumber,
+    difficulty_pct: difficultyPct,
+    average_score: averageScore,
+    majority_wins: majorityWins,
+    game_count: matches.length,
+    minority_winner_count: minorityBackedWinners.length,
+    most_picked_team: mostPicked ? mostPicked[0] : null,
+    most_picked_count: mostPickedCount,
+    most_picked_pct: mostPickedPct,
+  };
+}
+
+function rankPositionAsc(values: number[], target: number) {
+  return 1 + values.filter((v) => Number(v) < Number(target) - 0.0001).length;
+}
+
+function rankPositionDesc(values: number[], target: number) {
+  return 1 + values.filter((v) => Number(v) > Number(target) + 0.0001).length;
 }
 
 export async function GET(req: Request) {
@@ -742,6 +823,61 @@ export async function GET(req: Request) {
         ? ((previousRoundResultsRes.data.players ?? []) as RoundResultsPlayer[])
         : [];
 
+    const completedRoundNumbers = candidateRounds
+      .filter(
+        (x) => x.finished_count === x.match_count && Number(x.row.round_number) <= Number(roundNumber)
+      )
+      .map((x) => Number(x.row.round_number))
+      .sort((a, b) => a - b);
+
+    const preloadRoundResults = new Map<number, RoundResultsResponse>();
+    preloadRoundResults.set(roundNumber, {
+      ok: true,
+      matches: rrMatches,
+      players: rrPlayers,
+    });
+    if (previousRoundNumber !== null && previousRoundResultsRes?.ok && previousRoundResultsRes.data?.ok) {
+      preloadRoundResults.set(previousRoundNumber, previousRoundResultsRes.data);
+    }
+
+    const historicalRoundResults = await Promise.all(
+      completedRoundNumbers.map(async (rn) => {
+        const existing = preloadRoundResults.get(rn);
+        if (existing?.ok) {
+          return { round_number: rn, data: existing };
+        }
+
+        const roundUrl = `${url.origin}/api/round-results?season=${encodeURIComponent(
+          String(season)
+        )}&round=${encodeURIComponent(String(rn))}`;
+        const res = await fetchJson<RoundResultsResponse>(roundUrl);
+        if (!res.ok || !res.data?.ok) return null;
+        return { round_number: rn, data: res.data };
+      })
+    );
+
+    const seasonRoundStats = historicalRoundResults
+      .filter(
+        (
+          x
+        ): x is {
+          round_number: number;
+          data: RoundResultsResponse;
+        } => !!x
+      )
+      .map((x) =>
+        summarizeRoundAggregateStat({
+          roundNumber: x.round_number,
+          matches: (x.data.matches ?? []) as RoundResultsMatch[],
+          players: ((x.data.players ?? []) as RoundResultsPlayer[]).map((p) => ({
+            correct_tips: Number(p.correct_tips ?? 0),
+            total_tips: Number(p.total_tips ?? 0),
+            round_score: Number(p.round_score ?? 0),
+          })),
+        })
+      )
+      .sort((a, b) => a.round_number - b.round_number);
+
     const winnerOddsByMatch: Record<string, number | null> = {};
     const loserOddsByMatch: Record<string, number | null> = {};
 
@@ -894,8 +1030,6 @@ export async function GET(req: Request) {
     const difficultyDelta =
       previousRoundDifficulty === null ? null : roundDifficultyPct - previousRoundDifficulty;
 
-    const playerStatByUserId = new Map(playerStats.map((p) => [String(p.user_id), p]));
-
     const topRises = topN(
       [...lbRows]
         .filter((r) => Number(r.movement) > 0)
@@ -908,28 +1042,6 @@ export async function GET(req: Request) {
         .sort((a, b) => Number(a.movement) - Number(b.movement)),
       5
     );
-
-    const tipInsightForUser = (userId: string) => {
-      const p = playerStatByUserId.get(String(userId));
-      if (!p) return "tip data unavailable";
-      const submitted = Number(p.total_tips);
-      const games = Number(rrMatches.length);
-
-      if (submitted === 0) return "didn't submit tips this round";
-      if (submitted < games) {
-        return `submitted ${submitted}/${games} tips and scored ${fmt2(Number(p.round_score))} points`;
-      }
-      if (Number(p.correct_tips) === games) return `nailed a perfect ${games}/${games}`;
-      if (Number(p.round_score) <= 0 && Number(p.correct_tips) === 0) {
-        return `went 0/${games} despite tipping every game`;
-      }
-      if (Number(p.underdog_points) > 0) {
-        return `hit ${p.correct_tips}/${games} and banked ${fmt2(
-          Number(p.underdog_points)
-        )} underdog points`;
-      }
-      return `hit ${p.correct_tips}/${games} for ${fmt2(Number(p.round_score))} points`;
-    };
 
     const roundTipsTotal = roundTips.length;
     const mostPickedTeam =
@@ -1144,23 +1256,6 @@ export async function GET(req: Request) {
 
     const seasonBiggestUpset = seasonUpsetRows[0] ?? null;
     const seasonBiggestUpsetOdds = seasonBiggestUpset ? Number(seasonBiggestUpset.winner_odds) : null;
-    const seasonBiggestUpsetRows =
-      seasonBiggestUpsetOdds === null
-        ? []
-        : seasonUpsetRows.filter(
-            (x) => Math.abs(Number(x.winner_odds) - Number(seasonBiggestUpsetOdds)) < 0.0001
-          );
-    const seasonBiggestUpsetsThisRound =
-      seasonBiggestUpsetOdds === null
-        ? []
-        : seasonUpsetRows.filter(
-            (x) =>
-              x.round_number === roundNumber &&
-              Math.abs(Number(x.winner_odds) - Number(seasonBiggestUpsetOdds)) < 0.0001
-          );
-    const seasonBiggestUpsetsOtherRounds = seasonBiggestUpsetRows.filter(
-      (x) => x.round_number !== roundNumber
-    );
     const topSeasonUpsets = topN(seasonUpsetRows, 5);
 
     const oneTipSwapRows = lbRows
@@ -1269,6 +1364,304 @@ export async function GET(req: Request) {
         : seasonUpsetRows.find(
             (x) => Number(x.winner_odds) < Number(seasonBiggestUpsetOdds) - 0.0001
           ) ?? null;
+    const currentRoundAggregate =
+      seasonRoundStats.find((x) => Number(x.round_number) === Number(roundNumber)) ??
+      summarizeRoundAggregateStat({
+        roundNumber,
+        matches: rrMatches,
+        players: playerStats.map((p) => ({
+          correct_tips: Number(p.correct_tips),
+          total_tips: Number(p.total_tips),
+          round_score: Number(p.round_score),
+        })),
+      });
+
+    const rankTrends = Array.isArray(leaderboardRes.data.rank_trends)
+      ? leaderboardRes.data.rank_trends
+      : [];
+    const movementEvents = rankTrends.flatMap((series) => {
+      const points = [...(series.points ?? [])].sort(
+        (a, b) => Number(a.round_number) - Number(b.round_number)
+      );
+      const events: Array<{
+        user_id: string;
+        display_name: string;
+        from_round: number;
+        to_round: number;
+        from_rank: number;
+        to_rank: number;
+        delta: number;
+      }> = [];
+
+      for (let i = 1; i < points.length; i += 1) {
+        const prev = points[i - 1];
+        const cur = points[i];
+        const toRoundNo = Number(cur.round_number);
+        if (!Number.isFinite(toRoundNo) || toRoundNo > Number(roundNumber)) continue;
+        const fromRank = Number(prev.rank);
+        const toRank = Number(cur.rank);
+        const delta = fromRank - toRank;
+        events.push({
+          user_id: String(series.user_id),
+          display_name: String(series.display_name ?? ""),
+          from_round: Number(prev.round_number),
+          to_round: toRoundNo,
+          from_rank: fromRank,
+          to_rank: toRank,
+          delta,
+        });
+      }
+      return events;
+    });
+
+    const historicalContextCandidates: Array<{
+      id: string;
+      priority: number;
+      line: string;
+    }> = [];
+
+    if (seasonRoundStats.length >= 2) {
+      const roundCount = seasonRoundStats.length;
+      const difficultyValues = seasonRoundStats.map((x) => Number(x.difficulty_pct));
+      const hardRank = rankPositionAsc(difficultyValues, Number(currentRoundAggregate.difficulty_pct));
+      const avgValues = seasonRoundStats.map((x) => Number(x.average_score));
+      const avgHighRank = rankPositionDesc(avgValues, Number(currentRoundAggregate.average_score));
+      const avgLowRank = rankPositionAsc(avgValues, Number(currentRoundAggregate.average_score));
+
+      if (hardRank === 1) {
+        historicalContextCandidates.push({
+          id: "difficulty-hardest",
+          priority: 100,
+          line: `Hardest tipping round so far: ${fmt2(
+            Number(currentRoundAggregate.difficulty_pct)
+          )}% is the lowest of ${roundCount} completed rounds.`,
+        });
+      } else if (hardRank <= 2) {
+        historicalContextCandidates.push({
+          id: "difficulty-top2-hard",
+          priority: 72,
+          line: `This was one of the two toughest rounds so far (ranked ${ordinal(
+            hardRank
+          )} hardest out of ${roundCount}).`,
+        });
+      } else if (hardRank === roundCount) {
+        historicalContextCandidates.push({
+          id: "difficulty-easiest",
+          priority: 72,
+          line: `This was the easiest round to tip so far (${fmt2(
+            Number(currentRoundAggregate.difficulty_pct)
+          )}% correct).`,
+        });
+      }
+
+      if (hardRank === 1 && avgHighRank <= 2) {
+        historicalContextCandidates.push({
+          id: "avg-high-despite-hard",
+          priority: 94,
+          line: `Despite the low accuracy, the ${fmt2(
+            Number(currentRoundAggregate.average_score)
+          )} average score is still the ${ordinal(avgHighRank)} highest of the season.`,
+        });
+      } else if (avgHighRank === 1) {
+        historicalContextCandidates.push({
+          id: "avg-highest",
+          priority: 78,
+          line: `Average round score of ${fmt2(
+            Number(currentRoundAggregate.average_score)
+          )} is the season high.`,
+        });
+      } else if (avgHighRank === 2) {
+        historicalContextCandidates.push({
+          id: "avg-second-highest",
+          priority: 70,
+          line: `Average score of ${fmt2(
+            Number(currentRoundAggregate.average_score)
+          )} is the ${ordinal(2)} highest this season.`,
+        });
+      } else if (avgLowRank === 1) {
+        historicalContextCandidates.push({
+          id: "avg-lowest",
+          priority: 70,
+          line: `Average score of ${fmt2(
+            Number(currentRoundAggregate.average_score)
+          )} is the lowest this season.`,
+        });
+      }
+
+      const majorityRates = seasonRoundStats.map((x) =>
+        Number(x.game_count) > 0 ? (Number(x.majority_wins) / Number(x.game_count)) * 100 : 0
+      );
+      const majorityRateCurrent =
+        Number(currentRoundAggregate.game_count) > 0
+          ? (Number(currentRoundAggregate.majority_wins) / Number(currentRoundAggregate.game_count)) *
+            100
+          : 0;
+      const majorityRateLowRank = rankPositionAsc(majorityRates, majorityRateCurrent);
+      const majorityRateHighRank = rankPositionDesc(majorityRates, majorityRateCurrent);
+
+      if (majorityRateLowRank === 1) {
+        historicalContextCandidates.push({
+          id: "majority-lowest",
+          priority: 86,
+          line: `Consensus struggled: majority picks won only ${fmt1(
+            majorityRateCurrent
+          )}% of games, the lowest hit rate this season.`,
+        });
+      } else if (majorityRateHighRank === 1) {
+        historicalContextCandidates.push({
+          id: "majority-highest",
+          priority: 66,
+          line: `Consensus nailed it this week: majority picks had the best hit rate of the season (${fmt1(
+            majorityRateCurrent
+          )}%).`,
+        });
+      }
+
+      const minorityWinnerCounts = seasonRoundStats.map((x) => Number(x.minority_winner_count));
+      const minorityHighRank = rankPositionDesc(
+        minorityWinnerCounts,
+        Number(currentRoundAggregate.minority_winner_count)
+      );
+
+      if (Number(currentRoundAggregate.minority_winner_count) > 0 && minorityHighRank === 1) {
+        historicalContextCandidates.push({
+          id: "minority-highest",
+          priority: 84,
+          line: `${currentRoundAggregate.minority_winner_count} minority-backed winners is the highest count of the season.`,
+        });
+      } else if (Number(currentRoundAggregate.minority_winner_count) >= 3 && minorityHighRank <= 2) {
+        historicalContextCandidates.push({
+          id: "minority-top2",
+          priority: 62,
+          line: `This was one of the more volatile rounds: ${currentRoundAggregate.minority_winner_count} winners were backed by fewer than half the comp.`,
+        });
+      }
+
+      const mostPickedPcts = seasonRoundStats
+        .map((x) => Number(x.most_picked_pct))
+        .filter((x) => Number.isFinite(x) && x > 0);
+      if (mostPickedPcts.length >= 2 && Number(currentRoundAggregate.most_picked_pct) > 0) {
+        const consensusHighRank = rankPositionDesc(
+          mostPickedPcts,
+          Number(currentRoundAggregate.most_picked_pct)
+        );
+        const consensusLowRank = rankPositionAsc(
+          mostPickedPcts,
+          Number(currentRoundAggregate.most_picked_pct)
+        );
+        if (consensusHighRank === 1 && currentRoundAggregate.most_picked_team) {
+          historicalContextCandidates.push({
+            id: "most-picked-highest",
+            priority: 58,
+            line: `${currentRoundAggregate.most_picked_team} drew the strongest single-game consensus of the season (${fmt1(
+              Number(currentRoundAggregate.most_picked_pct)
+            )}%).`,
+          });
+        } else if (consensusLowRank === 1 && currentRoundAggregate.most_picked_team) {
+          historicalContextCandidates.push({
+            id: "most-picked-lowest",
+            priority: 58,
+            line: `Even the most-picked side (${currentRoundAggregate.most_picked_team}) had the lowest top-consensus share of the season (${fmt1(
+              Number(currentRoundAggregate.most_picked_pct)
+            )}%).`,
+          });
+        }
+      }
+    }
+
+    if (biggestUpset && seasonUpsetRows.length > 0) {
+      const upsetRank =
+        1 +
+        seasonUpsetRows.filter(
+          (x) => Number(x.winner_odds) > Number(biggestUpset.winnerOdds) + 0.0001
+        ).length;
+
+      if (upsetRank === 1 && seasonSecondBiggestUpset) {
+        historicalContextCandidates.push({
+          id: "upset-new-1",
+          priority: 96,
+          line: `${biggestUpset.winner} at ${fmt2(
+            Number(biggestUpset.winnerOdds)
+          )} is now the biggest upset of 2026, passing Round ${seasonSecondBiggestUpset.round_number} (${seasonSecondBiggestUpset.winner_team} @ ${fmt2(
+            Number(seasonSecondBiggestUpset.winner_odds)
+          )}).`,
+        });
+      } else if (upsetRank <= 3) {
+        const higherUpset = seasonUpsetRows.find(
+          (x) => Number(x.winner_odds) > Number(biggestUpset.winnerOdds) + 0.0001
+        );
+        const suffix = higherUpset
+          ? ` Only Round ${higherUpset.round_number} (${higherUpset.winner_team} @ ${fmt2(
+              Number(higherUpset.winner_odds)
+            )}) was bigger.`
+          : "";
+        historicalContextCandidates.push({
+          id: `upset-rank-${upsetRank}`,
+          priority: 80,
+          line: `${biggestUpset.winner} at ${fmt2(
+            Number(biggestUpset.winnerOdds)
+          )} ranks as the #${upsetRank} upset of the season.${suffix}`,
+        });
+      }
+    }
+
+    const seasonClimbEvents = movementEvents.filter((x) => Number(x.delta) > 0);
+    const seasonDropEvents = movementEvents.filter((x) => Number(x.delta) < 0);
+    const roundClimbEvent =
+      seasonClimbEvents
+        .filter((x) => Number(x.to_round) === Number(roundNumber))
+        .sort((a, b) => Number(b.delta) - Number(a.delta))[0] ?? null;
+    const roundDropEvent =
+      seasonDropEvents
+        .filter((x) => Number(x.to_round) === Number(roundNumber))
+        .sort((a, b) => Number(a.delta) - Number(b.delta))[0] ?? null;
+
+    if (roundClimbEvent) {
+      const climbMagnitude = Number(roundClimbEvent.delta);
+      const climbRank =
+        1 +
+        seasonClimbEvents.filter((x) => Number(x.delta) > Number(climbMagnitude) + 0.0001).length;
+      if (climbRank <= 3) {
+        const climbRankLabel =
+          climbRank === 1
+            ? "the biggest"
+            : `the ${ordinal(climbRank)} biggest`;
+        historicalContextCandidates.push({
+          id: `climb-rank-${climbRank}`,
+          priority: 64,
+          line: `${atHandle(roundClimbEvent.display_name)}'s +${Math.trunc(
+            climbMagnitude
+          )} climb is tied for ${climbRankLabel} single-round rise this season.`,
+        });
+      }
+    }
+
+    if (roundDropEvent) {
+      const dropMagnitude = Math.abs(Number(roundDropEvent.delta));
+      const dropRank =
+        1 +
+        seasonDropEvents.filter((x) => Math.abs(Number(x.delta)) > Number(dropMagnitude) + 0.0001)
+          .length;
+      if (dropRank <= 3) {
+        const dropRankLabel =
+          dropRank === 1
+            ? "the biggest"
+            : `the ${ordinal(dropRank)} biggest`;
+        historicalContextCandidates.push({
+          id: `drop-rank-${dropRank}`,
+          priority: 76,
+          line: `${atHandle(roundDropEvent.display_name)}'s -${Math.trunc(
+            dropMagnitude
+          )} is tied for ${dropRankLabel} single-round drop so far.`,
+        });
+      }
+    }
+
+    const historicalContextLines = historicalContextCandidates
+      .sort((a, b) => Number(b.priority) - Number(a.priority))
+      .filter((x, index, all) => all.findIndex((y) => y.id === x.id) === index)
+      .slice(0, 4)
+      .map((x) => x.line);
 
     const sillyHeading = pickByRound(roundNumber, [
       "Some more silly data.",
@@ -1397,7 +1790,11 @@ export async function GET(req: Request) {
     if (mostPickedTeam) {
       const mostPickedPct =
         roundTipsTotal > 0 ? (Number(mostPickedTeam[1]) / Number(roundTipsTotal)) * 100 : 0;
-      textLines.push(`Most-picked side: ${mostPickedTeam[0]} (${fmt1(mostPickedPct)}%).`);
+      textLines.push(
+        `Most-picked side: ${mostPickedTeam[0]} (${mostPickedTeam[1]} picks, ${fmt1(
+          mostPickedPct
+        )}%).`
+      );
     } else {
       textLines.push("Most-picked side: n/a.");
     }
@@ -1436,40 +1833,17 @@ export async function GET(req: Request) {
           )} scored 0 after tipping all ${fullRoundTips}.`
         : `* Zero-score-after-tipping check: no one scored 0 after tipping all ${fullRoundTips} games.`
     );
-    if (seasonBiggestUpset && seasonBiggestUpsetsThisRound.length > 0) {
-      if (seasonBiggestUpsetsOtherRounds.length > 0) {
+    historicalContextLines.forEach((line) => textLines.push(`* ${line}`));
+    if (historicalContextLines.length === 0) {
+      if (seasonBiggestUpset) {
         textLines.push(
-          `* Biggest upset-by-points check: this round matched the season high at ${fmt2(
+          `* Season-high upset remains ${seasonBiggestUpset.winner_team} @ ${fmt2(
             Number(seasonBiggestUpset.winner_odds)
-          )}, alongside ${humanList(
-            seasonBiggestUpsetsOtherRounds.map(
-              (x) => `Round ${x.round_number} (${x.home_team} vs ${x.away_team})`
-            )
-          )}.`
-        );
-      } else if (seasonSecondBiggestUpset) {
-        textLines.push(
-          `* ${seasonBiggestUpset.winner_team} at ${fmt2(
-            Number(seasonBiggestUpset.winner_odds)
-          )} is now the biggest upset of the season, surpassing Round ${seasonSecondBiggestUpset.round_number} (${seasonSecondBiggestUpset.home_team} vs ${seasonSecondBiggestUpset.away_team}: ${seasonSecondBiggestUpset.winner_team} @ ${fmt2(
-            Number(seasonSecondBiggestUpset.winner_odds)
-          )}).`
+          )} (Round ${seasonBiggestUpset.round_number}).`
         );
       } else {
-        textLines.push(
-          `* ${seasonBiggestUpset.winner_team} at ${fmt2(
-            Number(seasonBiggestUpset.winner_odds)
-          )} is now the biggest upset of the season.`
-        );
+        textLines.push("* Season context is still building as more rounds complete.");
       }
-    } else if (seasonBiggestUpset) {
-      textLines.push(
-        `* Biggest upset-by-points check: season high remains ${seasonBiggestUpset.winner_team} @ ${fmt2(
-          Number(seasonBiggestUpset.winner_odds)
-        )} (Round ${seasonBiggestUpset.round_number}).`
-      );
-    } else {
-      textLines.push("* Biggest upset-by-points check: unavailable.");
     }
     textLines.push(
       `* ${fivePlusWinners} tippers hit 5+ winners; ${sixPlusWinners} hit 6+.`

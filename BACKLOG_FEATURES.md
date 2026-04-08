@@ -1,6 +1,6 @@
 # Feature Backlog
 
-Last updated: 2026-04-07
+Last updated: 2026-04-08
 
 ## Prioritized Features
 
@@ -11,6 +11,7 @@ Last updated: 2026-04-07
 | BL-023 | P1 | Idea | Server-render stats and merge/cache season stats payload | Makes My Stats load faster and avoids duplicate season recomputation | L | Preserve the same stats math and outputs while collapsing the current two-request client boot path |
 | BL-024 | P2 | Idea | Server-render first chat batch and lazy-load reactions, mention extras, and admin-only extras | Makes chat open faster without changing message behavior or realtime updates | L | Keep the same chat rules and moderation capabilities; shift non-essential boot work later |
 | BL-025 | P2 | Idea | Fetch leaderboard trends only when the trend UI is opened | Avoids post-paint work when users only need the leaderboard table | M | Ranking logic stays unchanged; chart/trend data becomes on-demand instead of auto-hydrated |
+| BL-026 | P2 | Done | Add an admin anomaly inbox for issues that need action now | Turns logs, automation health, and member state into a clear admin action list | M | Shipped on 2026-04-08. Added a shared admin anomaly rules layer, a season-scoped admin anomalies API, regression tests for the anomaly thresholds, and a new “Needs attention” inbox on the admin home covering due snapshots, failed runs, stale results, due recaps, pending paid-lock members, and pending next-season interest. |
 | BL-011 | P1 | Deferred | Season archive selector and year-over-year comparison page | Keeps site useful across seasons | M | Post-season only |
 | BL-014 | P2 | Done | Automated regression tests for scoring logic and lock-time behavior | Prevents subtle scoring errors | M | Shipped on 2026-04-07. Regression suite now covers scoring math, lock boundaries, snapshot timing, post-lock visibility, and round-results ordering/math with 30 passing tests |
 | BL-015 | P2 | Done | Add audit log for admin actions (sync, snapshot, recalc, member changes) | Better traceability when results look wrong | M | Shipped on 2026-04-07. Added admin audit storage, a read-only audit log page/API, and manual admin action logging for member changes, payment settings, season winners, fixture sync, result sync, leaderboard recalc, and due-round snapshot checks |

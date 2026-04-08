@@ -787,6 +787,23 @@ button {
   gap: 8px;
 }
 
+.ui-admin-anomaly-list {
+  display: grid;
+  gap: 10px;
+}
+
+.ui-admin-anomaly-item {
+  gap: 12px;
+}
+
+.ui-admin-anomaly-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .ui-admin-automation-title {
   font-weight: 800;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { useToast } from "@/components/ToastProvider";
 import { UiButton, UiButtonLink, UiCard } from "@/components/ui";
@@ -40,6 +40,30 @@ type AutomationHealthResponse = {
     automation_job_runs?: { ok?: boolean; hint?: string | null };
     scoring_automation_runs?: { ok?: boolean; hint?: string | null };
   };
+};
+
+type AdminAnomalyRow = {
+  id: string;
+  severity: "critical" | "warning" | "info";
+  title: string;
+  detail: string;
+  href: string;
+  cta: string;
+  category: "automation" | "odds" | "results" | "payments" | "recaps" | "growth";
+};
+
+type AdminAnomaliesResponse = {
+  ok?: boolean;
+  anomalies?: AdminAnomalyRow[];
+  counts?: {
+    total?: number;
+    critical?: number;
+    warning?: number;
+    info?: number;
+  };
+  error?: string;
+  details?: string;
+  sources?: Record<string, string | null | undefined>;
 };
 
 const AUTOMATION_STATUS_CARDS: AutomationStatusCard[] = [
@@ -111,6 +135,28 @@ function describeRunningAction(value: string | null) {
   return `Running: ${value}`;
 }
 
+function anomalyBadgeStyle(severity: "critical" | "warning" | "info"): CSSProperties {
+  if (severity === "critical") {
+    return {
+      background: "rgba(239, 68, 68, 0.14)",
+      color: "rgb(153, 27, 27)",
+      border: "1px solid rgba(239, 68, 68, 0.25)",
+    };
+  }
+  if (severity === "warning") {
+    return {
+      background: "rgba(245, 158, 11, 0.14)",
+      color: "rgb(146, 64, 14)",
+      border: "1px solid rgba(245, 158, 11, 0.25)",
+    };
+  }
+  return {
+    background: "rgba(59, 130, 246, 0.12)",
+    color: "rgb(30, 64, 175)",
+    border: "1px solid rgba(59, 130, 246, 0.22)",
+  };
+}
+
 export default function AdminPage() {
   const toast = useToast();
   const [season, setSeason] = useState<number>(2026);
@@ -122,6 +168,9 @@ export default function AdminPage() {
   const [healthLoading, setHealthLoading] = useState(false);
   const [healthData, setHealthData] = useState<AutomationHealthResponse | null>(null);
   const [healthMsg, setHealthMsg] = useState("");
+  const [anomalyLoading, setAnomalyLoading] = useState(false);
+  const [anomalyData, setAnomalyData] = useState<AdminAnomaliesResponse | null>(null);
+  const [anomalyMsg, setAnomalyMsg] = useState("");
   const isRunning = loading !== null;
 
   useEffect(() => {
@@ -138,7 +187,7 @@ export default function AdminPage() {
   }, []);
 
   useEffect(() => {
-    void loadAutomationHealth();
+    void Promise.all([loadAutomationHealth(), loadAnomalies()]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [season]);
 
@@ -151,6 +200,14 @@ export default function AdminPage() {
     (healthData?.sources?.scoring_automation_runs?.ok === false &&
       healthData?.sources?.scoring_automation_runs?.hint) ||
     "";
+  const anomalyTotal = anomalyData?.counts?.total ?? 0;
+  const anomalySourceWarnings = useMemo(
+    () =>
+      Object.values(anomalyData?.sources ?? {}).filter(
+        (value): value is string => typeof value === "string" && value.trim().length > 0
+      ),
+    [anomalyData?.sources]
+  );
 
   async function getToken() {
     const { data } = await supabaseBrowser.auth.getSession();
@@ -210,6 +267,47 @@ export default function AdminPage() {
     }
   }
 
+  async function loadAnomalies() {
+    try {
+      setAnomalyLoading(true);
+      setAnomalyMsg("");
+
+      const token = await getToken();
+      if (!token) {
+        setAnomalyData(null);
+        setAnomalyMsg("Sign in again to load admin anomalies.");
+        return;
+      }
+
+      const params = new URLSearchParams({
+        season: String(season),
+        limit: "8",
+      });
+      const res = await fetch(`/api/admin/anomalies?${params.toString()}`, {
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const json = (await res.json().catch(() => null)) as AdminAnomaliesResponse | null;
+
+      if (!res.ok || !json?.ok) {
+        const parts = [json?.error ?? "Could not load admin anomalies."];
+        if (json?.details) parts.push(json.details);
+        setAnomalyData(json);
+        setAnomalyMsg(parts.join(" - "));
+        return;
+      }
+
+      setAnomalyData(json);
+    } catch (error: unknown) {
+      setAnomalyData(null);
+      setAnomalyMsg(error instanceof Error ? error.message : "Could not load admin anomalies.");
+    } finally {
+      setAnomalyLoading(false);
+    }
+  }
+
   async function run(path: string) {
     try {
       setLoading(path);
@@ -240,6 +338,7 @@ export default function AdminPage() {
       toast.error(message);
     } finally {
       setLoading(null);
+      void Promise.all([loadAutomationHealth(), loadAnomalies()]);
     }
   }
 
@@ -317,6 +416,7 @@ export default function AdminPage() {
       toast.error(message);
     } finally {
       setLoading(null);
+      void Promise.all([loadAutomationHealth(), loadAnomalies()]);
     }
   }
 
@@ -410,6 +510,93 @@ export default function AdminPage() {
                 </div>
               ))}
             </div>
+          </div>
+        </UiCard>
+
+        <UiCard soft className="ui-admin-section ui-admin-section--wide">
+          <div className="ui-row-wrap" style={{ justifyContent: "space-between", gap: 10 }}>
+            <div>
+              <h2 className="ui-admin-section-title">Needs attention</h2>
+              <div className="ui-admin-summary ui-admin-summary--tight">
+                A short action list generated from automation health, round state, members, recaps,
+                and growth queues.
+              </div>
+            </div>
+            <span
+              className="ui-badge"
+              style={
+                anomalyTotal > 0
+                  ? anomalyBadgeStyle(
+                      (anomalyData?.counts?.critical ?? 0) > 0
+                        ? "critical"
+                        : (anomalyData?.counts?.warning ?? 0) > 0
+                          ? "warning"
+                          : "info"
+                    )
+                  : {
+                      background: "rgba(16, 185, 129, 0.14)",
+                      color: "rgb(6, 95, 70)",
+                      border: "1px solid rgba(16, 185, 129, 0.22)",
+                    }
+              }
+            >
+              {anomalyLoading ? "CHECKING" : anomalyTotal > 0 ? `${anomalyTotal} OPEN` : "ALL CLEAR"}
+            </span>
+          </div>
+
+          {anomalyMsg ? (
+            <div className="ui-admin-summary" style={{ color: "rgb(153, 27, 27)" }}>
+              {anomalyMsg}
+            </div>
+          ) : anomalyTotal === 0 && !anomalyLoading ? (
+            <UiCard className="ui-admin-tool">
+              <div className="ui-admin-subtitle">Nothing urgent right now</div>
+              <div className="ui-admin-summary ui-admin-summary--tight">
+                No current anomalies were detected for this season. Use the logs below if you want
+                to inspect recent activity anyway.
+              </div>
+            </UiCard>
+          ) : (
+            <div className="ui-admin-anomaly-list">
+              {(anomalyData?.anomalies ?? []).map((anomaly) => (
+                <UiCard key={anomaly.id} className="ui-admin-tool ui-admin-anomaly-item">
+                  <div className="ui-admin-anomaly-top">
+                    <div className="ui-admin-stack-tight">
+                      <div className="ui-admin-subtitle">{anomaly.title}</div>
+                      <div className="ui-admin-summary ui-admin-summary--tight">{anomaly.detail}</div>
+                    </div>
+                    <span className="ui-badge" style={anomalyBadgeStyle(anomaly.severity)}>
+                      {anomaly.severity.toUpperCase()}
+                    </span>
+                  </div>
+                  <div className="ui-row-wrap">
+                    <UiButtonLink href={anomaly.href} className="ui-admin-btn">
+                      {anomaly.cta}
+                    </UiButtonLink>
+                  </div>
+                </UiCard>
+              ))}
+            </div>
+          )}
+
+          {anomalySourceWarnings.length > 0 && (
+            <div className="ui-admin-stack" style={{ marginTop: 4 }}>
+              {anomalySourceWarnings.map((warning) => (
+                <div key={warning} className="ui-admin-summary ui-admin-summary--tight" style={{ color: "rgb(146, 64, 14)" }}>
+                  {warning}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="ui-row-wrap ui-admin-gap-sm">
+            <UiButton
+              disabled={anomalyLoading}
+              onClick={() => void loadAnomalies()}
+              className="ui-admin-btn"
+            >
+              {anomalyLoading ? "Refreshing..." : "Refresh Inbox"}
+            </UiButton>
           </div>
         </UiCard>
 
@@ -617,7 +804,10 @@ export default function AdminPage() {
           </div>
         </UiCard>
 
-        <details className="ui-card ui-card-soft ui-admin-section ui-admin-section--wide ui-admin-details">
+        <details
+          id="admin-maintenance"
+          className="ui-card ui-card-soft ui-admin-section ui-admin-section--wide ui-admin-details"
+        >
           <summary className="ui-admin-details-summary">Maintenance &amp; Recovery</summary>
           <div className="ui-admin-summary">
             Low-use manual tools for recovery, backfills, or testing. They are still here, just kept

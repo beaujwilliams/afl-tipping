@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useToast } from "@/components/ToastProvider";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { ChampionSeasonLabels } from "@/components/ChampionSeasonLabels";
 import { UnpaidTag } from "@/components/UnpaidTag";
@@ -24,6 +25,10 @@ import {
   UiTableShell,
 } from "@/components/ui";
 import { normalizeChampionSeasonsByUserId } from "@/lib/champion-metadata";
+import {
+  computeLeaderboardGroupSummary,
+  summarizeCreatorInviteStatuses,
+} from "@/lib/leaderboard-group-insights";
 
 type LeaderboardRow = {
   user_id: string;
@@ -151,6 +156,12 @@ function fmtInviteTimestamp(iso: string | null | undefined) {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function movementBadgeText(movement: number) {
+  if (movement > 0) return `▲ ${movement}`;
+  if (movement < 0) return `▼ ${Math.abs(movement)}`;
+  return "Even";
 }
 
 const TREND_COLORS = [
@@ -621,6 +632,7 @@ export default function LeaderboardPageClient({
   initialMessage = null,
   initialViewMode = "overall",
 }: LeaderboardPageClientProps) {
+  const toast = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialLeaderboardState = normalizeLeaderboardState(initialLeaderboard);
@@ -1523,6 +1535,56 @@ export default function LeaderboardPageClient({
         return a.display_name.localeCompare(b.display_name, "en", { sensitivity: "base" });
       });
   }, [currentUserId, memberDirectory, selectedGroupInviteStatusByUserId, selectedGroupUserIdSet]);
+  const selectedGroupSummaryRows = useMemo(
+    () =>
+      scopedRows.map((row) => ({
+        user_id: row.user_id,
+        display_name: row.display_name,
+        rank: scopeRankMetaByUserId.get(row.user_id)?.rank ?? row.rank,
+        behind: scopeRankMetaByUserId.get(row.user_id)?.behind ?? row.behind_leader,
+        total_points: row.total_points,
+        movement: row.movement,
+        round_score: row.round_score,
+      })),
+    [scopeRankMetaByUserId, scopedRows]
+  );
+  const selectedGroupSummary = useMemo(
+    () =>
+      computeLeaderboardGroupSummary({
+        rows: selectedGroupSummaryRows,
+        currentUserId,
+      }),
+    [currentUserId, selectedGroupSummaryRows]
+  );
+  const creatorInviteCounts = useMemo(
+    () => summarizeCreatorInviteStatuses(creatorInviteOverviewRows),
+    [creatorInviteOverviewRows]
+  );
+  const groupSharePath = useMemo(
+    () =>
+      selectedGroupId
+        ? `/leaderboard/${season}?group=${encodeURIComponent(selectedGroupId)}`
+        : "",
+    [season, selectedGroupId]
+  );
+
+  async function copySelectedGroupLink() {
+    if (!groupSharePath || typeof window === "undefined") return;
+
+    const targetUrl = new URL(groupSharePath, window.location.origin).toString();
+
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("Clipboard unavailable");
+      }
+      await navigator.clipboard.writeText(targetUrl);
+      setGroupActionMsg("Group link copied.");
+      toast.success("Group link copied.");
+    } catch {
+      setGroupActionMsg("Could not copy the group link.");
+      toast.error("Could not copy the group link.");
+    }
+  }
 
   return (
     <main className="ui-page ui-page--wide">
@@ -1651,6 +1713,11 @@ export default function LeaderboardPageClient({
                 >
                   <strong>My private groups</strong>
                   <div className="ui-row-wrap">
+                    {selectedGroupId && (
+                      <UiButton pill onClick={copySelectedGroupLink}>
+                        Copy group link
+                      </UiButton>
+                    )}
                     {selectedGroupId &&
                       groups.some((group) => group.id === selectedGroupId && group.is_creator) && (
                         <UiButton pill onClick={deleteSelectedGroup} disabled={deletingGroup}>
@@ -1670,7 +1737,7 @@ export default function LeaderboardPageClient({
                           setGroupActionMsg("");
                         }}
                       >
-                        Invite
+                        {invitingMembers ? "Close invites" : "Manage invites"}
                       </UiButton>
                     )}
                     <UiButton
@@ -1713,9 +1780,27 @@ export default function LeaderboardPageClient({
                     </div>
                   </div>
                 ) : groups.length === 0 ? (
-                  <p className="ui-caption" style={{ margin: 0 }}>
-                    You are not in any private groups yet. Create one to start a friends-only board.
-                  </p>
+                  <div
+                    style={{
+                      border: "1px dashed var(--border)",
+                      borderRadius: 14,
+                      padding: 14,
+                      display: "grid",
+                      gap: 8,
+                      background: "var(--card-soft)",
+                    }}
+                  >
+                    <strong>No private groups yet</strong>
+                    <p className="ui-caption" style={{ margin: 0 }}>
+                      Create a mini-league for your mates, office, family, or side bet crew. The
+                      overall competition stays the same, but this gives you a friends-only ladder
+                      and invite flow.
+                    </p>
+                    <div className="ui-caption" style={{ margin: 0 }}>
+                      Good first setup: create the group, copy the link, then invite people as they
+                      join.
+                    </div>
+                  </div>
                 ) : (
                   <div
                     style={{
@@ -1742,14 +1827,195 @@ export default function LeaderboardPageClient({
                             background: selected ? "var(--card-soft)" : "var(--card)",
                             cursor: "pointer",
                             display: "grid",
-                            gap: 3,
+                            gap: 5,
+                            boxShadow: selected ? "0 0 0 1px rgba(15, 23, 42, 0.06)" : "none",
                           }}
                         >
                           <span style={{ fontWeight: 800 }}>{group.name}</span>
-                          <span className="ui-caption">{group.member_count} members</span>
+                          <span className="ui-caption">
+                            {group.member_count} members • Created by {group.created_by_display_name}
+                            {group.is_creator ? " • You" : ""}
+                          </span>
+                          <span className="ui-caption" style={{ fontSize: 11 }}>
+                            {selected ? "Selected group" : "Open this mini-league"}
+                          </span>
                         </button>
                       );
                     })}
+                  </div>
+                )}
+
+                {selectedGroup && (
+                  <div
+                    style={{
+                      border: "1px solid var(--border)",
+                      borderRadius: 14,
+                      padding: 14,
+                      display: "grid",
+                      gap: 12,
+                      background: "var(--card)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        alignItems: "flex-start",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <div style={{ display: "grid", gap: 4 }}>
+                        <div style={{ fontWeight: 900, fontSize: isMobile ? 20 : 24, lineHeight: 1.05 }}>
+                          {selectedGroup.name}
+                        </div>
+                        <div className="ui-caption">
+                          {selectedGroup.member_count} members • Created by {selectedGroup.created_by_display_name}
+                          {selectedGroup.is_creator ? " • You manage this group" : ""}
+                        </div>
+                      </div>
+                      <div className="ui-row-wrap">
+                        <UiButton pill onClick={copySelectedGroupLink}>
+                          Copy invite link
+                        </UiButton>
+                        {selectedGroup.is_creator && (
+                          <UiButton
+                            pill
+                            onClick={() => {
+                              setCreatingGroup(false);
+                              setInvitingMembers(true);
+                              setGroupActionMsg("");
+                            }}
+                          >
+                            Invite members
+                          </UiButton>
+                        )}
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: 8,
+                        gridTemplateColumns: isMobile ? "1fr" : "repeat(4, minmax(0, 1fr))",
+                      }}
+                    >
+                      <div
+                        style={{
+                          border: "1px solid var(--border)",
+                          borderRadius: 12,
+                          padding: 10,
+                          display: "grid",
+                          gap: 3,
+                          background: "var(--card-soft)",
+                        }}
+                      >
+                        <div className="ui-caption">Leader</div>
+                        <div style={{ fontWeight: 800 }}>
+                          {selectedGroupSummary.leader?.display_name ?? "No leaderboard yet"}
+                        </div>
+                        <div className="ui-caption">
+                          {selectedGroupSummary.leader
+                            ? `${fmtPts(selectedGroupSummary.leader.total_points)} pts`
+                            : "Waiting for points"}
+                        </div>
+                      </div>
+                      <div
+                        style={{
+                          border: "1px solid var(--border)",
+                          borderRadius: 12,
+                          padding: 10,
+                          display: "grid",
+                          gap: 3,
+                          background: "var(--card-soft)",
+                        }}
+                      >
+                        <div className="ui-caption">Your spot</div>
+                        <div style={{ fontWeight: 800 }}>
+                          {selectedGroupSummary.me
+                            ? `#${selectedGroupSummary.me.rank}`
+                            : "Not in this group yet"}
+                        </div>
+                        <div className="ui-caption">
+                          {selectedGroupSummary.me
+                            ? selectedGroupSummary.me.behind <= 0
+                              ? "You are leading"
+                              : `${fmtPts(selectedGroupSummary.me.behind)} behind`
+                            : "Accept the invite to appear here"}
+                        </div>
+                      </div>
+                      <div
+                        style={{
+                          border: "1px solid var(--border)",
+                          borderRadius: 12,
+                          padding: 10,
+                          display: "grid",
+                          gap: 3,
+                          background: "var(--card-soft)",
+                        }}
+                      >
+                        <div className="ui-caption">Best mover</div>
+                        <div style={{ fontWeight: 800 }}>
+                          {selectedGroupSummary.biggestMover?.display_name ?? "No mover yet"}
+                        </div>
+                        <div className="ui-caption">
+                          {selectedGroupSummary.biggestMover
+                            ? movementBadgeText(selectedGroupSummary.biggestMover.movement)
+                            : "Movement appears after scored rounds"}
+                        </div>
+                      </div>
+                      <div
+                        style={{
+                          border: "1px solid var(--border)",
+                          borderRadius: 12,
+                          padding: 10,
+                          display: "grid",
+                          gap: 3,
+                          background: "var(--card-soft)",
+                        }}
+                      >
+                        <div className="ui-caption">Round leader</div>
+                        <div style={{ fontWeight: 800 }}>
+                          {selectedGroupSummary.roundLeader?.display_name ?? "No round score yet"}
+                        </div>
+                        <div className="ui-caption">
+                          {selectedGroupSummary.roundLeader
+                            ? `${fmtPts(selectedGroupSummary.roundLeader.round_score)} round pts`
+                            : "Current round updates here"}
+                        </div>
+                      </div>
+                    </div>
+
+                    {selectedGroup.is_creator && (
+                      <div
+                        style={{
+                          display: "grid",
+                          gap: 8,
+                          gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))",
+                        }}
+                      >
+                        {[
+                          { label: "Members", value: creatorInviteCounts.member },
+                          { label: "Pending", value: creatorInviteCounts.pending },
+                          { label: "Declined", value: creatorInviteCounts.declined },
+                          { label: "Not invited", value: creatorInviteCounts.not_invited },
+                        ].map((item) => (
+                          <div
+                            key={item.label}
+                            style={{
+                              border: "1px solid var(--border)",
+                              borderRadius: 12,
+                              padding: 10,
+                              display: "grid",
+                              gap: 3,
+                            }}
+                          >
+                            <div className="ui-caption">{item.label}</div>
+                            <div style={{ fontWeight: 900, fontSize: 20 }}>{item.value}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
 

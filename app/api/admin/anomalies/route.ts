@@ -5,6 +5,7 @@ import {
   findPendingPaymentAttention,
   findRoundsWithDueRecaps,
   findStaleResultRounds,
+  shouldSurfaceNextSeasonInterestAttention,
   sortAdminAnomalies,
   type AnomalyMatchRow,
   type AnomalyRoundRow,
@@ -128,6 +129,9 @@ export async function GET(req: Request) {
     const failureCutoffUtc = new Date(
       Date.now() - failureWindowHours * 60 * 60 * 1000
     ).toISOString();
+    const includeNextSeasonInterest = shouldSurfaceNextSeasonInterestAttention({
+      targetSeason: NEXT_SEASON,
+    });
 
     const [
       matchesResult,
@@ -160,11 +164,13 @@ export async function GET(req: Request) {
         .eq("competition_id", competitionId)
         .eq("season", season)
         .eq("recap_type", "end_of_round_v1"),
-      supabase
-        .from("next_season_interest")
-        .select("id", { count: "exact", head: true })
-        .eq("target_season", NEXT_SEASON)
-        .eq("status", "pending"),
+      includeNextSeasonInterest
+        ? supabase
+            .from("next_season_interest")
+            .select("id", { count: "exact", head: true })
+            .eq("target_season", NEXT_SEASON)
+            .eq("status", "pending")
+        : Promise.resolve({ count: 0, error: null }),
       supabase
         .from("automation_job_runs")
         .select("id, job_kind, run_status, started_at_utc, summary")
@@ -232,7 +238,7 @@ export async function GET(req: Request) {
     }
 
     let nextSeasonPendingCount = 0;
-    if (nextSeasonInterestResult.error) {
+    if (includeNextSeasonInterest && nextSeasonInterestResult.error) {
       if (isMissingRelationError(nextSeasonInterestResult.error.message, "next_season_interest")) {
         sourceHints.next_season_interest =
           "Apply migration db/migrations/20260326_next_season_interest.sql";
@@ -245,7 +251,7 @@ export async function GET(req: Request) {
           { status: 500 }
         );
       }
-    } else {
+    } else if (includeNextSeasonInterest) {
       nextSeasonPendingCount = Number(nextSeasonInterestResult.count ?? 0);
     }
 
@@ -372,7 +378,7 @@ export async function GET(req: Request) {
       });
     }
 
-    if (nextSeasonPendingCount > 0) {
+    if (includeNextSeasonInterest && nextSeasonPendingCount > 0) {
       anomalies.push({
         id: `next-season-interest-${NEXT_SEASON}`,
         severity: "info",

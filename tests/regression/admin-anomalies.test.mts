@@ -5,6 +5,7 @@ import {
   findPendingPaymentAttention,
   findRoundsWithDueRecaps,
   findStaleResultRounds,
+  shouldSurfaceNextSeasonInterestAttention,
   sortAdminAnomalies,
 } from "../../lib/admin-anomalies.ts";
 
@@ -177,5 +178,31 @@ test("anomaly sorting keeps critical items ahead of warnings and info", () => {
   assert.deepEqual(
     sorted.map((item) => item.id),
     ["critical", "warning", "info"]
+  );
+});
+
+test("next-season interest stays hidden until February in Melbourne for the target season", () => {
+  assert.equal(
+    shouldSurfaceNextSeasonInterestAttention({
+      targetSeason: 2027,
+      nowMs: new Date("2026-04-09T01:00:00Z").getTime(),
+    }),
+    false
+  );
+
+  assert.equal(
+    shouldSurfaceNextSeasonInterestAttention({
+      targetSeason: 2027,
+      nowMs: new Date("2027-01-31T12:00:00Z").getTime(),
+    }),
+    false
+  );
+
+  assert.equal(
+    shouldSurfaceNextSeasonInterestAttention({
+      targetSeason: 2027,
+      nowMs: new Date("2027-02-01T00:30:00Z").getTime(),
+    }),
+    true
   );
 });

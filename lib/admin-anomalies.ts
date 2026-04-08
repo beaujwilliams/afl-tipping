@@ -34,6 +34,7 @@ const SNAPSHOT_HOURS_BEFORE_LOCK = 36;
 const RESULTS_STALE_AFTER_HOURS = 8;
 const RECAP_DUE_HOURS_AFTER_FIRST = 48;
 const PENDING_PAYMENT_ATTENTION_WINDOW_HOURS = 72;
+const NEXT_SEASON_INTEREST_OPEN_MONTH = 2;
 
 function toUtcMs(value: string | null | undefined): number | null {
   if (!value) return null;
@@ -45,6 +46,19 @@ function isSameInstant(a: string | null | undefined, b: string | null | undefine
   const aMs = toUtcMs(a);
   const bMs = toUtcMs(b);
   return aMs !== null && bMs !== null && aMs === bMs;
+}
+
+function melbourneYearMonth(nowMs: number) {
+  const parts = new Intl.DateTimeFormat("en-AU", {
+    timeZone: "Australia/Melbourne",
+    year: "numeric",
+    month: "numeric",
+  }).formatToParts(new Date(nowMs));
+
+  const year = Number(parts.find((part) => part.type === "year")?.value ?? "0");
+  const month = Number(parts.find((part) => part.type === "month")?.value ?? "0");
+
+  return { year, month };
 }
 
 function severityRank(value: AdminAnomalySeverity) {
@@ -220,4 +234,16 @@ export function sortAdminAnomalies(anomalies: AdminAnomaly[]) {
     if (severityDiff !== 0) return severityDiff;
     return a.title.localeCompare(b.title);
   });
+}
+
+export function shouldSurfaceNextSeasonInterestAttention(params: {
+  targetSeason: number;
+  nowMs?: number;
+}) {
+  const nowMs = params.nowMs ?? Date.now();
+  const { year, month } = melbourneYearMonth(nowMs);
+  if (!Number.isFinite(params.targetSeason)) return false;
+  if (year > params.targetSeason) return true;
+  if (year < params.targetSeason) return false;
+  return month >= NEXT_SEASON_INTEREST_OPEN_MONTH;
 }

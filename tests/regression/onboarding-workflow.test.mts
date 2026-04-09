@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   canTransitionOnboardingStage,
   deriveOnboardingStage,
+  findSuggestedOnboardingLinkCandidate,
   inferInitialOnboardingStageFromInterestStatus,
   nextSuggestedOnboardingStage,
   normalizeOnboardingPipelineStage,
@@ -114,4 +115,47 @@ test("onboarding workflow summarizes rows by derived stage", () => {
     active: 1,
     archived: 1,
   });
+});
+
+test("onboarding workflow suggests a member link from a matching email address", () => {
+  const candidate = findSuggestedOnboardingLinkCandidate({
+    interestEmail: "User@example.com",
+    members: [
+      {
+        user_id: "user-1",
+        email: "other@example.com",
+        display_name: "Other",
+        payment_status: "pending",
+        role: "member",
+      },
+      {
+        user_id: "user-2",
+        email: "user@example.com",
+        display_name: "Matched Member",
+        payment_status: "paid",
+        role: "member",
+      },
+    ],
+  });
+
+  assert.equal(candidate?.user_id, "user-2");
+  assert.equal(candidate?.display_name, "Matched Member");
+});
+
+test("onboarding workflow does not suggest the already linked member again", () => {
+  const candidate = findSuggestedOnboardingLinkCandidate({
+    interestEmail: "user@example.com",
+    currentLinkedUserId: "user-2",
+    members: [
+      {
+        user_id: "user-2",
+        email: "user@example.com",
+        display_name: "Matched Member",
+        payment_status: "paid",
+        role: "member",
+      },
+    ],
+  });
+
+  assert.equal(candidate, null);
 });

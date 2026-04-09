@@ -387,8 +387,8 @@ export async function GET(req: Request) {
           nextSeasonPendingCount === 1 ? "" : "s"
         } awaiting review`,
         detail: "There are pending next-season interest entries ready to review or contact.",
-        href: "/admin/interested-members",
-        cta: "Open interested members",
+        href: "/admin/onboarding",
+        cta: "Open onboarding",
       });
     }
 

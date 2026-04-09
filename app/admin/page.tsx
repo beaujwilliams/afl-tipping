@@ -609,6 +609,16 @@ export default function AdminPage() {
 
           <div className="ui-admin-two-col">
             <UiCard className="ui-admin-tool">
+              <div className="ui-admin-subtitle">Onboarding pipeline</div>
+              <div className="ui-admin-summary ui-admin-summary--tight">
+                Track people from next-season interest through joining and payment readiness.
+              </div>
+              <UiButtonLink href="/admin/onboarding" className="ui-admin-btn ui-admin-btn--full">
+                Open Onboarding
+              </UiButtonLink>
+            </UiCard>
+
+            <UiCard className="ui-admin-tool">
               <div className="ui-admin-subtitle">Members</div>
               <div className="ui-admin-summary ui-admin-summary--tight">
                 Manage payment status, roles, test accounts, and season winner selections.
@@ -621,7 +631,7 @@ export default function AdminPage() {
             <UiCard className="ui-admin-tool">
               <div className="ui-admin-subtitle">Interested members</div>
               <div className="ui-admin-summary ui-admin-summary--tight">
-                Review next-season registrations and send the season-open email when ready.
+                Keep the raw waitlist view for export, bulk email, and manual cleanup.
               </div>
               <UiButtonLink
                 href="/admin/interested-members"

@@ -17,6 +17,14 @@ export type OnboardingDerivedStage =
 
 export type OnboardingPaymentStatus = "paid" | "pending" | "waived" | null;
 
+export type OnboardingLinkCandidate = {
+  user_id: string;
+  email: string | null;
+  display_name: string | null;
+  payment_status: OnboardingPaymentStatus;
+  role: string | null;
+};
+
 export type OnboardingTransitionSource = OnboardingPipelineStage | null | undefined;
 
 const STAGE_ORDER: OnboardingPipelineStage[] = [
@@ -29,6 +37,13 @@ const STAGE_ORDER: OnboardingPipelineStage[] = [
   "active",
   "archived",
 ];
+
+function normalizeEmail(value: string | null | undefined) {
+  const text = String(value ?? "")
+    .trim()
+    .toLowerCase();
+  return text || null;
+}
 
 export function normalizeNextSeasonInterestStatus(
   raw: string | null | undefined
@@ -183,4 +198,22 @@ export function sortOnboardingStagesForDisplay(stages: OnboardingPipelineStage[]
   return [...stages].sort(
     (a, b) => STAGE_ORDER.indexOf(a) - STAGE_ORDER.indexOf(b)
   );
+}
+
+export function findSuggestedOnboardingLinkCandidate(params: {
+  interestEmail: string | null | undefined;
+  currentLinkedUserId?: string | null;
+  members: OnboardingLinkCandidate[];
+}) {
+  const interestEmail = normalizeEmail(params.interestEmail);
+  if (!interestEmail) return null;
+
+  const currentLinkedUserId = String(params.currentLinkedUserId ?? "").trim();
+
+  const exact = params.members.find((member) => {
+    if (currentLinkedUserId && member.user_id === currentLinkedUserId) return false;
+    return normalizeEmail(member.email) === interestEmail;
+  });
+
+  return exact ?? null;
 }

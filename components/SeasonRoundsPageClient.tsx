@@ -351,6 +351,8 @@ export default function SeasonRoundsPageClient({
                     alignItems: "center",
                     gap: 14,
                     minHeight: 64,
+                    position: "relative",
+                    paddingBottom: isAdmin && status?.missing_players ? 16 : undefined,
                     WebkitTapHighlightColor: "transparent",
                   }}
                 >
@@ -394,46 +396,52 @@ export default function SeasonRoundsPageClient({
                     >
                       {roundComplete ? "COMPLETE" : locked ? "LOCKED" : "OPEN"}
                     </div>
-
-                    {/* Admin toggle button (does NOT navigate) */}
-                    {isAdmin && status?.missing_players && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          const nextOpen = openRoundId === r.id ? null : r.id;
-                          setOpenRoundId(nextOpen);
-                          if (nextOpen === r.id) {
-                            setOpenRoundTabById((prev) => ({
-                              ...prev,
-                              [r.id]: prev[r.id] ?? "missing",
-                            }));
-                            setTipListSearchByRoundId((prev) => ({
-                              ...prev,
-                              [r.id]: prev[r.id] ?? "",
-                            }));
-                          }
-                        }}
-                        className="ui-btn ui-btn--pill"
-                        aria-label={isOpen ? "Collapse tip lists" : "Expand tip lists"}
-                        title={isOpen ? "Collapse tip lists" : "Expand tip lists"}
-                        style={{
-                          minWidth: 34,
-                          width: 34,
-                          height: 34,
-                          padding: 0,
-                          display: "grid",
-                          placeItems: "center",
-                          fontSize: 18,
-                          lineHeight: 1,
-                          fontWeight: 900,
-                        }}
-                      >
-                        {isOpen ? "˅" : "^"}
-                      </button>
-                    )}
                   </div>
+
+                  {/* Admin toggle: small centered caret on bottom edge (does NOT navigate) */}
+                  {isAdmin && status?.missing_players && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const nextOpen = openRoundId === r.id ? null : r.id;
+                        setOpenRoundId(nextOpen);
+                        if (nextOpen === r.id) {
+                          setOpenRoundTabById((prev) => ({
+                            ...prev,
+                            [r.id]: prev[r.id] ?? "missing",
+                          }));
+                          setTipListSearchByRoundId((prev) => ({
+                            ...prev,
+                            [r.id]: prev[r.id] ?? "",
+                          }));
+                        }
+                      }}
+                      aria-label={isOpen ? "Collapse tip lists" : "Expand tip lists"}
+                      title={isOpen ? "Collapse tip lists" : "Expand tip lists"}
+                      style={{
+                        position: "absolute",
+                        left: "50%",
+                        bottom: 2,
+                        transform: "translateX(-50%)",
+                        width: 22,
+                        height: 12,
+                        padding: 0,
+                        margin: 0,
+                        border: "none",
+                        background: "transparent",
+                        color: "currentColor",
+                        opacity: 0.75,
+                        fontSize: 14,
+                        fontWeight: 700,
+                        lineHeight: 1,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {isOpen ? "˄" : "˅"}
+                    </button>
+                  )}
                 </Link>
 
                 {/* Admin expandable list */}

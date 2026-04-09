@@ -341,18 +341,23 @@ export default function SeasonRoundsPageClient({
               : activeList;
 
             return (
-              <div key={r.id}>
+              <div
+                key={r.id}
+                className={`ui-card ui-card-soft ${roundComplete ? "season-round-card--complete" : ""}`}
+                style={{
+                  padding: 0,
+                  overflow: "hidden",
+                }}
+              >
                 <Link
                   href={`/round/${season}/${r.round_number}`}
-                  className={`ui-card ui-card-soft ${roundComplete ? "season-round-card--complete" : ""}`}
                   style={{
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "center",
                     gap: 14,
                     minHeight: 64,
-                    position: "relative",
-                    paddingBottom: isAdmin && status?.missing_players ? 16 : undefined,
+                    padding: 14,
                     WebkitTapHighlightColor: "transparent",
                   }}
                 >
@@ -397,56 +402,75 @@ export default function SeasonRoundsPageClient({
                       {roundComplete ? "COMPLETE" : locked ? "LOCKED" : "OPEN"}
                     </div>
                   </div>
-
-                  {/* Admin toggle: small centered caret on bottom edge (does NOT navigate) */}
-                  {isAdmin && status?.missing_players && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        const nextOpen = openRoundId === r.id ? null : r.id;
-                        setOpenRoundId(nextOpen);
-                        if (nextOpen === r.id) {
-                          setOpenRoundTabById((prev) => ({
-                            ...prev,
-                            [r.id]: prev[r.id] ?? "missing",
-                          }));
-                          setTipListSearchByRoundId((prev) => ({
-                            ...prev,
-                            [r.id]: prev[r.id] ?? "",
-                          }));
-                        }
-                      }}
-                      aria-label={isOpen ? "Collapse tip lists" : "Expand tip lists"}
-                      title={isOpen ? "Collapse tip lists" : "Expand tip lists"}
-                      style={{
-                        position: "absolute",
-                        left: "50%",
-                        bottom: 2,
-                        transform: "translateX(-50%)",
-                        width: 30,
-                        height: 18,
-                        padding: 0,
-                        margin: 0,
-                        border: "none",
-                        background: "transparent",
-                        color: "currentColor",
-                        opacity: 0.85,
-                        fontSize: 18,
-                        fontWeight: 700,
-                        lineHeight: 1,
-                        cursor: "pointer",
-                      }}
-                    >
-                      {isOpen ? "˄" : "˅"}
-                    </button>
-                  )}
                 </Link>
+
+                {/* Admin toggle: full-width bottom strip (does NOT navigate) */}
+                {isAdmin && status?.missing_players && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const nextOpen = openRoundId === r.id ? null : r.id;
+                      setOpenRoundId(nextOpen);
+                      if (nextOpen === r.id) {
+                        setOpenRoundTabById((prev) => ({
+                          ...prev,
+                          [r.id]: prev[r.id] ?? "missing",
+                        }));
+                        setTipListSearchByRoundId((prev) => ({
+                          ...prev,
+                          [r.id]: prev[r.id] ?? "",
+                        }));
+                      }
+                    }}
+                    aria-label={isOpen ? "Collapse tip lists" : "Expand tip lists"}
+                    title={isOpen ? "Collapse tip lists" : "Expand tip lists"}
+                    style={{
+                      width: "100%",
+                      height: 22,
+                      padding: 0,
+                      margin: 0,
+                      border: "none",
+                      borderTop: "1px solid rgba(127,127,127,0.26)",
+                      background:
+                        "linear-gradient(180deg, rgba(127,127,127,0.04), rgba(127,127,127,0.12))",
+                      color: "currentColor",
+                      opacity: 0.9,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      lineHeight: 1,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <svg
+                      width="28"
+                      height="12"
+                      viewBox="0 0 28 12"
+                      fill="none"
+                      aria-hidden="true"
+                      style={{ opacity: 0.9 }}
+                    >
+                      <path
+                        d={isOpen ? "M4 8L14 3L24 8" : "M4 4L14 9L24 4"}
+                        stroke="currentColor"
+                        strokeWidth="2.2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </button>
+                )}
 
                 {/* Admin expandable list */}
                 {isAdmin && isOpen && status?.missing_players && (
-                  <div className="ui-card ui-card-soft" style={{ marginTop: 10 }}>
+                  <div
+                    style={{
+                      padding: "10px 14px 12px",
+                      borderTop: "1px solid rgba(127,127,127,0.18)",
+                    }}
+                  >
                     <div
                       style={{
                         display: "flex",

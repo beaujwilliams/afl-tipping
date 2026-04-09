@@ -513,6 +513,7 @@ export default function AdminOnboardingPage() {
           />
 
           <UiButtonLink href="/admin/interested-members">Interested Members</UiButtonLink>
+          <UiButtonLink href="/admin/payments">Payments</UiButtonLink>
           <UiButtonLink href="/admin/members">Members</UiButtonLink>
         </div>
       </UiCard>

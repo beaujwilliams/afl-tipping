@@ -629,6 +629,16 @@ export default function AdminPage() {
             </UiCard>
 
             <UiCard className="ui-admin-tool">
+              <div className="ui-admin-subtitle">Payments</div>
+              <div className="ui-admin-summary ui-admin-summary--tight">
+                Record transfers, match them to members, and confirm who is fully paid up.
+              </div>
+              <UiButtonLink href="/admin/payments" className="ui-admin-btn ui-admin-btn--full">
+                Open Payments
+              </UiButtonLink>
+            </UiCard>
+
+            <UiCard className="ui-admin-tool">
               <div className="ui-admin-subtitle">Interested members</div>
               <div className="ui-admin-summary ui-admin-summary--tight">
                 Keep the raw waitlist view for export, bulk email, and manual cleanup.

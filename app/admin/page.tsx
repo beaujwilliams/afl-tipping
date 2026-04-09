@@ -73,7 +73,7 @@ const AUTOMATION_STATUS_CARDS: AutomationStatusCard[] = [
   },
   {
     title: "Tip reminders",
-    detail: "Runs automatically before lock. Manual follow-up lives in Payments.",
+    detail: "Runs automatically before lock. Manual follow-up lives on the round list.",
   },
   {
     title: "Odds snapshots",

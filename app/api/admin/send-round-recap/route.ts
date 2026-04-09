@@ -448,6 +448,9 @@ export async function GET(req: Request) {
     const roundParam = url.searchParams.get("round");
     const roundFilter = roundParam === null ? null : Number(roundParam);
     const dryRun = url.searchParams.get("dry_run") === "1";
+    const saveOnly =
+      url.searchParams.get("save_only") === "1" ||
+      url.searchParams.get("send_email") === "0";
     const force = url.searchParams.get("force") === "1";
     const recipientOverrideRaw = url.searchParams.get("to_email");
     const recipientOverride = normalizeRecipientEmails(
@@ -493,12 +496,18 @@ export async function GET(req: Request) {
     const envRecipients = normalizeRecipientEmails(
       parseRecipients(process.env.ROUND_RECAP_TO_EMAIL)
     );
-    const recipients =
-      recipientOverride.length > 0 ? recipientOverride : envRecipients;
-    const recipientSource =
-      recipientOverride.length > 0 ? "to_email_query_param" : "ROUND_RECAP_TO_EMAIL";
+    const recipients = saveOnly
+      ? []
+      : recipientOverride.length > 0
+        ? recipientOverride
+        : envRecipients;
+    const recipientSource = saveOnly
+      ? "save_only"
+      : recipientOverride.length > 0
+        ? "to_email_query_param"
+        : "ROUND_RECAP_TO_EMAIL";
 
-    if (!dryRun && (!resendApiKey || !recapFromEmail || recipients.length === 0)) {
+    if (!saveOnly && !dryRun && (!resendApiKey || !recapFromEmail || recipients.length === 0)) {
       return NextResponse.json(
         {
           error: "Missing recap email env vars",
@@ -511,16 +520,18 @@ export async function GET(req: Request) {
 
     const supabase = createServiceClient();
 
-    const emailTableCheck = await supabase.from("round_recap_emails").select("id").limit(1);
-    if (emailTableCheck.error) {
-      return NextResponse.json(
-        {
-          error: "round_recap_emails table missing or inaccessible",
-          details: emailTableCheck.error.message,
-          hint: "Apply migration db/migrations/20260308_round_recap_emails.sql",
-        },
-        { status: 500 }
-      );
+    if (!saveOnly) {
+      const emailTableCheck = await supabase.from("round_recap_emails").select("id").limit(1);
+      if (emailTableCheck.error) {
+        return NextResponse.json(
+          {
+            error: "round_recap_emails table missing or inaccessible",
+            details: emailTableCheck.error.message,
+            hint: "Apply migration db/migrations/20260308_round_recap_emails.sql",
+          },
+          { status: 500 }
+        );
+      }
     }
 
     const recapTableCheck = await supabase.from("round_recaps").select("id").limit(1);
@@ -604,6 +615,11 @@ export async function GET(req: Request) {
       nowMs,
       hoursAfterFirst,
     });
+    const latestFinishedRound =
+      candidateRounds
+        .filter((x) => x.match_count > 0 && x.finished_count === x.match_count)
+        .map((x) => Number(x.row.round_number))
+        .pop() ?? null;
 
     let target: TargetRound | null = null;
 
@@ -616,6 +632,7 @@ export async function GET(req: Request) {
           round: roundFilter,
           hours_after_first: hoursAfterFirst,
           rounds_considered: candidateRounds.length,
+          latest_finished_round: latestFinishedRound,
           targeted_round: null,
           sent: 0,
           skipped_reason: "round_has_no_matches_or_invalid_times",
@@ -629,6 +646,7 @@ export async function GET(req: Request) {
           round: target.row.round_number,
           hours_after_first: hoursAfterFirst,
           rounds_considered: candidateRounds.length,
+          latest_finished_round: latestFinishedRound,
           targeted_round: target.row.round_number,
           sent: 0,
           skipped_reason: "round_not_eligible_yet",
@@ -646,6 +664,7 @@ export async function GET(req: Request) {
           season,
           hours_after_first: hoursAfterFirst,
           rounds_considered: candidateRounds.length,
+          latest_finished_round: latestFinishedRound,
           targeted_round: null,
           sent: 0,
           skipped_reason: "no_eligible_rounds",
@@ -661,6 +680,7 @@ export async function GET(req: Request) {
         season,
         hours_after_first: hoursAfterFirst,
         rounds_considered: candidateRounds.length,
+        latest_finished_round: latestFinishedRound,
         targeted_round: null,
         sent: 0,
         skipped_reason: "no_target_round",
@@ -682,42 +702,46 @@ export async function GET(req: Request) {
       });
     }
 
-    const existingQuery = await supabase
-      .from("round_recap_emails")
-      .select("recipient_email")
-      .eq("competition_id", competitionId)
-      .eq("round_id", roundId)
-      .eq("recap_type", RECAP_TYPE);
+    let recipientsToSend: string[] = [];
+    if (!saveOnly) {
+      const existingQuery = await supabase
+        .from("round_recap_emails")
+        .select("recipient_email")
+        .eq("competition_id", competitionId)
+        .eq("round_id", roundId)
+        .eq("recap_type", RECAP_TYPE);
 
-    if (existingQuery.error) {
-      return NextResponse.json(
-        { error: "Failed checking existing recap sends", details: existingQuery.error.message },
-        { status: 500 }
+      if (existingQuery.error) {
+        return NextResponse.json(
+          { error: "Failed checking existing recap sends", details: existingQuery.error.message },
+          { status: 500 }
+        );
+      }
+
+      const alreadySent = new Set<string>(
+        ((existingQuery.data ?? []) as Array<{ recipient_email: string }>).map((x) =>
+          String(x.recipient_email)
+        )
       );
-    }
 
-    const alreadySent = new Set<string>(
-      ((existingQuery.data ?? []) as Array<{ recipient_email: string }>).map((x) =>
-        String(x.recipient_email)
-      )
-    );
+      recipientsToSend = dryRun
+        ? recipients
+        : recipients.filter((email) => force || !alreadySent.has(email));
 
-    const recipientsToSend = dryRun
-      ? recipients
-      : recipients.filter((email) => force || !alreadySent.has(email));
-
-    if (recipientsToSend.length === 0) {
-      return NextResponse.json({
-        ok: true,
-        season,
-        round: roundNumber,
-        hours_after_first: hoursAfterFirst,
-        targeted_round: roundNumber,
-        sent: 0,
-        skipped_reason: "already_sent",
-        recipients_total: recipients.length,
-        recipients_skipped_existing: recipients.length,
-      });
+      if (recipientsToSend.length === 0) {
+        return NextResponse.json({
+          ok: true,
+          season,
+          round: roundNumber,
+          hours_after_first: hoursAfterFirst,
+          latest_finished_round: latestFinishedRound,
+          targeted_round: roundNumber,
+          sent: 0,
+          skipped_reason: "already_sent",
+          recipients_total: recipients.length,
+          recipients_skipped_existing: recipients.length,
+        });
+      }
     }
 
     const { data: memberships, error: memErr } = await supabase
@@ -2005,9 +2029,11 @@ export async function GET(req: Request) {
       recap_type: RECAP_TYPE,
       recipient_source: recipientSource,
       hours_after_first: hoursAfterFirst,
+      latest_finished_round: latestFinishedRound,
       targeted_round: roundNumber,
       first_game_utc: target.first_game_utc,
       due_at_utc: target.due_at_utc,
+      save_only: saveOnly,
       dry_run: dryRun,
       recap_saved: recapSaved,
       totals: {

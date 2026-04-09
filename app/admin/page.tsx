@@ -131,7 +131,7 @@ function describeRunningAction(value: string | null) {
     return "Running force snapshot...";
   }
   if (value.includes("snapshot-odds-all-due")) return "Capturing due odds snapshot...";
-  if (value.includes("send-round-recap")) return "Generating and sending round recap...";
+  if (value.includes("send-round-recap")) return "Generating round recap...";
   return `Running: ${value}`;
 }
 
@@ -160,8 +160,7 @@ function anomalyBadgeStyle(severity: "critical" | "warning" | "info"): CSSProper
 export default function AdminPage() {
   const toast = useToast();
   const [season, setSeason] = useState<number>(2026);
-  const [recapRound, setRecapRound] = useState<number>(1);
-  const [recapToEmail, setRecapToEmail] = useState<string>("");
+  const [recapRound, setRecapRound] = useState<number>(0);
   const [result, setResult] = useState<unknown>(null);
   const [loading, setLoading] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
@@ -174,20 +173,7 @@ export default function AdminPage() {
   const isRunning = loading !== null;
 
   useEffect(() => {
-    let alive = true;
-    (async () => {
-      const { data } = await supabaseBrowser.auth.getUser();
-      if (!alive) return;
-      const email = String(data.user?.email ?? "").trim();
-      if (email) setRecapToEmail(email);
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    void Promise.all([loadAutomationHealth(), loadAnomalies()]);
+    void Promise.all([loadAutomationHealth(), loadAnomalies(), loadRecapDefaultRound()]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [season]);
 
@@ -305,6 +291,40 @@ export default function AdminPage() {
       setAnomalyMsg(error instanceof Error ? error.message : "Could not load admin anomalies.");
     } finally {
       setAnomalyLoading(false);
+    }
+  }
+
+  async function loadRecapDefaultRound() {
+    try {
+      const token = await getToken();
+      if (!token) return;
+
+      const { ok, json } = await callAdmin(
+        `/api/admin/send-round-recap?season=${season}&dry_run=1&save_only=1`,
+        token
+      );
+      if (!ok || !json || typeof json !== "object") return;
+
+      const latestFinishedRound =
+        typeof (json as { latest_finished_round?: unknown }).latest_finished_round === "number"
+          ? Number((json as { latest_finished_round: number }).latest_finished_round)
+          : null;
+      const targetedRound =
+        typeof (json as { targeted_round?: unknown }).targeted_round === "number"
+          ? Number((json as { targeted_round: number }).targeted_round)
+          : null;
+
+      const nextRound = Number.isFinite(latestFinishedRound)
+        ? Math.max(0, Math.trunc(latestFinishedRound as number))
+        : Number.isFinite(targetedRound)
+          ? Math.max(0, Math.trunc(targetedRound as number))
+          : null;
+
+      if (nextRound !== null) {
+        setRecapRound(nextRound);
+      }
+    } catch {
+      // Best-effort defaulting only.
     }
   }
 
@@ -426,24 +446,50 @@ export default function AdminPage() {
     return Math.max(0, Math.trunc(parsed));
   }
 
-  function runRecapToMeNow() {
-    const toEmail = recapToEmail.trim();
-    if (!toEmail) {
-      setResult({ error: "Enter an email for recap delivery." });
-      toast.error("Enter an email for recap delivery.");
-      return;
-    }
+  async function runRecapAndOpenArchive() {
     const round = Math.trunc(recapRound);
     if (!Number.isFinite(round) || round < 0) {
       setResult({ error: "Recap round must be 0 or higher." });
       toast.error("Recap round must be 0 or higher.");
       return;
     }
-    run(
-      `/api/admin/send-round-recap?season=${season}&round=${round}&force=1&to_email=${encodeURIComponent(
-        toEmail
-      )}`
-    );
+
+    try {
+      const path = `/api/admin/send-round-recap?season=${season}&round=${round}&force=1&save_only=1`;
+      setLoading(path);
+      setResult(null);
+
+      const token = await getToken();
+      if (!token) {
+        setResult({ error: "Not authenticated." });
+        toast.error("Not authenticated. Please sign in again.");
+        return;
+      }
+
+      const { ok, status, json } = await callAdmin(path, token);
+      setResult(json);
+
+      if (!ok) {
+        const message =
+          (json &&
+          typeof json === "object" &&
+          typeof (json as { error?: unknown }).error === "string"
+            ? (json as { error?: string }).error
+            : null) ?? `Request failed (${status}).`;
+        toast.error(message);
+        return;
+      }
+
+      toast.success("Round recap generated.");
+      window.location.href = "/admin/recaps";
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      setResult({ error: message });
+      toast.error(message);
+    } finally {
+      setLoading(null);
+      void Promise.all([loadAutomationHealth(), loadAnomalies()]);
+    }
   }
 
   function runForceSnapshotNow() {
@@ -639,14 +685,14 @@ export default function AdminPage() {
         <UiCard soft className="ui-admin-section">
           <h2 className="ui-admin-section-title">Communications</h2>
           <div className="ui-admin-summary">
-            Recap send and recap history.
+            Recap generation and recap history.
           </div>
 
           <div className="ui-admin-two-col">
             <UiCard className="ui-admin-tool">
               <div className="ui-admin-subtitle">Round recap</div>
               <div className="ui-admin-summary ui-admin-summary--tight">
-                Generate the recap and email it to yourself.
+                Generate round recap and open recap archive.
               </div>
               <div className="ui-admin-stack">
                 <div className="ui-row-wrap ui-admin-gap-sm ui-admin-form-row">
@@ -660,34 +706,17 @@ export default function AdminPage() {
                     className="ui-input ui-admin-input-round"
                   />
                 </div>
-                <div className="ui-row-wrap ui-admin-gap-sm ui-admin-form-row">
-                  <label className="ui-admin-label ui-admin-label-email">Send to</label>
-                  <input
-                    type="email"
-                    value={recapToEmail}
-                    onChange={(e) => setRecapToEmail(e.target.value)}
-                    placeholder="you@example.com"
-                    className="ui-input ui-admin-input-email"
-                  />
+                <div className="ui-admin-summary ui-admin-summary--tight">
+                  Defaults to the latest finished round for this season.
                 </div>
                 <UiButton
                   disabled={isRunning}
-                  onClick={runRecapToMeNow}
+                  onClick={() => void runRecapAndOpenArchive()}
                   className="ui-admin-btn ui-admin-btn--full"
                 >
-                  Send recap to me
+                  Generate Round Recap + Open Archive
                 </UiButton>
               </div>
-            </UiCard>
-
-            <UiCard className="ui-admin-tool">
-              <div className="ui-admin-subtitle">Recap archive</div>
-              <div className="ui-admin-summary ui-admin-summary--tight">
-                View saved recap history.
-              </div>
-              <UiButtonLink href="/admin/recaps" className="ui-admin-btn ui-admin-btn--full">
-                Open Recap Archive
-              </UiButtonLink>
             </UiCard>
           </div>
         </UiCard>

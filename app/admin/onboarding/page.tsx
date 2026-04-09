@@ -82,6 +82,15 @@ type OnboardingPatchResponse = {
   details?: string;
 };
 
+type OnboardingInviteResponse = {
+  ok?: boolean;
+  row?: Partial<OnboardingRow> | null;
+  invite_status?: string;
+  provider_message_id?: string | null;
+  error?: string;
+  details?: string;
+};
+
 type RowDraft = {
   pipeline_stage: OnboardingPipelineStage;
   notes: string;
@@ -174,6 +183,7 @@ export default function AdminOnboardingPage() {
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [linkingId, setLinkingId] = useState<string | null>(null);
+  const [invitingId, setInvitingId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState<StageFilter>("needs_action");
   const [msg, setMsg] = useState("");
@@ -357,6 +367,31 @@ export default function AdminOnboardingPage() {
     }
   }
 
+  async function sendInvite(row: OnboardingRow) {
+    setInvitingId(row.id);
+    try {
+      const res = await fetch(`/api/admin/onboarding/${encodeURIComponent(row.id)}/invite`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${sessionToken}`,
+        },
+      });
+
+      const json = (await res.json().catch(() => null)) as OnboardingInviteResponse | null;
+      if (!res.ok || !json?.ok) {
+        const detail = json?.details ? `: ${json.details}` : "";
+        throw new Error((json?.error ?? "Failed to send invite") + detail);
+      }
+
+      await load(season);
+      toast.success(row.status === "notified" || row.pipeline_stage === "invited" ? "Invite resent." : "Invite sent.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to send invite");
+    } finally {
+      setInvitingId(null);
+    }
+  }
+
   const filteredRows = useMemo(() => {
     const needle = search.trim().toLowerCase();
     return [...rows]
@@ -521,6 +556,15 @@ export default function AdminOnboardingPage() {
                     archived_reason: row.archived_reason ?? "",
                   };
                   const linked = !!row.linked_member;
+                  const canInvite =
+                    !linked &&
+                    row.status !== "unsubscribed" &&
+                    row.pipeline_stage !== "archived" &&
+                    !row.archived_at_utc;
+                  const inviteLabel =
+                    row.status === "notified" || row.pipeline_stage === "invited"
+                      ? "Resend invite"
+                      : "Invite now";
                   const dirty =
                     draft.pipeline_stage !== row.pipeline_stage ||
                     draft.notes !== (row.notes ?? "") ||
@@ -672,16 +716,25 @@ export default function AdminOnboardingPage() {
 
                           {!linked && nextSuggestedOnboardingStage(row.pipeline_stage) && (
                             <UiButton
-                              disabled={savingId === row.id || linkingId === row.id}
+                              disabled={savingId === row.id || linkingId === row.id || invitingId === row.id}
                               onClick={() => void advanceRow(row)}
                             >
                               Advance
                             </UiButton>
                           )}
 
+                          {canInvite && (
+                            <UiButton
+                              disabled={savingId === row.id || linkingId === row.id || invitingId === row.id}
+                              onClick={() => void sendInvite(row)}
+                            >
+                              {invitingId === row.id ? "Sending..." : inviteLabel}
+                            </UiButton>
+                          )}
+
                           {!linked && row.suggested_link_member && (
                             <UiButton
-                              disabled={savingId === row.id || linkingId === row.id}
+                              disabled={savingId === row.id || linkingId === row.id || invitingId === row.id}
                               onClick={() => void linkSuggestedMember(row)}
                             >
                               {linkingId === row.id ? "Linking..." : "Link suggested member"}
@@ -691,7 +744,7 @@ export default function AdminOnboardingPage() {
                           {linked && (
                             <UiButton
                               tone="dangerSoft"
-                              disabled={savingId === row.id || linkingId === row.id}
+                              disabled={savingId === row.id || linkingId === row.id || invitingId === row.id}
                               onClick={() => void unlinkMember(row)}
                             >
                               {linkingId === row.id ? "Unlinking..." : "Unlink member"}

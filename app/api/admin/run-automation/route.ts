@@ -34,7 +34,7 @@ export async function GET(req: Request) {
     gate.mode === "cron" ? `&secret=${encodeURIComponent(gate.secret)}` : "";
 
   const prelock_reminders = await call(
-    `/api/admin/send-prelock-reminders?season=${season}&hours_before_lock=3&window_minutes=10&window_direction=before${secretQS}`
+    `/api/admin/send-prelock-reminders?season=${season}&hours_before_lock=4&window_minutes=10&window_direction=before${secretQS}`
   );
 
   const snapshot_next_due = await call(

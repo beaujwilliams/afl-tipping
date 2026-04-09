@@ -6,10 +6,9 @@ import {
 } from "@/lib/admin-auth";
 import { invalidateRoundTipStatusCache } from "@/lib/round-tip-status-data";
 const DEFAULT_SEASON = 2026;
-const DEFAULT_REMINDER_HOURS = 3;
+const DEFAULT_REMINDER_HOURS = 4;
 const DEFAULT_WINDOW_MINUTES = 10;
 const DEFAULT_WINDOW_DIRECTION = "before";
-const REMINDER_TYPE = "missing_tips_3h";
 const RESEND_RATE_LIMIT_RETRY_ATTEMPTS = 3;
 const MIN_SEND_SPACING_MS = 1100;
 const FORCE_RESEND_WITHIN_MINUTES = 60;
@@ -77,6 +76,11 @@ function safeDisplayName(name: string | null | undefined, userId: string) {
   const n = String(name ?? "").trim();
   if (n) return n;
   return `${userId.slice(0, 8)}...`;
+}
+
+function reminderTypeForHours(hoursBeforeLock: number) {
+  if (Number.isInteger(hoursBeforeLock)) return `missing_tips_${hoursBeforeLock}h`;
+  return `missing_tips_${String(hoursBeforeLock).replace(".", "_")}h`;
 }
 
 function isMissingColumnError(message: string, columnName: string) {
@@ -357,6 +361,7 @@ export async function GET(req: Request) {
         { status: 400 }
       );
     }
+    const reminderType = reminderTypeForHours(reminderHours);
 
     if (!Number.isFinite(windowMinutes) || windowMinutes < 0) {
       return NextResponse.json(
@@ -637,7 +642,7 @@ export async function GET(req: Request) {
         .select("user_id")
         .eq("competition_id", competitionId)
         .eq("round_id", r.id)
-        .eq("reminder_type", REMINDER_TYPE)
+        .eq("reminder_type", reminderType)
         .in("user_id", missingMemberIds)
         .eq("status", "sent");
 
@@ -777,7 +782,7 @@ export async function GET(req: Request) {
             round_number: r.round_number,
             user_id: userId,
             email: toEmail,
-            reminder_type: REMINDER_TYPE,
+            reminder_type: reminderType,
             lock_time_utc: r.lock_time_utc,
             status: sendResult.status,
             provider: sendResult.provider,
@@ -853,7 +858,7 @@ export async function GET(req: Request) {
     return NextResponse.json({
       ok: roundErrors.length === 0,
       season,
-      reminder_type: REMINDER_TYPE,
+      reminder_type: reminderType,
       reminder_hours_before_lock: reminderHours,
       reminder_window_minutes: windowMinutes,
       reminder_window_direction: windowDirection,

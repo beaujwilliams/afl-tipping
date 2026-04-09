@@ -136,12 +136,7 @@ export default function SeasonRoundsPageClient({
     setReminderStatusByRoundId((prev) => ({ ...prev, [roundId]: text }));
   }
 
-  async function sendRoundReminders(
-    roundId: string,
-    roundNumber: number,
-    opts?: { forceResend?: boolean }
-  ) {
-    const forceResend = Boolean(opts?.forceResend);
+  async function sendRoundReminders(roundId: string, roundNumber: number) {
     const { data } = await supabaseBrowser.auth.getSession();
     const sessionToken = data.session?.access_token ?? null;
     if (!sessionToken) {
@@ -151,25 +146,18 @@ export default function SeasonRoundsPageClient({
     }
 
     const ok = confirm(
-      forceResend
-        ? `Force resend reminder emails now for Round ${roundNumber} to all currently missing tipsters?`
-        : `Send reminder emails now for Round ${roundNumber}?`
+      `Send reminder emails now for Round ${roundNumber}? This will resend to all currently missing tipsters.`
     );
     if (!ok) return;
 
     setReminderRunningRoundId(roundId);
-    setRoundReminderStatus(
-      roundId,
-      forceResend ? "Force sending reminders…" : "Sending reminders…"
-    );
+    setRoundReminderStatus(roundId, "Sending reminders…");
 
     try {
       const res = await fetch(
         `/api/admin/send-prelock-reminders?season=${encodeURIComponent(
           String(season)
-        )}&round=${encodeURIComponent(String(roundNumber))}&force=1${
-          forceResend ? "&force_resend=1" : ""
-        }`,
+        )}&round=${encodeURIComponent(String(roundNumber))}&force=1&force_resend=1`,
         {
           method: "GET",
           headers: {
@@ -208,10 +196,7 @@ export default function SeasonRoundsPageClient({
 
       const summary = `Sent ${row.sent}. Already reminded ${row.already_reminded}. No email ${row.no_email}. Failed ${row.failed}.`;
       setRoundReminderStatus(roundId, summary);
-      toast.info(
-        `Round ${roundNumber} ${forceResend ? "forced reminders" : "reminders"}: ${summary}`,
-        { durationMs: 5200 }
-      );
+      toast.info(`Round ${roundNumber} reminders: ${summary}`, { durationMs: 5200 });
     } catch {
       setRoundReminderStatus(roundId, "Reminder request failed.");
       toast.error("Reminder request failed.");
@@ -455,7 +440,7 @@ export default function SeasonRoundsPageClient({
                       <path
                         d={isOpen ? "M4 8L14 3L24 8" : "M4 4L14 9L24 4"}
                         stroke="currentColor"
-                        strokeWidth="2.2"
+                        strokeWidth="1.6"
                         strokeLinecap="round"
                         strokeLinejoin="round"
                       />
@@ -530,21 +515,6 @@ export default function SeasonRoundsPageClient({
                           className="ui-btn ui-btn--pill ui-btn--danger-soft"
                         >
                           {reminderRunningRoundId === r.id ? "Sending…" : "Send reminders"}
-                        </button>
-                      )}
-
-                      {openTab === "missing" && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            sendRoundReminders(r.id, r.round_number, { forceResend: true })
-                          }
-                          disabled={reminderRunningRoundId === r.id || missingPlayers.length === 0}
-                          className="ui-btn ui-btn--pill ui-btn--danger-soft"
-                        >
-                          {reminderRunningRoundId === r.id
-                            ? "Sending…"
-                            : "Send forced reminders"}
                         </button>
                       )}
                     </div>

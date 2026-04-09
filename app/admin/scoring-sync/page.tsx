@@ -68,7 +68,7 @@ export default function ScoringSyncLogPage() {
   const [season, setSeason] = useState<number>(2026);
   const [runTypeFilter, setRunTypeFilter] = useState<RunTypeFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [updatedScoresFilter, setUpdatedScoresFilter] = useState<YesNoFilter>("all");
+  const [updatedScoresFilter, setUpdatedScoresFilter] = useState<YesNoFilter>("yes");
   const [leaderboardFilter, setLeaderboardFilter] = useState<YesNoFilter>("all");
   const [status, setStatus] = useState<string>("Checking login...");
   const [loading, setLoading] = useState<boolean>(false);
@@ -197,7 +197,7 @@ export default function ScoringSyncLogPage() {
       {status && <p style={{ marginTop: 12 }}>{status}</p>}
 
       {!status && (
-        <>
+        <div className="ui-admin-stack">
           <UiCard soft className="ui-admin-section">
             <div className="ui-row-wrap" style={{ justifyContent: "space-between", gap: 10 }}>
                 <div style={{ display: "grid", gap: 6 }}>
@@ -329,7 +329,7 @@ export default function ScoringSyncLogPage() {
               </UiTableShell>
             )}
           </UiCard>
-        </>
+        </div>
       )}
     </main>
   );

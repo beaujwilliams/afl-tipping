@@ -696,18 +696,16 @@ export default function AdminPage() {
           id="admin-maintenance"
           className="ui-card ui-card-soft ui-admin-section ui-admin-section--wide ui-admin-details"
         >
-          <summary className="ui-admin-details-summary">
-            Diagnostics, Maintenance &amp; Recovery
-          </summary>
+          <summary className="ui-admin-details-summary">Diagnostics &amp; Recovery</summary>
           <div className="ui-admin-summary">
-            Logs, raw queues, and manual recovery tools.
+            Logs, raw queues, and manual tools.
           </div>
 
           <div className="ui-admin-subtitle" style={{ marginTop: 14 }}>
-            Diagnostics &amp; raw views
+            Diagnostics
           </div>
           <div className="ui-admin-summary ui-admin-summary--tight" style={{ marginTop: 4 }}>
-            Detailed logs and raw queues.
+            Logs and raw views.
           </div>
 
           <div className="ui-admin-maintenance-grid" style={{ marginTop: 12 }}>
@@ -739,9 +737,6 @@ export default function AdminPage() {
                   : healthData?.healthy === false
                     ? `${healthFailureCount} failed automation run${healthFailureCount === 1 ? "" : "s"} found in the last ${healthData?.failure_window_hours ?? 72} hours.`
                     : `No failed automation runs found in the last ${healthData?.failure_window_hours ?? 72} hours.`}
-              </div>
-              <div className="ui-caption">
-                Latest runs, recent failures, and raw details.
               </div>
               {healthWarning && (
                 <div
@@ -808,33 +803,18 @@ export default function AdminPage() {
             </UiCard>
           </div>
 
-          <div className="ui-admin-automation-list" style={{ marginTop: 14 }}>
-            <div className="ui-admin-automation-item">
-              <div className="ui-admin-automation-title">What runs automatically now</div>
-              <div className="ui-admin-summary ui-admin-summary--tight">
-                Scoring checks, reminders, and due-round snapshots run automatically.
-              </div>
-            </div>
-            <div className="ui-admin-automation-item">
-              <div className="ui-admin-automation-title">Good first check when something feels off</div>
-              <div className="ui-admin-summary ui-admin-summary--tight">
-                Start with the inbox, then check scoring or automation health.
-              </div>
-            </div>
-          </div>
-
           <div className="ui-admin-subtitle" style={{ marginTop: 16 }}>
-            Manual recovery tools
+            Recovery
           </div>
           <div className="ui-admin-summary ui-admin-summary--tight" style={{ marginTop: 4 }}>
-            Low-use actions for recovery, backfills, or testing.
+            Manual actions for recovery, backfills, or testing.
           </div>
 
           <div className="ui-admin-maintenance-grid" style={{ marginTop: 12 }}>
             <UiCard className="ui-admin-tool">
               <div className="ui-admin-subtitle">Fast recovery</div>
               <div className="ui-admin-summary ui-admin-summary--tight">
-                Run the full recovery flow in one go.
+                Run the full recovery flow.
               </div>
               <UiButton
                 disabled={isRunning}
@@ -848,7 +828,7 @@ export default function AdminPage() {
             <UiCard className="ui-admin-tool">
               <div className="ui-admin-subtitle">Manual scoring steps</div>
               <div className="ui-admin-summary ui-admin-summary--tight">
-                Run single steps only when you do not need the full recovery flow.
+                Run single steps only when needed.
               </div>
               <div className="ui-row-wrap ui-admin-gap-sm">
                 <UiButton
@@ -895,7 +875,7 @@ export default function AdminPage() {
 
             <UiCard className="ui-admin-tool">
               <div className="ui-row-wrap" style={{ justifyContent: "space-between", gap: 8 }}>
-                <div className="ui-admin-subtitle">Testing / force snapshot</div>
+                <div className="ui-admin-subtitle">Force snapshot</div>
                 <span className="ui-admin-danger-chip">Rare use</span>
               </div>
               <div className="ui-admin-summary ui-admin-summary--tight">
@@ -912,9 +892,6 @@ export default function AdminPage() {
             </UiCard>
           </div>
 
-          <div className="ui-admin-maintenance-note">
-            Normal path: inbox first, diagnostics second, recovery last.
-          </div>
         </details>
       </div>
 

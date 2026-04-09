@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useChatActivity } from "@/components/ChatActivityProvider";
 import { UiBadge, UiButtonLink, UiCard, UiCardGrid, UiSectionHeader } from "@/components/ui";
+import { getRoundDisplayName } from "@/lib/round-label";
 
 const CURRENT_SEASON = 2026;
 const LIVE_SIGNAL_GRACE_MS = 6 * 60 * 60 * 1000;
@@ -233,7 +234,7 @@ export default function HomePageClient({
     if (primaryTipRound && !primaryRoundLocked && primaryTipsLeft > 0) {
       items.push({
         id: "missing-tips",
-        title: `Finish Round ${primaryTipRound.round_number}`,
+        title: `Finish ${getRoundDisplayName(primaryTipRound.round_number)}`,
         detail: `${primaryTipsLeft} ${pluralize(primaryTipsLeft, "tip", "tips")} left before ${fmtMelbourneShort(primaryTipRound.lock_time_utc)}.`,
         href: `/round/${CURRENT_SEASON}/${primaryTipRound.round_number}`,
         cta: "Finish tipping",
@@ -289,9 +290,9 @@ export default function HomePageClient({
         tone: "info" as const,
         title: "Round update",
         lines: [
-          `Round ${liveRound.round_number} is locked.`,
+          `${getRoundDisplayName(liveRound.round_number)} is locked.`,
           nextOpenRound
-            ? `Round ${nextOpenRound.round_number} tips are due by ${fmtMelbourneShort(nextOpenRound.lock_time_utc)}.`
+            ? `${getRoundDisplayName(nextOpenRound.round_number)} tips are due by ${fmtMelbourneShort(nextOpenRound.lock_time_utc)}.`
             : "The next round tips are now due.",
         ],
       };
@@ -327,11 +328,11 @@ export default function HomePageClient({
 
             <div className="dashboard-hero-title">
               {liveRound
-                ? `Round ${liveRound.round_number} is live`
+                ? `${getRoundDisplayName(liveRound.round_number)} is live`
                 : primaryTipRound && !primaryRoundLocked
-                ? `Round ${primaryTipRound.round_number} closes in ${primaryRoundCountdown}.`
+                ? `${getRoundDisplayName(primaryTipRound.round_number)} closes in ${primaryRoundCountdown}.`
                 : primaryTipRound
-                ? `Round ${primaryTipRound.round_number} is locked.`
+                ? `${getRoundDisplayName(primaryTipRound.round_number)} is locked.`
                 : "No round loaded."}
             </div>
 
@@ -364,7 +365,7 @@ export default function HomePageClient({
                     <div className="ui-kicker">Your round score</div>
                     <div className="ui-value">{me ? fmtPts(me.round_score) : "-"}</div>
                     <div className="ui-meta">
-                      Live round {liveRound.round_number} points so far
+                      Live {getRoundDisplayName(liveRound.round_number)} points so far
                     </div>
                   </UiCard>
                   <UiCard className="dashboard-mini-card">
@@ -409,7 +410,7 @@ export default function HomePageClient({
                       <div className="ui-value">{primaryTipsEntered}/{primaryTipsPossible || 0}</div>
                       <div className="ui-meta">
                         {primaryTipRound
-                          ? `${primaryTipsLeft} ${pluralize(primaryTipsLeft, "tip", "tips")} left for Round ${primaryTipRound.round_number}`
+                          ? `${primaryTipsLeft} ${pluralize(primaryTipsLeft, "tip", "tips")} left for ${getRoundDisplayName(primaryTipRound.round_number)}`
                           : "Nothing due"}
                       </div>
                     </UiCard>
@@ -434,7 +435,7 @@ export default function HomePageClient({
               )}
               {!lockedRoundStillLive && latestCompletedRound && (
                 <UiButtonLink href={`/results/${CURRENT_SEASON}/${latestCompletedRound.round_number}`}>
-                  View Round {latestCompletedRound.round_number} results
+                  View {getRoundDisplayName(latestCompletedRound.round_number)} results
                 </UiButtonLink>
               )}
               <UiButtonLink href={`/leaderboard/${CURRENT_SEASON}`}>View leaderboard</UiButtonLink>

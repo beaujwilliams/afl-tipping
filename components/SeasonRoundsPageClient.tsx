@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useToast } from "@/components/ToastProvider";
 import { UnpaidTag } from "@/components/UnpaidTag";
 import { ChampionSeasonLabels } from "@/components/ChampionSeasonLabels";
+import { getRoundDisplayName } from "@/lib/round-label";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { UiButtonLink, UiCard } from "@/components/ui";
 
@@ -261,7 +262,9 @@ export default function SeasonRoundsPageClient({
       {!msg && hasRows && currentRound && (
         <UiCard soft className="ui-row-between ui-mt-4">
           <div className="ui-grid" style={{ gap: 6 }}>
-            <div className="ui-title--section">Current round: Round {currentRound.round_number}</div>
+            <div className="ui-title--section">
+              Current round: {getRoundDisplayName(currentRound.round_number)}
+            </div>
             <div className="ui-meta">
               {currentRoundLocked
                 ? `Locked ${fmtMelbourneShort(currentRound.lock_time_utc)}`
@@ -351,7 +354,7 @@ export default function SeasonRoundsPageClient({
                       className="season-round-card__title"
                       style={{ fontWeight: 950, fontSize: 18, letterSpacing: -0.2 }}
                     >
-                      Round {r.round_number}
+                      {getRoundDisplayName(r.round_number)}
                     </div>
 
                     <div className="season-round-card__meta" style={{ opacity: 0.75, fontSize: 12 }}>
@@ -467,7 +470,7 @@ export default function SeasonRoundsPageClient({
                       }}
                     >
                       <div style={{ fontWeight: 900, opacity: 0.95 }}>
-                        Round {r.round_number} tip lists
+                        {getRoundDisplayName(r.round_number)} tip lists
                       </div>
                     </div>
 

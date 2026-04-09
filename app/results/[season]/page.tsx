@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { UiBadge, UiCard, UiSectionHeader } from "@/components/ui";
 import { resolveCompetitionIdForSeason } from "@/lib/competition-resolver";
+import { getRoundDisplayName } from "@/lib/round-label";
 import { getRoundTipStatusResponse } from "@/lib/round-tip-status-data";
 import { createClient, createServiceClient } from "@/lib/supabase-server";
 
@@ -136,7 +137,7 @@ export default async function SeasonResultsPage(props: SeasonResultsPageProps) {
                 <UiCard soft className="ui-row-between" style={{ minHeight: 68, padding: "14px 14px" }}>
                   <div className="ui-grid" style={{ gap: 6 }}>
                     <div style={{ fontWeight: 950, fontSize: 18, letterSpacing: -0.2 }}>
-                      Round {row.round_number}
+                      {getRoundDisplayName(row.round_number)}
                     </div>
 
                     <div style={{ opacity: 0.75, fontSize: 12 }}>

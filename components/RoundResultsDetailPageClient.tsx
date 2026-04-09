@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ChampionSeasonLabels } from "@/components/ChampionSeasonLabels";
 import { UnpaidTag } from "@/components/UnpaidTag";
 import { normalizeChampionSeasonsByUserId } from "@/lib/champion-metadata";
+import { getRoundDisplayName } from "@/lib/round-label";
 import { waitForSession } from "@/lib/session-client";
 import type {
   MatchResultRow,
@@ -675,7 +676,7 @@ export default function RoundResultsDetailPageClient({
       <div className="ui-row-between-start">
         <div>
           <h1 className="ui-title--section" style={{ margin: 0, fontSize: 30, letterSpacing: -0.4 }}>
-            Round {round} Results
+            {getRoundDisplayName(round)} Results
           </h1>
           <div className="ui-caption ui-mt-2">
             Season {season} • {lockTimeUtc ? `Locked ${formatMelbourne(lockTimeUtc)}` : "Lock time unavailable"}
@@ -1387,7 +1388,7 @@ export default function RoundResultsDetailPageClient({
 
               {!recapLoading && !recapError && !roundRecap && (
                 <div style={{ marginTop: 8, opacity: 0.75, fontSize: 13 }}>
-                  No generated recap found for Round {round}.
+                  No generated recap found for {getRoundDisplayName(round)}.
                 </div>
               )}
 

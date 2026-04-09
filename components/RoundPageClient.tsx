@@ -13,6 +13,7 @@ import {
   buildRoundPageOddsMap,
   normalizeRoundPagePaymentStatus,
 } from "@/lib/round-page-rules";
+import { getRoundDisplayName } from "@/lib/round-label";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { UiSkeleton } from "@/components/ui";
 
@@ -541,7 +542,7 @@ export default function RoundPageClient({
   return (
     <main className="ui-page ui-page--content">
       <h1 className="ui-title">
-        Round {round} • {season}
+        {getRoundDisplayName(round)} • {season}
       </h1>
 
       {showRoundSkeleton && <RoundLoadingSkeleton />}

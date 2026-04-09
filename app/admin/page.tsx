@@ -73,7 +73,7 @@ const AUTOMATION_STATUS_CARDS: AutomationStatusCard[] = [
   },
   {
     title: "Tip reminders",
-    detail: "Run automatically before lock. Manual reminder sends stay in round tip lists, not here.",
+    detail: "Run automatically before lock. Manual follow-up lives with people and payments.",
   },
   {
     title: "Odds snapshots",
@@ -81,7 +81,7 @@ const AUTOMATION_STATUS_CARDS: AutomationStatusCard[] = [
   },
   {
     title: "Manual recovery",
-    detail: "Still available, but pushed to Maintenance so it stays low-focus during normal weeks.",
+    detail: "Logs, raw queues, and recovery tools stay tucked away unless something genuinely needs help.",
   },
 ];
 
@@ -472,8 +472,8 @@ export default function AdminPage() {
       <div className="ui-page-header">
         <h1 className="ui-title">Admin Centre</h1>
         <div className="ui-caption">
-          Automation now handles most of the routine work. This page keeps the common checks and
-          actions simple, and tucks manual recovery tools away at the back.
+          Automation now handles most routine work. This page keeps the in-season jobs close, and
+          pushes diagnostics and recovery into the background until you actually need them.
         </div>
       </div>
 
@@ -498,7 +498,7 @@ export default function AdminPage() {
               <h2 className="ui-admin-hero-title">Step in only when the comp needs help.</h2>
               <div className="ui-admin-summary">
                 The everyday jobs now run in the background. For most weeks, the only things you
-                should need here are members, recap, and the scoring log.
+                should need here are roster, payments, and recap.
               </div>
             </div>
 
@@ -516,10 +516,10 @@ export default function AdminPage() {
         <UiCard soft className="ui-admin-section ui-admin-section--wide">
           <div className="ui-row-wrap" style={{ justifyContent: "space-between", gap: 10 }}>
             <div>
-              <h2 className="ui-admin-section-title">Needs attention</h2>
+              <h2 className="ui-admin-section-title">Today</h2>
               <div className="ui-admin-summary ui-admin-summary--tight">
-                A short action list generated from automation health, round state, members, recaps,
-                and growth queues.
+                Start here. If something needs action right now, it should show up below before you
+                need to dig through other admin pages.
               </div>
             </div>
             <span
@@ -552,8 +552,8 @@ export default function AdminPage() {
             <UiCard className="ui-admin-tool">
               <div className="ui-admin-subtitle">Nothing urgent right now</div>
               <div className="ui-admin-summary ui-admin-summary--tight">
-                No current anomalies were detected for this season. Use the logs below if you want
-                to inspect recent activity anyway.
+                No current anomalies were detected for this season. If you still want the detailed
+                logs, they are tucked into Diagnostics below.
               </div>
             </UiCard>
           ) : (
@@ -601,37 +601,28 @@ export default function AdminPage() {
         </UiCard>
 
         <UiCard soft className="ui-admin-section">
-          <h2 className="ui-admin-section-title">Members &amp; Settings</h2>
+          <h2 className="ui-admin-section-title">People &amp; Money</h2>
           <div className="ui-admin-summary">
-            Payment state, unpaid tip lock, reigning champions, and next-season interest all live
-            here.
+            Your in-season people workflow starts with roster and settings, then payments, then
+            onboarding only when you need to follow up someone new.
           </div>
 
           <div className="ui-admin-two-col">
             <UiCard className="ui-admin-tool">
-              <div className="ui-admin-subtitle">Onboarding pipeline</div>
+              <div className="ui-admin-subtitle">Roster &amp; season settings</div>
               <div className="ui-admin-summary ui-admin-summary--tight">
-                Track people from next-season interest through joining and payment readiness.
-              </div>
-              <UiButtonLink href="/admin/onboarding" className="ui-admin-btn ui-admin-btn--full">
-                Open Onboarding
-              </UiButtonLink>
-            </UiCard>
-
-            <UiCard className="ui-admin-tool">
-              <div className="ui-admin-subtitle">Members</div>
-              <div className="ui-admin-summary ui-admin-summary--tight">
-                Manage payment status, roles, test accounts, and season winner selections.
+                Manage roles, payment state, unpaid tip lock, test accounts, and season winner
+                setup.
               </div>
               <UiButtonLink href="/admin/members" className="ui-admin-btn ui-admin-btn--full">
-                Open Members
+                Open Roster &amp; Settings
               </UiButtonLink>
             </UiCard>
 
             <UiCard className="ui-admin-tool">
               <div className="ui-admin-subtitle">Payments</div>
               <div className="ui-admin-summary ui-admin-summary--tight">
-                Record transfers, match them to members, and confirm who is fully paid up.
+                Record transfers, reconcile them to members, and run payment follow-up when needed.
               </div>
               <UiButtonLink href="/admin/payments" className="ui-admin-btn ui-admin-btn--full">
                 Open Payments
@@ -639,15 +630,12 @@ export default function AdminPage() {
             </UiCard>
 
             <UiCard className="ui-admin-tool">
-              <div className="ui-admin-subtitle">Interested members</div>
+              <div className="ui-admin-subtitle">Onboarding</div>
               <div className="ui-admin-summary ui-admin-summary--tight">
-                Keep the raw waitlist view for export, bulk email, and manual cleanup.
+                Track people from next-season interest through joining and payment readiness.
               </div>
-              <UiButtonLink
-                href="/admin/interested-members"
-                className="ui-admin-btn ui-admin-btn--full"
-              >
-                Interested Members ({NEXT_SEASON})
+              <UiButtonLink href="/admin/onboarding" className="ui-admin-btn ui-admin-btn--full">
+                Open Onboarding
               </UiButtonLink>
             </UiCard>
           </div>
@@ -656,38 +644,38 @@ export default function AdminPage() {
         <UiCard soft className="ui-admin-section">
           <h2 className="ui-admin-section-title">Communications</h2>
           <div className="ui-admin-summary">
-            Keep the one common manual comms action close: generate the round recap and send it to
-            yourself.
+            Keep the common in-season comms flow close: generate the round recap for yourself and
+            jump into recap history when you need context.
           </div>
 
-          <UiCard className="ui-admin-tool">
-            <div className="ui-admin-subtitle">Round recap</div>
-            <div className="ui-admin-summary ui-admin-summary--tight">
-              Generate a round recap now and email it directly to you.
-            </div>
-            <div className="ui-admin-stack">
-              <div className="ui-row-wrap ui-admin-gap-sm ui-admin-form-row">
-                <label className="ui-admin-label">Round</label>
-                <input
-                  type="number"
-                  min={0}
-                  value={recapRound}
-                  onChange={(e) => setRecapRound(parseMinRound(e.target.value))}
-                  onBlur={() => setRecapRound((prev) => Math.max(0, Math.trunc(prev)))}
-                  className="ui-input ui-admin-input-round"
-                />
+          <div className="ui-admin-two-col">
+            <UiCard className="ui-admin-tool">
+              <div className="ui-admin-subtitle">Round recap</div>
+              <div className="ui-admin-summary ui-admin-summary--tight">
+                Generate a round recap now and email it directly to yourself.
               </div>
-              <div className="ui-row-wrap ui-admin-gap-sm ui-admin-form-row">
-                <label className="ui-admin-label ui-admin-label-email">Send to</label>
-                <input
-                  type="email"
-                  value={recapToEmail}
-                  onChange={(e) => setRecapToEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  className="ui-input ui-admin-input-email"
-                />
-              </div>
-              <div className="ui-admin-two-col">
+              <div className="ui-admin-stack">
+                <div className="ui-row-wrap ui-admin-gap-sm ui-admin-form-row">
+                  <label className="ui-admin-label">Round</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={recapRound}
+                    onChange={(e) => setRecapRound(parseMinRound(e.target.value))}
+                    onBlur={() => setRecapRound((prev) => Math.max(0, Math.trunc(prev)))}
+                    className="ui-input ui-admin-input-round"
+                  />
+                </div>
+                <div className="ui-row-wrap ui-admin-gap-sm ui-admin-form-row">
+                  <label className="ui-admin-label ui-admin-label-email">Send to</label>
+                  <input
+                    type="email"
+                    value={recapToEmail}
+                    onChange={(e) => setRecapToEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    className="ui-input ui-admin-input-email"
+                  />
+                </div>
                 <UiButton
                   disabled={isRunning}
                   onClick={runRecapToMeNow}
@@ -695,132 +683,19 @@ export default function AdminPage() {
                 >
                   Generate Round Recap + Send To Me
                 </UiButton>
-                <UiButtonLink href="/admin/recaps" className="ui-admin-btn ui-admin-btn--full">
-                  View Recap History
-                </UiButtonLink>
               </div>
-            </div>
-          </UiCard>
-        </UiCard>
+            </UiCard>
 
-        <UiCard soft className="ui-admin-section">
-          <h2 className="ui-admin-section-title">Logs &amp; Visibility</h2>
-          <div className="ui-admin-summary">
-            If anything looks off, start here before reaching for a manual fix.
-          </div>
-
-          <UiCard className="ui-admin-tool">
-            <div className="ui-row-wrap" style={{ justifyContent: "space-between", gap: 8 }}>
-              <div className="ui-admin-subtitle">Automation health</div>
-              <span
-                className="ui-badge"
-                style={{
-                  background:
-                    healthData?.healthy === false
-                      ? "rgba(239, 68, 68, 0.14)"
-                      : "rgba(16, 185, 129, 0.14)",
-                  color:
-                    healthData?.healthy === false ? "rgb(153, 27, 27)" : "rgb(6, 95, 70)",
-                  border: "1px solid rgba(0,0,0,0.08)",
-                }}
-              >
-                {healthLoading
-                  ? "CHECKING"
-                  : healthData?.healthy === false
-                    ? "ATTENTION NEEDED"
-                    : "ALL CLEAR"}
-              </span>
-            </div>
-            <div className="ui-admin-summary ui-admin-summary--tight">
-              {healthMsg
-                ? healthMsg
-                : healthData?.healthy === false
-                  ? `${healthFailureCount} failed automation run${healthFailureCount === 1 ? "" : "s"} found in the last ${healthData?.failure_window_hours ?? 72} hours.`
-                  : `No failed automation runs found in the last ${healthData?.failure_window_hours ?? 72} hours.`}
-            </div>
-            {healthWarning && (
-              <div className="ui-admin-summary ui-admin-summary--tight" style={{ color: "rgb(146, 64, 14)" }}>
-                {healthWarning}
+            <UiCard className="ui-admin-tool">
+              <div className="ui-admin-subtitle">Recap archive</div>
+              <div className="ui-admin-summary ui-admin-summary--tight">
+                Browse stored recap history when you want context before sending or reviewing the
+                weekly narrative.
               </div>
-            )}
-            {!healthLoading && !healthMsg && (healthData?.recent_failures?.length ?? 0) > 0 && (
-              <div className="ui-admin-stack" style={{ marginTop: 10 }}>
-                {healthData?.recent_failures?.slice(0, 3).map((run) => (
-                  <div key={run.id} className="ui-admin-summary ui-admin-summary--tight">
-                    <b>{run.job_label}</b>: {run.summary}
-                  </div>
-                ))}
-              </div>
-            )}
-            {!healthLoading && !healthMsg && (healthData?.latest?.length ?? 0) > 0 && (
-              <div className="ui-admin-stack" style={{ marginTop: 10 }}>
-                {healthData?.latest?.slice(0, 3).map((run) => (
-                  <div key={`latest-${run.id}`} className="ui-caption">
-                    {run.job_label}: {run.run_status} • {run.summary}
-                  </div>
-                ))}
-              </div>
-            )}
-            <div className="ui-admin-two-col" style={{ marginTop: 12 }}>
-              <UiButtonLink
-                href={`/admin/automation-health?season=${encodeURIComponent(String(season))}`}
-                className="ui-admin-btn ui-admin-btn--full"
-              >
-                Open Automation Health
+              <UiButtonLink href="/admin/recaps" className="ui-admin-btn ui-admin-btn--full">
+                Open Recap Archive
               </UiButtonLink>
-              <UiButton
-                disabled={healthLoading}
-                onClick={() => void loadAutomationHealth()}
-                className="ui-admin-btn ui-admin-btn--full"
-              >
-                {healthLoading ? "Refreshing..." : "Refresh Health"}
-              </UiButton>
-            </div>
-          </UiCard>
-
-          <UiCard className="ui-admin-tool">
-            <div className="ui-admin-subtitle">Scoring run log</div>
-            <div className="ui-admin-summary ui-admin-summary--tight">
-              Check whether scoring ran, whether results changed, and whether the leaderboard refresh
-              succeeded.
-            </div>
-            <UiButtonLink
-              href={`/admin/scoring-sync?season=${encodeURIComponent(String(season))}`}
-              className="ui-admin-btn ui-admin-btn--full"
-            >
-              Open Scoring Log
-            </UiButtonLink>
-          </UiCard>
-
-          <UiCard className="ui-admin-tool">
-            <div className="ui-admin-subtitle">Admin audit log</div>
-            <div className="ui-admin-summary ui-admin-summary--tight">
-              See who changed members, settings, fixture data, results, snapshots, and manual
-              leaderboard refreshes.
-            </div>
-            <UiButtonLink
-              href={`/admin/audit-log?season=${encodeURIComponent(String(season))}`}
-              className="ui-admin-btn ui-admin-btn--full"
-            >
-              Open Audit Log
-            </UiButtonLink>
-          </UiCard>
-
-          <div className="ui-admin-automation-list">
-            <div className="ui-admin-automation-item">
-              <div className="ui-admin-automation-title">What runs automatically now</div>
-              <div className="ui-admin-summary ui-admin-summary--tight">
-                Scoring checks, reminder sends, and due-round odds snapshots all run in the
-                background. Manual tools are now just fallback options.
-              </div>
-            </div>
-            <div className="ui-admin-automation-item">
-              <div className="ui-admin-automation-title">Good first check when something feels off</div>
-              <div className="ui-admin-summary ui-admin-summary--tight">
-                Open the scoring log first, then only use Maintenance if the automation clearly missed
-                something.
-              </div>
-            </div>
+            </UiCard>
           </div>
         </UiCard>
 
@@ -828,13 +703,148 @@ export default function AdminPage() {
           id="admin-maintenance"
           className="ui-card ui-card-soft ui-admin-section ui-admin-section--wide ui-admin-details"
         >
-          <summary className="ui-admin-details-summary">Maintenance &amp; Recovery</summary>
+          <summary className="ui-admin-details-summary">
+            Diagnostics, Maintenance &amp; Recovery
+          </summary>
           <div className="ui-admin-summary">
-            Low-use manual tools for recovery, backfills, or testing. They are still here, just kept
-            out of the way so the admin centre stays calm during normal weeks.
+            Logs, raw queues, and manual recovery tools all live here. Most weeks you should not
+            need this section, but it stays nearby when something looks off.
           </div>
 
-          <div className="ui-admin-maintenance-grid">
+          <div className="ui-admin-subtitle" style={{ marginTop: 14 }}>
+            Diagnostics &amp; raw views
+          </div>
+          <div className="ui-admin-summary ui-admin-summary--tight" style={{ marginTop: 4 }}>
+            Detailed logs and raw queues. Use these after the inbox tells you something needs
+            attention, not before.
+          </div>
+
+          <div className="ui-admin-maintenance-grid" style={{ marginTop: 12 }}>
+            <UiCard className="ui-admin-tool">
+              <div className="ui-row-wrap" style={{ justifyContent: "space-between", gap: 8 }}>
+                <div className="ui-admin-subtitle">Automation health</div>
+                <span
+                  className="ui-badge"
+                  style={{
+                    background:
+                      healthData?.healthy === false
+                        ? "rgba(239, 68, 68, 0.14)"
+                        : "rgba(16, 185, 129, 0.14)",
+                    color:
+                      healthData?.healthy === false ? "rgb(153, 27, 27)" : "rgb(6, 95, 70)",
+                    border: "1px solid rgba(0,0,0,0.08)",
+                  }}
+                >
+                  {healthLoading
+                    ? "CHECKING"
+                    : healthData?.healthy === false
+                      ? "ATTENTION NEEDED"
+                      : "ALL CLEAR"}
+                </span>
+              </div>
+              <div className="ui-admin-summary ui-admin-summary--tight">
+                {healthMsg
+                  ? healthMsg
+                  : healthData?.healthy === false
+                    ? `${healthFailureCount} failed automation run${healthFailureCount === 1 ? "" : "s"} found in the last ${healthData?.failure_window_hours ?? 72} hours.`
+                    : `No failed automation runs found in the last ${healthData?.failure_window_hours ?? 72} hours.`}
+              </div>
+              <div className="ui-caption">
+                Shows the latest recorded run per automation stream, recent failures, and raw
+                stored details for debugging.
+              </div>
+              {healthWarning && (
+                <div
+                  className="ui-admin-summary ui-admin-summary--tight"
+                  style={{ color: "rgb(146, 64, 14)" }}
+                >
+                  {healthWarning}
+                </div>
+              )}
+              <div className="ui-admin-two-col" style={{ marginTop: 12 }}>
+                <UiButtonLink
+                  href={`/admin/automation-health?season=${encodeURIComponent(String(season))}`}
+                  className="ui-admin-btn ui-admin-btn--full"
+                >
+                  Open Automation Health
+                </UiButtonLink>
+                <UiButton
+                  disabled={healthLoading}
+                  onClick={() => void loadAutomationHealth()}
+                  className="ui-admin-btn ui-admin-btn--full"
+                >
+                  {healthLoading ? "Refreshing..." : "Refresh Health"}
+                </UiButton>
+              </div>
+            </UiCard>
+
+            <UiCard className="ui-admin-tool">
+              <div className="ui-admin-subtitle">Scoring log</div>
+              <div className="ui-admin-summary ui-admin-summary--tight">
+                Check whether scoring ran, whether results changed, and whether the leaderboard
+                refresh succeeded.
+              </div>
+              <UiButtonLink
+                href={`/admin/scoring-sync?season=${encodeURIComponent(String(season))}`}
+                className="ui-admin-btn ui-admin-btn--full"
+              >
+                Open Scoring Log
+              </UiButtonLink>
+            </UiCard>
+
+            <UiCard className="ui-admin-tool">
+              <div className="ui-admin-subtitle">Admin audit log</div>
+              <div className="ui-admin-summary ui-admin-summary--tight">
+                See who changed members, settings, fixture data, results, snapshots, and manual
+                leaderboard refreshes.
+              </div>
+              <UiButtonLink
+                href={`/admin/audit-log?season=${encodeURIComponent(String(season))}`}
+                className="ui-admin-btn ui-admin-btn--full"
+              >
+                Open Audit Log
+              </UiButtonLink>
+            </UiCard>
+
+            <UiCard className="ui-admin-tool">
+              <div className="ui-admin-subtitle">Raw interest queue</div>
+              <div className="ui-admin-summary ui-admin-summary--tight">
+                Back-office waitlist view for export, bulk season-open email, and manual cleanup.
+              </div>
+              <UiButtonLink
+                href="/admin/interested-members"
+                className="ui-admin-btn ui-admin-btn--full"
+              >
+                Raw Interest Queue ({NEXT_SEASON})
+              </UiButtonLink>
+            </UiCard>
+          </div>
+
+          <div className="ui-admin-automation-list" style={{ marginTop: 14 }}>
+            <div className="ui-admin-automation-item">
+              <div className="ui-admin-automation-title">What runs automatically now</div>
+              <div className="ui-admin-summary ui-admin-summary--tight">
+                Scoring checks, reminder sends, and due-round odds snapshots all run in the
+                background. Manual tools are fallback options only.
+              </div>
+            </div>
+            <div className="ui-admin-automation-item">
+              <div className="ui-admin-automation-title">Good first check when something feels off</div>
+              <div className="ui-admin-summary ui-admin-summary--tight">
+                Start with the inbox. Then open the scoring log or automation health before reaching
+                for a manual fix.
+              </div>
+            </div>
+          </div>
+
+          <div className="ui-admin-subtitle" style={{ marginTop: 16 }}>
+            Manual recovery tools
+          </div>
+          <div className="ui-admin-summary ui-admin-summary--tight" style={{ marginTop: 4 }}>
+            Low-use manual actions for recovery, backfills, or testing.
+          </div>
+
+          <div className="ui-admin-maintenance-grid" style={{ marginTop: 12 }}>
             <UiCard className="ui-admin-tool">
               <div className="ui-admin-subtitle">Fast recovery</div>
               <div className="ui-admin-summary ui-admin-summary--tight">
@@ -920,8 +930,8 @@ export default function AdminPage() {
           </div>
 
           <div className="ui-admin-maintenance-note">
-            Normal path: let automation handle scoring, reminders, and snapshots, and only open this
-            section when something genuinely needs manual help.
+            Normal path: use the inbox, then diagnostics, and only reach for manual recovery when
+            automation clearly missed something.
           </div>
         </details>
       </div>

@@ -9,6 +9,7 @@ import {
   UiButton,
   UiButtonLink,
   UiCard,
+  UiSectionHeader,
   UiTableCell,
   UiTableHeadCell,
   UiTableScroll,
@@ -100,6 +101,21 @@ type PaymentCreateResponse = {
   details?: string;
 };
 
+type PaymentReminderSendResponse = {
+  ok?: boolean;
+  error?: string;
+  details?: string;
+  pending_members?: number;
+  recipients_targeted?: number;
+  totals?: {
+    sent?: number;
+    simulated?: number;
+    failed?: number;
+    no_email?: number;
+    skipped_already_sent?: number;
+  };
+};
+
 function fmtMelbourne(iso: string | null | undefined) {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -177,6 +193,7 @@ export default function AdminPaymentsPage() {
   const [matchChoiceById, setMatchChoiceById] = useState<Record<string, string>>({});
   const [actionId, setActionId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [sendingPaymentReminders, setSendingPaymentReminders] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<PaymentStatus | "all">("unmatched");
   const [onboardingHint, setOnboardingHint] = useState<string>("");
@@ -348,6 +365,40 @@ export default function AdminPaymentsPage() {
     }
   }
 
+  async function sendPaymentReminders() {
+    if (!sessionToken) return;
+    const ok = confirm(
+      `Send payment reminder emails now for season ${season}? This will contact members with payment status pending who have not already been sent this reminder this season.`
+    );
+    if (!ok) return;
+
+    try {
+      setSendingPaymentReminders(true);
+      const res = await fetch(`/api/admin/send-payment-reminders?season=${season}`, {
+        headers: {
+          Authorization: `Bearer ${sessionToken}`,
+        },
+        cache: "no-store",
+      });
+      const json = (await res.json().catch(() => null)) as PaymentReminderSendResponse | null;
+      if (!res.ok || !json?.ok) {
+        const detail = json?.details ? `: ${json.details}` : "";
+        throw new Error((json?.error ?? "Failed to send payment reminders") + detail);
+      }
+
+      const totals = json?.totals ?? {};
+      toast.info(
+        `Payment reminders: sent ${totals.sent ?? 0}. Already sent ${totals.skipped_already_sent ?? 0}. No email ${totals.no_email ?? 0}. Failed ${totals.failed ?? 0}.`,
+        { durationMs: 5200 }
+      );
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to send payment reminders");
+    } finally {
+      setSendingPaymentReminders(false);
+    }
+  }
+
   return (
     <main className="ui-page ui-page--wide ui-admin-page">
       <div className="ui-page-header">
@@ -360,32 +411,31 @@ export default function AdminPaymentsPage() {
         </div>
         <div className="ui-row-wrap">
           <UiButtonLink href="/admin">Back to admin</UiButtonLink>
+          <UiButtonLink href="/admin/members">Roster &amp; Settings</UiButtonLink>
           <UiButtonLink href="/admin/onboarding">Onboarding</UiButtonLink>
-          <UiButtonLink href="/admin/members">Members</UiButtonLink>
+          <UiButton onClick={() => void load()}>{loading ? "Refreshing..." : "Refresh"}</UiButton>
         </div>
       </div>
 
-      <UiCard soft style={{ marginTop: 12 }}>
-        <div className="ui-row-wrap" style={{ justifyContent: "space-between" }}>
-          <div>
-            <div className="ui-title--section">Season {season} payment ledger</div>
-            <div className="ui-caption ui-mt-1">
-              Buy-in reference: {fmtDollars(buyInCents)}. Matched payments mark the member paid.
+      <UiCard soft className="ui-admin-section" style={{ marginTop: 12 }}>
+        <UiSectionHeader
+          title={`Season ${season} payment ledger`}
+          subtitle={`Buy-in reference: ${fmtDollars(buyInCents)}. Record what arrived, then confirm the right member so the comp treats them as paid.`}
+          right={
+            <div className="ui-row-wrap">
+              <label className="ui-admin-label">Season</label>
+              <input
+                type="number"
+                min={2024}
+                value={season}
+                onChange={(e) =>
+                  setSeason(Math.max(2024, Math.trunc(Number(e.target.value) || CURRENT_SEASON)))
+                }
+                className="ui-input ui-admin-input-season"
+              />
             </div>
-          </div>
-          <div className="ui-row-wrap">
-            <label className="ui-admin-label">Season</label>
-            <input
-              type="number"
-              min={2024}
-              value={season}
-              onChange={(e) =>
-                setSeason(Math.max(2024, Math.trunc(Number(e.target.value) || CURRENT_SEASON)))
-              }
-              className="ui-input ui-admin-input-season"
-            />
-          </div>
-        </div>
+          }
+        />
       </UiCard>
 
       <div className="ui-card-grid ui-card-grid--4 ui-mt-3">
@@ -410,6 +460,25 @@ export default function AdminPaymentsPage() {
           <div className="ui-meta">Transfers or entries parked outside the main queue.</div>
         </UiCard>
       </div>
+
+      <UiCard soft style={{ marginTop: 12 }}>
+        <div className="ui-row-wrap" style={{ justifyContent: "space-between", gap: 12 }}>
+          <div>
+            <div className="ui-title--section">Payment follow-up</div>
+            <div className="ui-caption ui-mt-1">
+              Send reminder emails to members still marked pending. This stays with payments so the
+              whole collection workflow lives in one place.
+            </div>
+          </div>
+          <UiButton
+            disabled={sendingPaymentReminders}
+            onClick={() => void sendPaymentReminders()}
+            className="ui-admin-btn"
+          >
+            {sendingPaymentReminders ? "Sending..." : "Send Payment Pending Reminders"}
+          </UiButton>
+        </div>
+      </UiCard>
 
       <UiCard soft style={{ marginTop: 12 }}>
         <div className="ui-title--section">Record payment</div>

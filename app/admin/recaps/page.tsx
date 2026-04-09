@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { UiButton, UiButtonLink, UiCard, UiSectionHeader } from "@/components/ui";
 
 type RecapRow = {
   id: number;
@@ -64,7 +65,11 @@ export default function AdminRecapsPage() {
       throw new Error(parts.join(" - "));
     }
 
-    return Array.isArray(json?.recaps) ? json.recaps : [];
+    return Array.isArray(json?.recaps)
+      ? [...json.recaps].sort(
+          (a, b) => new Date(b.generated_at).getTime() - new Date(a.generated_at).getTime()
+        )
+      : [];
   }
 
   useEffect(() => {
@@ -115,99 +120,91 @@ export default function AdminRecapsPage() {
     }
   }
 
-  return (
-    <main style={{ maxWidth: 980, margin: "40px auto", padding: 16 }}>
-      <h1>Round Recaps</h1>
-      <p style={{ marginTop: 6, opacity: 0.8 }}>
-        Stored weekly recap history for admin use.
-      </p>
+  const latestRecap = recaps[0] ?? null;
 
-      <div
-        style={{
-          marginTop: 14,
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          flexWrap: "wrap",
-        }}
-      >
-        <label style={{ fontWeight: 700 }}>Season</label>
-        <input
-          type="number"
-          value={season}
-          onChange={(e) => setSeason(Number(e.target.value || 0))}
-          style={{
-            width: 110,
-            padding: "8px 10px",
-            borderRadius: 8,
-            border: "1px solid var(--border)",
-            background: "var(--card)",
-            color: "var(--foreground)",
-          }}
+  return (
+    <main className="ui-page ui-page--wide ui-admin-page">
+      <div className="ui-page-header">
+        <div>
+          <h1 className="ui-title">Recap Archive</h1>
+          <div className="ui-caption ui-mt-1">
+            Stored weekly recap history for admin review, context, and reruns.
+          </div>
+        </div>
+        <div className="ui-row-wrap">
+          <UiButtonLink href="/admin">Back to admin</UiButtonLink>
+          <UiButton onClick={() => void refreshNow()} disabled={loading || refreshing}>
+            {refreshing ? "Refreshing..." : "Refresh"}
+          </UiButton>
+        </div>
+      </div>
+
+      <UiCard soft className="ui-admin-section" style={{ marginTop: 12 }}>
+        <UiSectionHeader
+          title={`Season ${season} recap archive`}
+          subtitle="Use this page when you want the stored narrative and raw stats behind each round recap."
+          right={
+            <label className="ui-row-wrap">
+              <span className="ui-caption">Season</span>
+              <input
+                type="number"
+                value={season}
+                onChange={(e) => setSeason(Number(e.target.value || 0))}
+                className="ui-input"
+                style={{ width: 110 }}
+              />
+            </label>
+          }
         />
-        <button
-          type="button"
-          onClick={refreshNow}
-          disabled={loading || refreshing}
-          style={{
-            padding: "8px 12px",
-            borderRadius: 10,
-            border: "1px solid var(--border)",
-            background: "var(--card)",
-            color: "var(--foreground)",
-            fontWeight: 700,
-            cursor: loading || refreshing ? "not-allowed" : "pointer",
-            opacity: loading || refreshing ? 0.65 : 1,
-          }}
-        >
-          {refreshing ? "Refreshing..." : "Refresh"}
-        </button>
+      </UiCard>
+
+      <div className="ui-card-grid ui-card-grid--3 ui-mt-3">
+        <UiCard soft>
+          <div className="ui-kicker">Stored recaps</div>
+          <div className="ui-value">{recaps.length}</div>
+          <div className="ui-meta">Round recap entries currently stored for this season.</div>
+        </UiCard>
+        <UiCard soft>
+          <div className="ui-kicker">Latest round</div>
+          <div className="ui-value">{latestRecap ? latestRecap.round_number : "—"}</div>
+          <div className="ui-meta">
+            {latestRecap ? latestRecap.subject : `No recap records yet for season ${season}.`}
+          </div>
+        </UiCard>
+        <UiCard soft>
+          <div className="ui-kicker">Most recent generated</div>
+          <div className="ui-value" style={{ fontSize: 24 }}>
+            {latestRecap ? fmtMelbourne(latestRecap.generated_at) : "—"}
+          </div>
+          <div className="ui-meta">Useful when you want to confirm whether a recap already exists.</div>
+        </UiCard>
       </div>
 
       {msg && (
-        <div
-          style={{
-            marginTop: 14,
-            padding: 12,
-            borderRadius: 10,
-            border: "1px solid rgba(220, 38, 38, 0.45)",
-            background: "rgba(220, 38, 38, 0.10)",
-            color: "rgb(185, 28, 28)",
-            fontWeight: 700,
-          }}
-        >
+        <UiCard soft tone="danger" style={{ marginTop: 14 }}>
           {msg}
-        </div>
+        </UiCard>
       )}
 
       {loading ? (
-        <div style={{ marginTop: 16, opacity: 0.75 }}>Loading recaps…</div>
+        <UiCard soft style={{ marginTop: 16, opacity: 0.75 }}>
+          Loading recaps…
+        </UiCard>
       ) : recaps.length === 0 ? (
-        <div
-          style={{
-            marginTop: 16,
-            padding: 14,
-            borderRadius: 12,
-            border: "1px solid var(--border)",
-            background: "var(--card-soft)",
-            opacity: 0.85,
-          }}
-        >
+        <UiCard soft style={{ marginTop: 16, opacity: 0.85 }}>
           No recaps found for season {season}.
-        </div>
+        </UiCard>
       ) : (
         <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
           {recaps.map((r) => {
             const expanded = expandedRecapId === r.id;
 
             return (
-              <section
+              <UiCard
                 key={r.id}
                 style={{
                   border: expanded ? "1px solid rgba(239, 68, 68, 0.55)" : "1px solid var(--border)",
-                  borderRadius: 14,
                   background: expanded ? "rgba(239, 68, 68, 0.08)" : "var(--card)",
-                  padding: 12,
                 }}
               >
                 <button
@@ -298,7 +295,7 @@ export default function AdminRecapsPage() {
                     </details>
                   </div>
                 )}
-              </section>
+              </UiCard>
             );
           })}
         </div>

@@ -3,7 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useToast } from "@/components/ToastProvider";
 import { supabaseBrowser } from "@/lib/supabase-browser";
-import { UiTableHeadCell, UiTableScroll, UiTableShell } from "@/components/ui";
+import {
+  UiButton,
+  UiButtonLink,
+  UiCard,
+  UiSectionHeader,
+  UiTableHeadCell,
+  UiTableScroll,
+  UiTableShell,
+} from "@/components/ui";
 import { ChampionSeasonLabels } from "@/components/ChampionSeasonLabels";
 import {
   editableChampionSeasons,
@@ -46,21 +54,6 @@ type PaymentSettingsResponse = {
   enforce_unpaid_tip_lock?: boolean;
   error?: string;
   details?: string;
-};
-
-type PaymentReminderSendResponse = {
-  ok?: boolean;
-  error?: string;
-  details?: string;
-  pending_members?: number;
-  recipients_targeted?: number;
-  totals?: {
-    sent?: number;
-    simulated?: number;
-    failed?: number;
-    no_email?: number;
-    skipped_already_sent?: number;
-  };
 };
 
 type ChampionSettingsResponse = {
@@ -188,7 +181,6 @@ export default function AdminMembersPage() {
 
   const [enforceUnpaidTipLock, setEnforceUnpaidTipLock] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
-  const [sendingPaymentReminders, setSendingPaymentReminders] = useState(false);
 
   const [championResolvedUserId, setChampionResolvedUserId] = useState<string | null>(null);
   const [championResolvedSeason, setChampionResolvedSeason] = useState<number | null>(null);
@@ -572,39 +564,6 @@ export default function AdminMembersPage() {
     toast.success(`Unpaid tip lock ${nextValue ? "enabled" : "disabled"}.`);
   }
 
-  async function sendPaymentReminders() {
-    if (!sessionToken) return;
-    const ok = confirm(
-      "Send payment reminder emails now? This will contact members with payment status pending who have not already been sent this reminder this season."
-    );
-    if (!ok) return;
-
-    setSendingPaymentReminders(true);
-    setMsg("");
-
-    const res = await fetch(`/api/admin/send-payment-reminders?season=${CURRENT_SEASON}`, {
-      headers: {
-        Authorization: `Bearer ${sessionToken}`,
-      },
-      cache: "no-store",
-    });
-
-    const json = (await res.json().catch(() => null)) as PaymentReminderSendResponse | null;
-    setSendingPaymentReminders(false);
-
-    if (!res.ok) {
-      const detail = json?.details ? `: ${json.details}` : "";
-      toast.error((json?.error ?? "Failed to send payment reminders") + detail);
-      return;
-    }
-
-    const totals = json?.totals ?? {};
-    toast.info(
-      `Payment reminders: sent ${totals.sent ?? 0}. Already sent ${totals.skipped_already_sent ?? 0}. No email ${totals.no_email ?? 0}. Failed ${totals.failed ?? 0}.`,
-      { durationMs: 5200 }
-    );
-  }
-
   async function saveChampionSettings() {
     if (!sessionToken) return;
 
@@ -694,50 +653,42 @@ export default function AdminMembersPage() {
   };
 
   return (
-    <main style={{ maxWidth: 1180, margin: "30px auto", padding: 16 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <h1 style={{ margin: 0 }}>Manage Members</h1>
-        <button
-          onClick={load}
-          style={{
-            padding: "10px 12px",
-            borderRadius: 10,
-            border: "1px solid var(--border)",
-            background: "var(--card)",
-            color: "var(--foreground)",
-            fontWeight: 700,
-          }}
-        >
-          Refresh
-        </button>
+    <main className="ui-page ui-page--wide ui-admin-page">
+      <div className="ui-page-header">
+        <div>
+          <h1 className="ui-title">Roster &amp; Season Settings</h1>
+          <div className="ui-caption ui-mt-1">
+            Manage member roles, payment state, unpaid tip lock, test accounts, and champion
+            seasons.
+          </div>
+        </div>
+        <div className="ui-row-wrap">
+          <UiButtonLink href="/admin">Back to admin</UiButtonLink>
+          <UiButtonLink href="/admin/payments">Payments</UiButtonLink>
+          <UiButtonLink href="/admin/onboarding">Onboarding</UiButtonLink>
+          <UiButton onClick={() => void load()}>Refresh</UiButton>
+        </div>
       </div>
+
+      <UiCard soft className="ui-admin-section" style={{ marginTop: 12 }}>
+        <UiSectionHeader
+          title={`Season ${CURRENT_SEASON} roster & settings`}
+          subtitle="Use this page for in-season member eligibility, payment state, role changes, test accounts, and champion setup."
+          right={
+            <div className="ui-row-wrap">
+              <span className="ui-caption">Season buy-in</span>
+              <strong>{fmtDollars(BUY_IN_BY_SEASON[CURRENT_SEASON] ?? 0)}</strong>
+            </div>
+          }
+        />
+      </UiCard>
 
       <div style={{ marginTop: 14, ...cardStyle }}>
         <div style={toolCardStyle}>
-          <div style={{ fontWeight: 800 }}>Payment reminders (manual)</div>
+          <div style={{ fontWeight: 800 }}>Eligibility controls</div>
           <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75 }}>
-            Send payment reminder emails to members with payment status <b>pending</b>.
+            Control whether unpaid members with status <b>pending</b> can still submit tips.
           </div>
-          <button
-            type="button"
-            disabled={sendingPaymentReminders}
-            onClick={sendPaymentReminders}
-            style={{
-              marginTop: 12,
-              width: "100%",
-              padding: "10px 12px",
-              borderRadius: 10,
-              border: "1px solid var(--border)",
-              background: "var(--card)",
-              color: "var(--foreground)",
-              fontWeight: 900,
-              cursor: sendingPaymentReminders ? "not-allowed" : "pointer",
-              opacity: sendingPaymentReminders ? 0.7 : 1,
-            }}
-          >
-            {sendingPaymentReminders ? "Sending…" : "Send Payment Pending Reminders"}
-          </button>
-
           <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
               <div>
@@ -770,16 +721,8 @@ export default function AdminMembersPage() {
         </div>
       </div>
 
-      <details
-        style={{
-          marginTop: 12,
-          border: "1px solid var(--border)",
-          borderRadius: 14,
-          padding: 12,
-          background: "var(--card-soft)",
-        }}
-      >
-        <summary style={{ cursor: "pointer", fontWeight: 800 }}>Advanced / Seasonal settings</summary>
+      <details className="ui-card ui-card-soft ui-admin-details" style={{ marginTop: 12 }}>
+        <summary className="ui-admin-details-summary">Advanced / Seasonal settings</summary>
 
         <div style={{ marginTop: 12, display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div style={{ minWidth: 260 }}>
@@ -927,39 +870,28 @@ export default function AdminMembersPage() {
         </div>
       </div>
 
-      <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search name / email / role / payment / id…"
-          style={{
-            flex: 1,
-            minWidth: 260,
-            padding: 12,
-            borderRadius: 12,
-            border: "1px solid var(--border)",
-            background: "var(--card)",
-            color: "var(--foreground)",
-          }}
-        />
-        <select
-          value={paymentFilter}
-          onChange={(e) => setPaymentFilter(e.target.value as PaymentFilter)}
-          style={{
-            padding: "12px 14px",
-            borderRadius: 12,
-            border: "1px solid var(--border)",
-            background: "var(--card)",
-            color: "var(--foreground)",
-            fontWeight: 700,
-          }}
-        >
-          <option value="all">All payments</option>
-          <option value="paid">Paid</option>
-          <option value="pending">Pending</option>
-          <option value="waived">Waived</option>
-        </select>
-      </div>
+      <UiCard soft style={{ marginTop: 12 }}>
+        <div className="ui-row-wrap">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search name / email / role / payment / id…"
+            className="ui-input"
+            style={{ minWidth: 260, flex: 1 }}
+          />
+          <select
+            value={paymentFilter}
+            onChange={(e) => setPaymentFilter(e.target.value as PaymentFilter)}
+            className="ui-input"
+            style={{ maxWidth: 180 }}
+          >
+            <option value="all">All payments</option>
+            <option value="paid">Paid</option>
+            <option value="pending">Pending</option>
+            <option value="waived">Waived</option>
+          </select>
+        </div>
+      </UiCard>
 
       {msg && (
         <div style={{ marginTop: 12, padding: 12, border: "1px solid #f3c", borderRadius: 12 }}>

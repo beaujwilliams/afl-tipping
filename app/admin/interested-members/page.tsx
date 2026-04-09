@@ -382,9 +382,15 @@ export default function AdminInterestedMembersPage() {
   return (
     <main className="ui-page ui-page--wide">
       <div className="ui-row-between">
-        <h1 className="ui-title" style={{ margin: 0 }}>
-          Interested Members
-        </h1>
+        <div>
+          <h1 className="ui-title" style={{ margin: 0 }}>
+            Raw Interest Queue
+          </h1>
+          <div className="ui-caption" style={{ marginTop: 6 }}>
+            Back-office waitlist view for export, bulk season-open email, and manual cleanup.
+            Day-to-day follow-up now lives in onboarding.
+          </div>
+        </div>
         <div className="ui-row-wrap">
           <Link href="/admin" className="ui-btn" style={{ padding: "10px 12px" }}>
             Back to admin

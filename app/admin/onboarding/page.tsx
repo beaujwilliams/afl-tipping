@@ -14,6 +14,7 @@ import {
   UiButton,
   UiButtonLink,
   UiCard,
+  UiSectionHeader,
   UiTableCell,
   UiTableHeadCell,
   UiTableScroll,
@@ -422,36 +423,41 @@ export default function AdminOnboardingPage() {
   }, [rows, search, stageFilter]);
 
   return (
-    <main className="ui-page ui-page--wide">
-      <div className="ui-row-between">
-        <h1 className="ui-title" style={{ margin: 0 }}>
-          Onboarding Pipeline
-        </h1>
+    <main className="ui-page ui-page--wide ui-admin-page">
+      <div className="ui-page-header">
+        <div>
+          <h1 className="ui-title">Onboarding Pipeline</h1>
+          <div className="ui-caption ui-mt-1">
+            Move new people from interest through invite, join, and payment readiness without
+            bouncing between separate admin pages.
+          </div>
+        </div>
         <div className="ui-row-wrap">
           <UiButtonLink href="/admin">Back to admin</UiButtonLink>
+          <UiButtonLink href="/admin/members">Roster &amp; Settings</UiButtonLink>
+          <UiButtonLink href="/admin/payments">Payments</UiButtonLink>
+          <UiButtonLink href="/admin/interested-members">Raw Interest Queue</UiButtonLink>
           <UiButton onClick={() => void load()}>{loading ? "Refreshing..." : "Refresh"}</UiButton>
         </div>
       </div>
 
-      <UiCard soft style={{ marginTop: 12 }}>
-        <div className="ui-row-between-start">
-          <div className="ui-stack" style={{ gap: 6 }}>
-            <div className="ui-title--section">Season {season} onboarding</div>
-            <div className="ui-caption">
-              Track people from next-season interest through joining and payment readiness.
-            </div>
-          </div>
-          <label className="ui-row-wrap">
-            <span className="ui-caption">Season</span>
-            <input
-              className="ui-input"
-              type="number"
-              value={season}
-              onChange={(e) => setSeason(Number(e.target.value))}
-              style={{ width: 110 }}
-            />
-          </label>
-        </div>
+      <UiCard soft className="ui-admin-section" style={{ marginTop: 12 }}>
+        <UiSectionHeader
+          title={`Season ${season} onboarding`}
+          subtitle="Best for pre-season and late-join follow-up. Day-to-day in-season work usually stays in roster and payments."
+          right={
+            <label className="ui-row-wrap">
+              <span className="ui-caption">Season</span>
+              <input
+                className="ui-input"
+                type="number"
+                value={season}
+                onChange={(e) => setSeason(Number(e.target.value))}
+                style={{ width: 110 }}
+              />
+            </label>
+          }
+        />
       </UiCard>
 
       <div
@@ -512,9 +518,9 @@ export default function AdminOnboardingPage() {
             style={{ minWidth: 260, flex: 1 }}
           />
 
-          <UiButtonLink href="/admin/interested-members">Interested Members</UiButtonLink>
+          <UiButtonLink href="/admin/interested-members">Raw Interest Queue</UiButtonLink>
           <UiButtonLink href="/admin/payments">Payments</UiButtonLink>
-          <UiButtonLink href="/admin/members">Members</UiButtonLink>
+          <UiButtonLink href="/admin/members">Roster &amp; Settings</UiButtonLink>
         </div>
       </UiCard>
 

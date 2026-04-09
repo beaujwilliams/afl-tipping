@@ -320,6 +320,10 @@ export async function GET(req: Request) {
     const dryRun = url.searchParams.get("dry_run") === "1";
     const forceRound =
       url.searchParams.get("force") === "1" && round !== null && Number.isFinite(round);
+    const forceResend =
+      url.searchParams.get("force_resend") === "1" &&
+      round !== null &&
+      Number.isFinite(round);
 
     const reminderHours = Number(
       url.searchParams.get("hours_before_lock") || String(DEFAULT_REMINDER_HOURS)
@@ -652,10 +656,11 @@ export async function GET(req: Request) {
       const lockMs = new Date(r.lock_time_utc).getTime();
       const msUntilLock = lockMs - Date.now();
       const resendOverrideApplied =
-        forceRound &&
-        Number.isFinite(msUntilLock) &&
-        msUntilLock > 0 &&
-        msUntilLock <= FORCE_RESEND_WITHIN_MINUTES * 60 * 1000;
+        forceResend ||
+        (forceRound &&
+          Number.isFinite(msUntilLock) &&
+          msUntilLock > 0 &&
+          msUntilLock <= FORCE_RESEND_WITHIN_MINUTES * 60 * 1000);
 
       const alreadyRemindedSkipped = resendOverrideApplied ? 0 : alreadyRemindedSet.size;
       const candidateUserIds = resendOverrideApplied
@@ -837,6 +842,7 @@ export async function GET(req: Request) {
       force_resend_override_window_minutes: FORCE_RESEND_WITHIN_MINUTES,
       dry_run: dryRun,
       force_round: forceRound,
+      force_resend: forceResend,
       rounds_considered: roundRows.length,
       rounds_targeted: targetedRounds.length,
       skipped_not_due_rounds: skippedNotDue,

@@ -416,8 +416,21 @@ export default function SeasonRoundsPageClient({
                           }
                         }}
                         className="ui-btn ui-btn--pill"
+                        aria-label={isOpen ? "Collapse tip lists" : "Expand tip lists"}
+                        title={isOpen ? "Collapse tip lists" : "Expand tip lists"}
+                        style={{
+                          minWidth: 34,
+                          width: 34,
+                          height: 34,
+                          padding: 0,
+                          display: "grid",
+                          placeItems: "center",
+                          fontSize: 18,
+                          lineHeight: 1,
+                          fontWeight: 900,
+                        }}
                       >
-                        {isOpen ? "Hide lists" : "Tip lists"}
+                        {isOpen ? "˅" : "^"}
                       </button>
                     )}
                   </div>

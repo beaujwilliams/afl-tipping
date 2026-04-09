@@ -19,6 +19,8 @@ type RoundStatusPlayer = {
   display_name: string | null;
   payment_status?: string | null;
   tips_entered?: number;
+  latest_submitted_at_utc?: string | null;
+  last_reminded_at_utc?: string | null;
 };
 
 export type SeasonTipStatusRound = {
@@ -485,25 +487,49 @@ export default function SeasonRoundsPageClient({
                             : "No fully tipped members yet."}
                       </div>
                     ) : (
-                      <div style={{ display: "grid", gap: 8, maxHeight: 300, overflowY: "auto", paddingRight: 4 }}>
-                        {filteredActiveList.map((p) => (
+                      <div
+                        style={{
+                          display: "grid",
+                          gap: 6,
+                          maxHeight: 300,
+                          overflowY: "auto",
+                          paddingRight: 4,
+                        }}
+                      >
+                        {filteredActiveList.map((p) => {
+                          const tipsEntered = Math.min(
+                            p.tips_entered ?? 0,
+                            status?.total_matches ?? 0
+                          );
+                          const timestampIso =
+                            openTab === "missing"
+                              ? p.last_reminded_at_utc ?? null
+                              : p.latest_submitted_at_utc ?? null;
+                          const timestampText =
+                            openTab === "missing"
+                              ? timestampIso
+                                ? `Reminded ${fmtMelbourneShort(timestampIso)}`
+                                : "Not reminded yet"
+                              : timestampIso
+                                ? `Submitted ${fmtMelbourneShort(timestampIso)}`
+                                : "Submission time unavailable";
+
+                          return (
                           <div
                             key={p.user_id}
                             style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              gap: 12,
-                              alignItems: "center",
-                              padding: "8px 10px",
-                              borderRadius: 12,
+                              display: "grid",
+                              gap: 4,
+                              padding: "6px 10px",
+                              borderRadius: 10,
                               border: "1px solid rgba(255,255,255,0.10)",
                               background: "rgba(255,255,255,0.03)",
                             }}
                           >
                             <div
                               style={{
-                                fontSize: 16,
-                                fontWeight: 700,
+                                fontSize: 15,
+                                fontWeight: 650,
                                 display: "flex",
                                 alignItems: "center",
                                 gap: 6,
@@ -523,15 +549,26 @@ export default function SeasonRoundsPageClient({
                               <ChampionSeasonLabels seasons={championSeasonsByUserId[p.user_id]} />
                               <UnpaidTag paymentStatus={p.payment_status ?? null} />
                             </div>
-                            <div style={{ fontSize: 12, opacity: 0.75, whiteSpace: "nowrap" }}>
-                              Tips entered{" "}
-                              <b>
-                                {Math.min(p.tips_entered ?? 0, status?.total_matches ?? 0)}/
-                                {status?.total_matches ?? 0}
-                              </b>
+                            <div
+                              style={{
+                                fontSize: 12,
+                                opacity: 0.78,
+                                display: "flex",
+                                alignItems: "center",
+                                flexWrap: "wrap",
+                                gap: 6,
+                                lineHeight: 1.2,
+                              }}
+                            >
+                              <span>
+                                Tips entered <b>{tipsEntered}</b>/{status?.total_matches ?? 0}
+                              </span>
+                              <span style={{ opacity: 0.5 }}>•</span>
+                              <span>{timestampText}</span>
                             </div>
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>

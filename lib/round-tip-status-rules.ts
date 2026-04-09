@@ -3,6 +3,8 @@ export type RoundTipStatusPlayer = {
   display_name: string | null;
   payment_status: string | null;
   tips_entered: number;
+  latest_submitted_at_utc?: string | null;
+  last_reminded_at_utc?: string | null;
 };
 
 export function roundTipStatusPlayerComparator(
@@ -30,8 +32,13 @@ export function buildRoundTipStatusPlayerLists(params: {
   profileNameByUserId: Map<string, string | null>;
   paymentStatusByUserId: Map<string, string | null>;
   tipCountByUserId?: Map<string, number>;
+  latestSubmittedAtByUserId?: Map<string, string>;
+  lastReminderAtByUserId?: Map<string, string>;
 }) {
   const tipsByUser = params.tipCountByUserId ?? new Map<string, number>();
+  const latestSubmittedAtByUserId =
+    params.latestSubmittedAtByUserId ?? new Map<string, string>();
+  const lastReminderAtByUserId = params.lastReminderAtByUserId ?? new Map<string, string>();
   const hasCompletedTips = (userId: string) =>
     params.totalMatches > 0 && (tipsByUser.get(userId) ?? 0) >= params.totalMatches;
 
@@ -44,14 +51,36 @@ export function buildRoundTipStatusPlayerLists(params: {
       display_name: params.profileNameByUserId.get(userId) ?? null,
       payment_status: params.paymentStatusByUserId.get(userId) ?? null,
       tips_entered: Math.min(tipsByUser.get(userId) ?? 0, params.totalMatches),
+      latest_submitted_at_utc: latestSubmittedAtByUserId.get(userId) ?? null,
+      last_reminded_at_utc: lastReminderAtByUserId.get(userId) ?? null,
     };
 
     if (hasCompletedTips(userId)) tippedPlayers.push(row);
     else missingPlayers.push(row);
   }
 
-  missingPlayers.sort(roundTipStatusPlayerComparator);
-  tippedPlayers.sort(roundTipStatusPlayerComparator);
+  const timestampDesc = (aIso?: string | null, bIso?: string | null) => {
+    const aMs = aIso ? Date.parse(aIso) : Number.NaN;
+    const bMs = bIso ? Date.parse(bIso) : Number.NaN;
+    const aValid = Number.isFinite(aMs);
+    const bValid = Number.isFinite(bMs);
+    if (aValid && bValid) return bMs - aMs;
+    if (aValid) return -1;
+    if (bValid) return 1;
+    return 0;
+  };
+
+  missingPlayers.sort((a, b) => {
+    const byReminder = timestampDesc(a.last_reminded_at_utc, b.last_reminded_at_utc);
+    if (byReminder !== 0) return byReminder;
+    return roundTipStatusPlayerComparator(a, b);
+  });
+
+  tippedPlayers.sort((a, b) => {
+    const bySubmitted = timestampDesc(a.latest_submitted_at_utc, b.latest_submitted_at_utc);
+    if (bySubmitted !== 0) return bySubmitted;
+    return roundTipStatusPlayerComparator(a, b);
+  });
 
   return {
     missingPlayers,

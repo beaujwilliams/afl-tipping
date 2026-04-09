@@ -28,10 +28,17 @@ type MatchRow = {
 type TipRow = {
   user_id: string;
   match_id: string;
+  updated_at: string | null;
 };
 
 type UserTipRow = {
   match_id: string;
+};
+
+type ReminderEmailLogRow = {
+  round_id: string;
+  user_id: string;
+  sent_at_utc: string | null;
 };
 
 export type RoundPlayerStatusRow = {
@@ -39,6 +46,8 @@ export type RoundPlayerStatusRow = {
   display_name: string | null;
   payment_status: string | null;
   tips_entered: number;
+  latest_submitted_at_utc?: string | null;
+  last_reminded_at_utc?: string | null;
 };
 
 type CachedRoundStatusRow = {
@@ -124,24 +133,99 @@ async function readCompetitionTipsForMatches(params: {
 
   const out: TipRow[] = [];
   let from = 0;
+  let includeUpdatedAt = true;
 
   while (true) {
     const to = from + SUPABASE_PAGE_SIZE - 1;
 
     const { data, error } = await params.supabase
       .from("tips")
-      .select("user_id, match_id")
+      .select(includeUpdatedAt ? "user_id, match_id, updated_at" : "user_id, match_id")
       .eq("competition_id", params.competitionId)
       .in("match_id", params.matchIds)
       .order("id", { ascending: true })
       .range(from, to);
 
     if (error) {
+      if (includeUpdatedAt && isMissingColumnError(error.message, "updated_at")) {
+        includeUpdatedAt = false;
+        continue;
+      }
       throw new Error(`Failed to read tips: ${error.message}`);
     }
 
-    const batch = (data ?? []) as TipRow[];
-    out.push(...batch);
+    const batch = (data ?? []) as unknown as Array<{
+      user_id: string;
+      match_id: string;
+      updated_at?: string | null;
+    }>;
+    out.push(
+      ...batch.map((row) => ({
+        user_id: String(row.user_id),
+        match_id: String(row.match_id),
+        updated_at: row.updated_at ?? null,
+      }))
+    );
+
+    if (batch.length < SUPABASE_PAGE_SIZE) break;
+    from += SUPABASE_PAGE_SIZE;
+  }
+
+  return out;
+}
+
+async function readReminderLogsForRounds(params: {
+  supabase: ReturnType<typeof createServiceClient>;
+  competitionId: string;
+  season: number;
+  roundIds: string[];
+}) {
+  if (!params.roundIds.length) return [] as ReminderEmailLogRow[];
+
+  const out: ReminderEmailLogRow[] = [];
+  let from = 0;
+  let includeSeasonFilter = true;
+
+  while (true) {
+    const to = from + SUPABASE_PAGE_SIZE - 1;
+    let query = params.supabase
+      .from("prelock_reminder_emails")
+      .select("round_id, user_id, sent_at_utc")
+      .eq("competition_id", params.competitionId)
+      .in("round_id", params.roundIds)
+      .eq("status", "sent")
+      .order("id", { ascending: true })
+      .range(from, to);
+
+    if (includeSeasonFilter) {
+      query = query.eq("season", params.season);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      if (isMissingRelationError(error.message, "prelock_reminder_emails")) {
+        return [];
+      }
+      if (includeSeasonFilter && isMissingColumnError(error.message, "season")) {
+        includeSeasonFilter = false;
+        continue;
+      }
+      throw new Error(`Failed to read reminder logs: ${error.message}`);
+    }
+
+    const batch = (data ?? []) as Array<{
+      round_id: string;
+      user_id: string;
+      sent_at_utc?: string | null;
+    }>;
+    out.push(
+      ...batch.map((row) => ({
+        round_id: String(row.round_id),
+        user_id: String(row.user_id),
+        sent_at_utc: row.sent_at_utc ?? null,
+      }))
+    );
 
     if (batch.length < SUPABASE_PAGE_SIZE) break;
     from += SUPABASE_PAGE_SIZE;
@@ -242,6 +326,29 @@ async function computeRoundTipStatusAggregate(params: {
   const matchToRound = new Map<string, string>();
   const totalMatchesByRound = new Map<string, number>();
   const completedMatchesByRound = new Map<string, number>();
+  const tipCountByRoundUser = new Map<string, Map<string, number>>();
+  const latestSubmittedAtByRoundUser = new Map<string, Map<string, string>>();
+  const lastReminderAtByRoundUser = new Map<string, Map<string, string>>();
+
+  const setLatestRoundTimestamp = (
+    byRoundMap: Map<string, Map<string, string>>,
+    roundId: string,
+    userId: string,
+    iso: string | null | undefined
+  ) => {
+    if (!iso) return;
+    const parsed = Date.parse(iso);
+    if (!Number.isFinite(parsed)) return;
+
+    if (!byRoundMap.has(roundId)) {
+      byRoundMap.set(roundId, new Map<string, string>());
+    }
+    const byUser = byRoundMap.get(roundId)!;
+    const existing = byUser.get(userId);
+    if (!existing || parsed > Date.parse(existing)) {
+      byUser.set(userId, iso);
+    }
+  };
 
   if (roundIds.length) {
     const { data: matches, error: mErr } = await supabase
@@ -266,8 +373,6 @@ async function computeRoundTipStatusAggregate(params: {
     });
   }
 
-  const tipCountByRoundUser = new Map<string, Map<string, number>>();
-
   if (matchIds.length) {
     const tips = await readCompetitionTipsForMatches({
       supabase,
@@ -285,6 +390,25 @@ async function computeRoundTipStatusAggregate(params: {
       }
       const byUser = tipCountByRoundUser.get(rid)!;
       byUser.set(uid, (byUser.get(uid) ?? 0) + 1);
+      setLatestRoundTimestamp(latestSubmittedAtByRoundUser, rid, uid, t.updated_at);
+    });
+  }
+
+  if (roundIds.length) {
+    const reminderLogs = await readReminderLogsForRounds({
+      supabase,
+      competitionId: params.competitionId,
+      season: params.season,
+      roundIds,
+    });
+
+    reminderLogs.forEach((row) => {
+      setLatestRoundTimestamp(
+        lastReminderAtByRoundUser,
+        String(row.round_id),
+        String(row.user_id),
+        row.sent_at_utc
+      );
     });
   }
 
@@ -300,6 +424,8 @@ async function computeRoundTipStatusAggregate(params: {
         profileNameByUserId: profileMap,
         paymentStatusByUserId,
         tipCountByUserId: tipsByUser,
+        latestSubmittedAtByUserId: latestSubmittedAtByRoundUser.get(r.id),
+        lastReminderAtByUserId: lastReminderAtByRoundUser.get(r.id),
       });
 
     return {

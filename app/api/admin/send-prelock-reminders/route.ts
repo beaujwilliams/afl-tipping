@@ -4,6 +4,7 @@ import {
   requireAdminOrCron,
   resolveCompetitionIdForAdminRequest,
 } from "@/lib/admin-auth";
+import { invalidateRoundTipStatusCache } from "@/lib/round-tip-status-data";
 const DEFAULT_SEASON = 2026;
 const DEFAULT_REMINDER_HOURS = 3;
 const DEFAULT_WINDOW_MINUTES = 10;
@@ -815,6 +816,14 @@ export async function GET(req: Request) {
         failed,
         resend_override_applied: resendOverrideApplied,
         skipped_no_matches: false,
+      });
+    }
+
+    if (!dryRun) {
+      await invalidateRoundTipStatusCache({
+        competitionId,
+        season,
+        supabase,
       });
     }
 

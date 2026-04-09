@@ -69,19 +69,19 @@ type AdminAnomaliesResponse = {
 const AUTOMATION_STATUS_CARDS: AutomationStatusCard[] = [
   {
     title: "Scoring refresh",
-    detail: "Runs automatically after lock on a 5-minute cycle while unfinished matches still exist.",
+    detail: "Runs automatically after lock while unfinished matches remain.",
   },
   {
     title: "Tip reminders",
-    detail: "Run automatically before lock. Manual follow-up lives with people and payments.",
+    detail: "Runs automatically before lock. Manual follow-up lives in Payments.",
   },
   {
     title: "Odds snapshots",
-    detail: "Captured automatically when the next due round enters its snapshot window.",
+    detail: "Captured automatically when the next due round reaches its snapshot window.",
   },
   {
     title: "Manual recovery",
-    detail: "Logs, raw queues, and recovery tools stay tucked away unless something genuinely needs help.",
+    detail: "Hidden unless something needs manual help.",
   },
 ];
 
@@ -472,8 +472,7 @@ export default function AdminPage() {
       <div className="ui-page-header">
         <h1 className="ui-title">Admin Centre</h1>
         <div className="ui-caption">
-          Automation now handles most routine work. This page keeps the in-season jobs close, and
-          pushes diagnostics and recovery into the background until you actually need them.
+          Main in-season jobs first. Diagnostics and recovery stay in the background.
         </div>
       </div>
 
@@ -497,8 +496,7 @@ export default function AdminPage() {
               <div className="ui-admin-kicker">Automation-first</div>
               <h2 className="ui-admin-hero-title">Step in only when the comp needs help.</h2>
               <div className="ui-admin-summary">
-                The everyday jobs now run in the background. For most weeks, the only things you
-                should need here are roster, payments, and recap.
+                Most weeks you should only need roster, payments, and recap.
               </div>
             </div>
 
@@ -518,8 +516,7 @@ export default function AdminPage() {
             <div>
               <h2 className="ui-admin-section-title">Today</h2>
               <div className="ui-admin-summary ui-admin-summary--tight">
-                Start here. If something needs action right now, it should show up below before you
-                need to dig through other admin pages.
+                Start here for anything that needs action now.
               </div>
             </div>
             <span
@@ -552,8 +549,7 @@ export default function AdminPage() {
             <UiCard className="ui-admin-tool">
               <div className="ui-admin-subtitle">Nothing urgent right now</div>
               <div className="ui-admin-summary ui-admin-summary--tight">
-                No current anomalies were detected for this season. If you still want the detailed
-                logs, they are tucked into Diagnostics below.
+                No current issues for this season.
               </div>
             </UiCard>
           ) : (
@@ -603,8 +599,7 @@ export default function AdminPage() {
         <UiCard soft className="ui-admin-section">
           <h2 className="ui-admin-section-title">People &amp; Money</h2>
           <div className="ui-admin-summary">
-            Your in-season people workflow starts with roster and settings, then payments, then
-            onboarding only when you need to follow up someone new.
+            Roster first, then payments, then onboarding when needed.
           </div>
 
           <div className="ui-admin-two-col">
@@ -622,7 +617,7 @@ export default function AdminPage() {
             <UiCard className="ui-admin-tool">
               <div className="ui-admin-subtitle">Payments</div>
               <div className="ui-admin-summary ui-admin-summary--tight">
-                Record transfers, reconcile them to members, and run payment follow-up when needed.
+                Record transfers, match them to members, and send payment reminders.
               </div>
               <UiButtonLink href="/admin/payments" className="ui-admin-btn ui-admin-btn--full">
                 Open Payments
@@ -632,7 +627,7 @@ export default function AdminPage() {
             <UiCard className="ui-admin-tool">
               <div className="ui-admin-subtitle">Onboarding</div>
               <div className="ui-admin-summary ui-admin-summary--tight">
-                Track people from next-season interest through joining and payment readiness.
+                Track new people through invite, join, and payment readiness.
               </div>
               <UiButtonLink href="/admin/onboarding" className="ui-admin-btn ui-admin-btn--full">
                 Open Onboarding
@@ -644,15 +639,14 @@ export default function AdminPage() {
         <UiCard soft className="ui-admin-section">
           <h2 className="ui-admin-section-title">Communications</h2>
           <div className="ui-admin-summary">
-            Keep the common in-season comms flow close: generate the round recap for yourself and
-            jump into recap history when you need context.
+            Recap send and recap history.
           </div>
 
           <div className="ui-admin-two-col">
             <UiCard className="ui-admin-tool">
               <div className="ui-admin-subtitle">Round recap</div>
               <div className="ui-admin-summary ui-admin-summary--tight">
-                Generate a round recap now and email it directly to yourself.
+                Generate the recap and email it to yourself.
               </div>
               <div className="ui-admin-stack">
                 <div className="ui-row-wrap ui-admin-gap-sm ui-admin-form-row">
@@ -681,7 +675,7 @@ export default function AdminPage() {
                   onClick={runRecapToMeNow}
                   className="ui-admin-btn ui-admin-btn--full"
                 >
-                  Generate Round Recap + Send To Me
+                  Send recap to me
                 </UiButton>
               </div>
             </UiCard>
@@ -689,8 +683,7 @@ export default function AdminPage() {
             <UiCard className="ui-admin-tool">
               <div className="ui-admin-subtitle">Recap archive</div>
               <div className="ui-admin-summary ui-admin-summary--tight">
-                Browse stored recap history when you want context before sending or reviewing the
-                weekly narrative.
+                View saved recap history.
               </div>
               <UiButtonLink href="/admin/recaps" className="ui-admin-btn ui-admin-btn--full">
                 Open Recap Archive
@@ -707,16 +700,14 @@ export default function AdminPage() {
             Diagnostics, Maintenance &amp; Recovery
           </summary>
           <div className="ui-admin-summary">
-            Logs, raw queues, and manual recovery tools all live here. Most weeks you should not
-            need this section, but it stays nearby when something looks off.
+            Logs, raw queues, and manual recovery tools.
           </div>
 
           <div className="ui-admin-subtitle" style={{ marginTop: 14 }}>
             Diagnostics &amp; raw views
           </div>
           <div className="ui-admin-summary ui-admin-summary--tight" style={{ marginTop: 4 }}>
-            Detailed logs and raw queues. Use these after the inbox tells you something needs
-            attention, not before.
+            Detailed logs and raw queues.
           </div>
 
           <div className="ui-admin-maintenance-grid" style={{ marginTop: 12 }}>
@@ -750,8 +741,7 @@ export default function AdminPage() {
                     : `No failed automation runs found in the last ${healthData?.failure_window_hours ?? 72} hours.`}
               </div>
               <div className="ui-caption">
-                Shows the latest recorded run per automation stream, recent failures, and raw
-                stored details for debugging.
+                Latest runs, recent failures, and raw details.
               </div>
               {healthWarning && (
                 <div
@@ -781,8 +771,7 @@ export default function AdminPage() {
             <UiCard className="ui-admin-tool">
               <div className="ui-admin-subtitle">Scoring log</div>
               <div className="ui-admin-summary ui-admin-summary--tight">
-                Check whether scoring ran, whether results changed, and whether the leaderboard
-                refresh succeeded.
+                Check scoring, results changes, and leaderboard refreshes.
               </div>
               <UiButtonLink
                 href={`/admin/scoring-sync?season=${encodeURIComponent(String(season))}`}
@@ -795,8 +784,7 @@ export default function AdminPage() {
             <UiCard className="ui-admin-tool">
               <div className="ui-admin-subtitle">Admin audit log</div>
               <div className="ui-admin-summary ui-admin-summary--tight">
-                See who changed members, settings, fixture data, results, snapshots, and manual
-                leaderboard refreshes.
+                See who changed members, settings, fixture data, results, or snapshots.
               </div>
               <UiButtonLink
                 href={`/admin/audit-log?season=${encodeURIComponent(String(season))}`}
@@ -809,7 +797,7 @@ export default function AdminPage() {
             <UiCard className="ui-admin-tool">
               <div className="ui-admin-subtitle">Raw interest queue</div>
               <div className="ui-admin-summary ui-admin-summary--tight">
-                Back-office waitlist view for export, bulk season-open email, and manual cleanup.
+                Back-office view for export, bulk email, and cleanup.
               </div>
               <UiButtonLink
                 href="/admin/interested-members"
@@ -824,15 +812,13 @@ export default function AdminPage() {
             <div className="ui-admin-automation-item">
               <div className="ui-admin-automation-title">What runs automatically now</div>
               <div className="ui-admin-summary ui-admin-summary--tight">
-                Scoring checks, reminder sends, and due-round odds snapshots all run in the
-                background. Manual tools are fallback options only.
+                Scoring checks, reminders, and due-round snapshots run automatically.
               </div>
             </div>
             <div className="ui-admin-automation-item">
               <div className="ui-admin-automation-title">Good first check when something feels off</div>
               <div className="ui-admin-summary ui-admin-summary--tight">
-                Start with the inbox. Then open the scoring log or automation health before reaching
-                for a manual fix.
+                Start with the inbox, then check scoring or automation health.
               </div>
             </div>
           </div>
@@ -841,15 +827,14 @@ export default function AdminPage() {
             Manual recovery tools
           </div>
           <div className="ui-admin-summary ui-admin-summary--tight" style={{ marginTop: 4 }}>
-            Low-use manual actions for recovery, backfills, or testing.
+            Low-use actions for recovery, backfills, or testing.
           </div>
 
           <div className="ui-admin-maintenance-grid" style={{ marginTop: 12 }}>
             <UiCard className="ui-admin-tool">
               <div className="ui-admin-subtitle">Fast recovery</div>
               <div className="ui-admin-summary ui-admin-summary--tight">
-                Use the full recovery flow when results changed and you want to refresh everything in
-                one go.
+                Run the full recovery flow in one go.
               </div>
               <UiButton
                 disabled={isRunning}
@@ -863,7 +848,7 @@ export default function AdminPage() {
             <UiCard className="ui-admin-tool">
               <div className="ui-admin-subtitle">Manual scoring steps</div>
               <div className="ui-admin-summary ui-admin-summary--tight">
-                Use individual scoring steps only when you need one part of the normal recovery flow.
+                Run single steps only when you do not need the full recovery flow.
               </div>
               <div className="ui-row-wrap ui-admin-gap-sm">
                 <UiButton
@@ -887,8 +872,7 @@ export default function AdminPage() {
             <UiCard className="ui-admin-tool">
               <div className="ui-admin-subtitle">Fixture &amp; odds maintenance</div>
               <div className="ui-admin-summary ui-admin-summary--tight">
-                Use these for fixture backfills or when you need to manually trigger the standard odds
-                capture path.
+                Use for fixture backfills or manual odds capture.
               </div>
               <div className="ui-admin-stack">
                 <UiButton
@@ -915,8 +899,7 @@ export default function AdminPage() {
                 <span className="ui-admin-danger-chip">Rare use</span>
               </div>
               <div className="ui-admin-summary ui-admin-summary--tight">
-                Forces odds capture immediately, even when not due. Keep this for testing and
-                backfills only.
+                Forces odds capture immediately. Use for testing or backfills only.
               </div>
               <UiButton
                 disabled={isRunning}
@@ -930,8 +913,7 @@ export default function AdminPage() {
           </div>
 
           <div className="ui-admin-maintenance-note">
-            Normal path: use the inbox, then diagnostics, and only reach for manual recovery when
-            automation clearly missed something.
+            Normal path: inbox first, diagnostics second, recovery last.
           </div>
         </details>
       </div>

@@ -387,8 +387,8 @@ export default function AdminInterestedMembersPage() {
             Raw Interest Queue
           </h1>
           <div className="ui-caption" style={{ marginTop: 6 }}>
-            Back-office waitlist view for export, bulk season-open email, and manual cleanup.
-            Day-to-day follow-up now lives in onboarding.
+            Back-office waitlist view for export, bulk email, and cleanup. Follow-up lives in
+            onboarding.
           </div>
         </div>
         <div className="ui-row-wrap">

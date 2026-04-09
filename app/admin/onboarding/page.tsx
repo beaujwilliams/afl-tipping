@@ -428,8 +428,7 @@ export default function AdminOnboardingPage() {
         <div>
           <h1 className="ui-title">Onboarding Pipeline</h1>
           <div className="ui-caption ui-mt-1">
-            Move new people from interest through invite, join, and payment readiness without
-            bouncing between separate admin pages.
+            Track new people from interest through invite, join, and payment readiness.
           </div>
         </div>
         <div className="ui-row-wrap">
@@ -444,7 +443,7 @@ export default function AdminOnboardingPage() {
       <UiCard soft className="ui-admin-section" style={{ marginTop: 12 }}>
         <UiSectionHeader
           title={`Season ${season} onboarding`}
-          subtitle="Best for pre-season and late-join follow-up. Day-to-day in-season work usually stays in roster and payments."
+          subtitle="Mainly for pre-season and late joins."
           right={
             <label className="ui-row-wrap">
               <span className="ui-caption">Season</span>

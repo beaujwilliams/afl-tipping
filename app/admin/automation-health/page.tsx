@@ -171,8 +171,7 @@ export default function AutomationHealthPage() {
         <div>
           <h1 className="ui-title">Automation Health</h1>
           <div className="ui-caption ui-mt-1">
-            Detailed health view for scoring, reminder, and snapshot automation once the anomaly
-            inbox tells you something may be off.
+            Detailed health view for scoring, reminders, and snapshots.
           </div>
         </div>
         <div className="ui-row-wrap">
@@ -226,44 +225,36 @@ export default function AutomationHealthPage() {
           <UiCard soft className="ui-admin-section" style={{ marginTop: 12 }}>
             <div className="ui-admin-subtitle">What this page shows</div>
             <div className="ui-admin-summary ui-admin-summary--tight">
-              This page is meant for diagnosis after the inbox flags something. It expands the raw
-              automation picture so you can tell whether a job actually failed, was skipped for a
-              harmless reason, or never recorded at all.
+              Use this page after the inbox flags something. It shows the latest run state, recent
+              failures, and stored run details.
             </div>
 
             <div className="ui-admin-two-col">
               <UiCard className="ui-admin-tool">
                 <div className="ui-admin-subtitle">Latest state cards</div>
                 <div className="ui-admin-summary ui-admin-summary--tight">
-                  The cards below show the latest recorded run for each automation stream. A green
-                  card means the latest run succeeded, amber means it skipped, and red means the
-                  latest run failed.
+                  The cards below show the latest recorded run for each automation stream.
                 </div>
               </UiCard>
 
               <UiCard className="ui-admin-tool">
                 <div className="ui-admin-subtitle">Failure window</div>
                 <div className="ui-admin-summary ui-admin-summary--tight">
-                  The summary and failure table only call out failures in the last{" "}
-                  {failureWindowHours} hours. <i>All clear</i> means no recorded failures in that
-                  window, not that every job necessarily ran recently.
+                  Failures are shown for the last {failureWindowHours} hours.
                 </div>
               </UiCard>
 
               <UiCard className="ui-admin-tool">
                 <div className="ui-admin-subtitle">Source warnings</div>
                 <div className="ui-admin-summary ui-admin-summary--tight">
-                  If a warning appears above, one of the logging tables could not be queried. That
-                  usually means the diagnostic view is incomplete, not that the comp logic itself is
-                  broken.
+                  These warn when a logging table could not be queried.
                 </div>
               </UiCard>
 
               <UiCard className="ui-admin-tool">
                 <div className="ui-admin-subtitle">Details drawer</div>
                 <div className="ui-admin-summary ui-admin-summary--tight">
-                  The failure details section exposes the raw stored payload for each run. Use that
-                  when you need the exact error text, provider response, or skipped-reason context.
+                  Shows the raw stored payload for each run.
                 </div>
               </UiCard>
             </div>

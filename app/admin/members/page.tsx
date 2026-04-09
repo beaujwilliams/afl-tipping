@@ -658,8 +658,7 @@ export default function AdminMembersPage() {
         <div>
           <h1 className="ui-title">Roster &amp; Season Settings</h1>
           <div className="ui-caption ui-mt-1">
-            Manage member roles, payment state, unpaid tip lock, test accounts, and champion
-            seasons.
+            Roles, payment state, unpaid tip lock, test accounts, and champion seasons.
           </div>
         </div>
         <div className="ui-row-wrap">
@@ -673,7 +672,7 @@ export default function AdminMembersPage() {
       <UiCard soft className="ui-admin-section" style={{ marginTop: 12 }}>
         <UiSectionHeader
           title={`Season ${CURRENT_SEASON} roster & settings`}
-          subtitle="Use this page for in-season member eligibility, payment state, role changes, test accounts, and champion setup."
+          subtitle="Main in-season member settings."
           right={
             <div className="ui-row-wrap">
               <span className="ui-caption">Season buy-in</span>
@@ -687,7 +686,7 @@ export default function AdminMembersPage() {
         <div style={toolCardStyle}>
           <div style={{ fontWeight: 800 }}>Eligibility controls</div>
           <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75 }}>
-            Control whether unpaid members with status <b>pending</b> can still submit tips.
+            Control whether unpaid members with status <b>pending</b> can submit tips.
           </div>
           <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
@@ -695,7 +694,6 @@ export default function AdminMembersPage() {
                 <div style={{ fontWeight: 800 }}>Unpaid tip lock</div>
                 <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75 }}>
                   When ON, members with payment status <b>pending</b> cannot submit tips.
-                  Log in/chat/results remain available.
                 </div>
               </div>
               <button

@@ -405,8 +405,7 @@ export default function AdminPaymentsPage() {
         <div>
           <h1 className="ui-title">Payments</h1>
           <div className="ui-caption ui-mt-1">
-            Record incoming payments, reconcile them to members, and let linked onboarding rows move
-            to active when payment is confirmed.
+            Record payments, match them to members, and confirm who is paid.
           </div>
         </div>
         <div className="ui-row-wrap">
@@ -420,7 +419,7 @@ export default function AdminPaymentsPage() {
       <UiCard soft className="ui-admin-section" style={{ marginTop: 12 }}>
         <UiSectionHeader
           title={`Season ${season} payment ledger`}
-          subtitle={`Buy-in reference: ${fmtDollars(buyInCents)}. Record what arrived, then confirm the right member so the comp treats them as paid.`}
+          subtitle={`Buy-in: ${fmtDollars(buyInCents)}.`}
           right={
             <div className="ui-row-wrap">
               <label className="ui-admin-label">Season</label>
@@ -466,8 +465,7 @@ export default function AdminPaymentsPage() {
           <div>
             <div className="ui-title--section">Payment follow-up</div>
             <div className="ui-caption ui-mt-1">
-              Send reminder emails to members still marked pending. This stays with payments so the
-              whole collection workflow lives in one place.
+              Send reminders to members still marked pending.
             </div>
           </div>
           <UiButton
@@ -483,7 +481,7 @@ export default function AdminPaymentsPage() {
       <UiCard soft style={{ marginTop: 12 }}>
         <div className="ui-title--section">Record payment</div>
         <div className="ui-caption ui-mt-1">
-          Add the transfer details you can see. The app will suggest the best member match.
+          Add the payment details. The app will suggest a member match.
         </div>
         <div
           className="ui-grid ui-mt-3"
@@ -577,7 +575,7 @@ export default function AdminPaymentsPage() {
           <div>
             <div className="ui-title--section">Reconciliation queue</div>
             <div className="ui-caption ui-mt-1">
-              Match payments to members. Exact email-linked onboarding rows will follow along.
+              Match payments to members.
             </div>
           </div>
           <div className="ui-row-wrap">

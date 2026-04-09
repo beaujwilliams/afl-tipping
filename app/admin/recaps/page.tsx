@@ -128,7 +128,7 @@ export default function AdminRecapsPage() {
         <div>
           <h1 className="ui-title">Recap Archive</h1>
           <div className="ui-caption ui-mt-1">
-            Stored weekly recap history for admin review, context, and reruns.
+            Stored weekly recap history.
           </div>
         </div>
         <div className="ui-row-wrap">
@@ -142,7 +142,7 @@ export default function AdminRecapsPage() {
       <UiCard soft className="ui-admin-section" style={{ marginTop: 12 }}>
         <UiSectionHeader
           title={`Season ${season} recap archive`}
-          subtitle="Use this page when you want the stored narrative and raw stats behind each round recap."
+          subtitle="Saved recap text and raw stats."
           right={
             <label className="ui-row-wrap">
               <span className="ui-caption">Season</span>
@@ -162,7 +162,7 @@ export default function AdminRecapsPage() {
         <UiCard soft>
           <div className="ui-kicker">Stored recaps</div>
           <div className="ui-value">{recaps.length}</div>
-          <div className="ui-meta">Round recap entries currently stored for this season.</div>
+          <div className="ui-meta">Recaps stored for this season.</div>
         </UiCard>
         <UiCard soft>
           <div className="ui-kicker">Latest round</div>
@@ -176,7 +176,7 @@ export default function AdminRecapsPage() {
           <div className="ui-value" style={{ fontSize: 24 }}>
             {latestRecap ? fmtMelbourne(latestRecap.generated_at) : "—"}
           </div>
-          <div className="ui-meta">Useful when you want to confirm whether a recap already exists.</div>
+          <div className="ui-meta">Latest generated recap.</div>
         </UiCard>
       </div>
 

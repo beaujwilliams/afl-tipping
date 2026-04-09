@@ -551,10 +551,10 @@ export default function RoundPageClient({
           <div className="ui-card ui-tone-success">
             <div className="ui-kicker">Tips close</div>
             <div className="ui-value">
-              {formatMelbourne(roundRow.lock_time_utc)}
+              {isLocked ? "Closed" : `Closes in ${lockCountdown}`}
             </div>
             <div className="ui-meta">
-              {isLocked ? "Closed" : `Closes in ${lockCountdown}`}
+              {formatMelbourne(roundRow.lock_time_utc)}
             </div>
           </div>
 

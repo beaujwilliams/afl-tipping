@@ -770,29 +770,47 @@ export async function GET(req: Request) {
         });
 
         if (!dryRun) {
-          const { error: insErr } = await supabase
-            .from("prelock_reminder_emails")
-            .insert({
-              competition_id: competitionId,
-              round_id: r.id,
-              season,
-              round_number: r.round_number,
-              user_id: userId,
-              email: toEmail,
-              reminder_type: REMINDER_TYPE,
-              lock_time_utc: r.lock_time_utc,
-              status: sendResult.status,
-              provider: sendResult.provider,
-              provider_message_id: sendResult.providerMessageId,
-              error: sendResult.error,
-              sent_at_utc: new Date().toISOString(),
-            });
+          const reminderLogRow = {
+            competition_id: competitionId,
+            round_id: r.id,
+            season,
+            round_number: r.round_number,
+            user_id: userId,
+            email: toEmail,
+            reminder_type: REMINDER_TYPE,
+            lock_time_utc: r.lock_time_utc,
+            status: sendResult.status,
+            provider: sendResult.provider,
+            provider_message_id: sendResult.providerMessageId,
+            error: sendResult.error,
+            sent_at_utc: new Date().toISOString(),
+          };
 
-          if (insErr && insErr.code !== "23505") {
-            roundErrors.push({
-              round: r.round_number,
-              error: `Failed to insert reminder log for ${toEmail}: ${insErr.message}`,
-            });
+          // Successful resends should refresh the latest reminder timestamp for admin tip lists.
+          if (sendResult.status === "sent") {
+            const { error: upsertErr } = await supabase
+              .from("prelock_reminder_emails")
+              .upsert(reminderLogRow, {
+                onConflict: "competition_id,round_id,user_id,reminder_type",
+              });
+
+            if (upsertErr) {
+              roundErrors.push({
+                round: r.round_number,
+                error: `Failed to upsert reminder log for ${toEmail}: ${upsertErr.message}`,
+              });
+            }
+          } else {
+            const { error: insErr } = await supabase
+              .from("prelock_reminder_emails")
+              .insert(reminderLogRow);
+
+            if (insErr && insErr.code !== "23505") {
+              roundErrors.push({
+                round: r.round_number,
+                error: `Failed to insert reminder log for ${toEmail}: ${insErr.message}`,
+              });
+            }
           }
         }
 

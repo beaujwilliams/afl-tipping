@@ -8,7 +8,7 @@ import {
   normalizeOnboardingPipelineStage,
   type OnboardingPipelineStage,
 } from "@/lib/onboarding-workflow";
-import { NEXT_SEASON } from "@/lib/season-config";
+import { CURRENT_SEASON, NEXT_SEASON } from "@/lib/season-config";
 import {
   UiBadge,
   UiButton,
@@ -433,7 +433,7 @@ export default function AdminOnboardingPage() {
         </div>
         <div className="ui-row-wrap">
           <UiButtonLink href="/admin">Back to admin</UiButtonLink>
-          <UiButtonLink href="/admin/members">Roster &amp; Settings</UiButtonLink>
+          <UiButtonLink href={`/admin/roster/${CURRENT_SEASON}`}>Season roster</UiButtonLink>
           <UiButtonLink href="/admin/payments">Payments</UiButtonLink>
           <UiButtonLink href="/admin/interested-members">Raw Interest Queue</UiButtonLink>
           <UiButton onClick={() => void load()}>{loading ? "Refreshing..." : "Refresh"}</UiButton>
@@ -519,7 +519,7 @@ export default function AdminOnboardingPage() {
 
           <UiButtonLink href="/admin/interested-members">Raw Interest Queue</UiButtonLink>
           <UiButtonLink href="/admin/payments">Payments</UiButtonLink>
-          <UiButtonLink href="/admin/members">Roster &amp; Settings</UiButtonLink>
+          <UiButtonLink href={`/admin/roster/${CURRENT_SEASON}`}>Season roster</UiButtonLink>
         </div>
       </UiCard>
 

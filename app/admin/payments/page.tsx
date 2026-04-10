@@ -410,7 +410,7 @@ export default function AdminPaymentsPage() {
         </div>
         <div className="ui-row-wrap">
           <UiButtonLink href="/admin">Back to admin</UiButtonLink>
-          <UiButtonLink href="/admin/members">Roster &amp; Settings</UiButtonLink>
+          <UiButtonLink href={`/admin/roster/${CURRENT_SEASON}`}>Season roster</UiButtonLink>
           <UiButtonLink href="/admin/onboarding">Onboarding</UiButtonLink>
           <UiButton onClick={() => void load()}>{loading ? "Refreshing..." : "Refresh"}</UiButton>
         </div>

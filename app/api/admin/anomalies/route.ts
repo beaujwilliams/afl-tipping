@@ -373,8 +373,8 @@ export async function GET(req: Request) {
           pendingPaymentAttention.pending_member_count === 1 ? "" : "s"
         } before Round ${pendingPaymentAttention.round_number} lock`,
         detail: "Unpaid tip lock is enabled, so these members may be blocked from tipping if payment status is not updated in time.",
-        href: "/admin/members",
-        cta: "Open members",
+        href: `/admin/roster/${season}`,
+        cta: "Open season roster",
       });
     }
 

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { useToast } from "@/components/ToastProvider";
 import { UiButton, UiButtonLink, UiCard } from "@/components/ui";
-import { NEXT_SEASON } from "@/lib/season-config";
+import { CURRENT_SEASON, NEXT_SEASON } from "@/lib/season-config";
 
 type ConfirmAction = {
   title: string;
@@ -652,12 +652,20 @@ export default function AdminPage() {
             <UiCard className="ui-admin-tool">
               <div className="ui-admin-subtitle">Roster &amp; season settings</div>
               <div className="ui-admin-summary ui-admin-summary--tight">
-                Manage roles, payment state, unpaid tip lock, test accounts, and season winner
-                setup.
+                Manage current-season roster, then adjust cross-season people settings when
+                needed.
               </div>
-              <UiButtonLink href="/admin/members" className="ui-admin-btn ui-admin-btn--full">
-                Open Roster &amp; Settings
-              </UiButtonLink>
+              <div className="ui-admin-stack">
+                <UiButtonLink
+                  href={`/admin/roster/${CURRENT_SEASON}`}
+                  className="ui-admin-btn ui-admin-btn--full"
+                >
+                  Open Season Roster
+                </UiButtonLink>
+                <UiButtonLink href="/admin/settings/people" className="ui-admin-btn ui-admin-btn--full">
+                  Open People Settings
+                </UiButtonLink>
+              </div>
             </UiCard>
 
             <UiCard className="ui-admin-tool">

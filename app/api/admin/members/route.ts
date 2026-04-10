@@ -53,6 +53,7 @@ type MemberOut = {
   user_id: string;
   email: string | null;
   display_name: string | null;
+  favorite_team: string | null;
   role: string | null;
   payment_status: string | null;
   is_test_account: boolean;
@@ -71,6 +72,7 @@ type ProfileMemberRow = {
   id: string;
   display_name: string | null;
   email?: string | null;
+  favorite_team?: string | null;
 };
 
 type MemberAuditSnapshot = {
@@ -204,32 +206,46 @@ export async function GET(req: Request) {
       return NextResponse.json({ ok: true, competition_id: competitionId, members: [] });
     }
 
-    // Try to read profiles including email (if your schema has it)
+    // Try to read profiles including email/favorite team (if schema has them)
     let profRows: ProfileMemberRow[] = [];
     let profilesHaveEmail = true;
+    let profilesHaveFavoriteTeam = true;
 
-    const tryWithEmail = await supabase
+    const tryWithAll = await supabase
       .from("profiles")
-      .select("id, display_name, email")
+      .select("id, display_name, email, favorite_team")
       .in("id", userIds);
 
-    if (tryWithEmail.error) {
-      profilesHaveEmail = false;
+    if (tryWithAll.error) {
+      profilesHaveEmail = !isMissingColumnError(tryWithAll.error.message, "email");
+      profilesHaveFavoriteTeam = !isMissingColumnError(tryWithAll.error.message, "favorite_team");
+
+      const fallbackColumns = [
+        "id",
+        "display_name",
+        ...(profilesHaveEmail ? ["email"] : []),
+        ...(profilesHaveFavoriteTeam ? ["favorite_team"] : []),
+      ];
+
       const fallback = await supabase
         .from("profiles")
-        .select("id, display_name")
+        .select(fallbackColumns.join(", "))
         .in("id", userIds);
 
-      if (!fallback.error) profRows = (fallback.data as ProfileMemberRow[] | null) ?? [];
+      if (!fallback.error) profRows = (fallback.data as unknown as ProfileMemberRow[] | null) ?? [];
     } else {
-      profRows = (tryWithEmail.data as ProfileMemberRow[] | null) ?? [];
+      profRows = (tryWithAll.data as unknown as ProfileMemberRow[] | null) ?? [];
     }
 
-    const profileMap = new Map<string, { display_name: string | null; email: string | null }>();
+    const profileMap = new Map<
+      string,
+      { display_name: string | null; email: string | null; favorite_team: string | null }
+    >();
     for (const p of profRows) {
       profileMap.set(String(p.id), {
         display_name: p.display_name ?? null,
         email: profilesHaveEmail ? (p.email ?? null) : null,
+        favorite_team: profilesHaveFavoriteTeam ? (p.favorite_team ?? null) : null,
       });
     }
 
@@ -240,6 +256,7 @@ export async function GET(req: Request) {
         user_id: String(m.user_id),
         email: p?.email ?? null,
         display_name: p?.display_name ?? null,
+        favorite_team: p?.favorite_team ?? null,
         role: m.role ?? null,
         payment_status: hasPaymentStatus ? m.payment_status ?? "pending" : "pending",
         is_test_account: hasTestFlag ? Boolean(m.is_test_account) : false,

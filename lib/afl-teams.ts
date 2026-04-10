@@ -17,6 +17,7 @@ export const AFL_TEAMS = [
   "Sydney Swans",
   "West Coast Eagles",
   "Western Bulldogs",
+  "no AFL team",
 ] as const;
 
 export type AflTeam = (typeof AFL_TEAMS)[number];

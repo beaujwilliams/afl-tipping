@@ -5,8 +5,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useChatActivity } from "@/components/ChatActivityProvider";
 import LogoutButton from "@/components/LogoutButton";
+import { useToast } from "@/components/ToastProvider";
+import { AFL_TEAMS } from "@/lib/afl-teams";
+import { waitForSession } from "@/lib/session-client";
+import { supabaseBrowser } from "@/lib/supabase-browser";
 
 const BUILD_LABEL = process.env.NEXT_PUBLIC_BUILD_LABEL || "local dev";
+const TEAM_PROMPT_ONCE_KEY = "complicatedtips_team_prompt_seen_once_v1";
 
 type MenuKey = "tipping" | "info";
 type MenuItem = {
@@ -178,14 +183,28 @@ type AppLayoutChromeProps = {
   initialIsAdmin?: boolean;
 };
 
+type TeamPromptProfileResponse = {
+  ok?: boolean;
+  error?: string;
+  details?: string;
+  profile?: {
+    favorite_team: string | null;
+  };
+};
+
 export default function AppLayoutChrome({
   children,
   initialEmail = null,
   initialIsAdmin = false,
 }: AppLayoutChromeProps) {
+  const toast = useToast();
   const pathname = usePathname() ?? "";
   const [isMobile, setIsMobile] = useState(false);
   const [openMenu, setOpenMenu] = useState<MenuKey | null>(null);
+  const [showTeamPrompt, setShowTeamPrompt] = useState(false);
+  const [teamPromptChoice, setTeamPromptChoice] = useState("");
+  const [teamPromptSaving, setTeamPromptSaving] = useState(false);
+  const [teamPromptError, setTeamPromptError] = useState<string | null>(null);
   const navRef = useRef<HTMLDivElement | null>(null);
   const hoverCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { unreadChat, unreadMentions, unreadAnnouncements, unreadLeaderboardInvites } =
@@ -242,6 +261,45 @@ export default function AppLayoutChrome({
       document.removeEventListener("touchstart", onPointerDown);
     };
   }, [openMenu]);
+
+  useEffect(() => {
+    if (!initialEmail) return;
+    if (pathname.startsWith("/profile")) return;
+    if (typeof window === "undefined") return;
+    if (localStorage.getItem(TEAM_PROMPT_ONCE_KEY) === "1") return;
+
+    let canceled = false;
+
+    async function maybePromptForTeam() {
+      try {
+        const session = await waitForSession(2500, 180);
+        const token = session?.access_token ?? null;
+        if (!token || canceled) return;
+
+        const res = await fetch("/api/profile", {
+          cache: "no-store",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const body = (await res.json().catch(() => null)) as TeamPromptProfileResponse | null;
+        if (!res.ok || canceled) return;
+
+        const favoriteTeam = String(body?.profile?.favorite_team ?? "").trim();
+        if (favoriteTeam) return;
+
+        localStorage.setItem(TEAM_PROMPT_ONCE_KEY, "1");
+        setTeamPromptChoice("");
+        setTeamPromptError(null);
+        setShowTeamPrompt(true);
+      } catch {
+        // Silent: if profile load fails, don't block navigation.
+      }
+    }
+
+    maybePromptForTeam();
+    return () => {
+      canceled = true;
+    };
+  }, [initialEmail, pathname]);
 
   const profileHref = initialEmail ? "/profile" : "/login";
   const statsHref = initialEmail ? "/stats" : "/login";
@@ -302,6 +360,44 @@ export default function AppLayoutChrome({
   function onTriggerClick(key: MenuKey) {
     clearHoverCloseTimer();
     setOpenMenu((current) => (current === key ? null : key));
+  }
+
+  async function saveTeamFromPrompt() {
+    if (!teamPromptChoice || teamPromptSaving) return;
+    setTeamPromptSaving(true);
+    setTeamPromptError(null);
+
+    try {
+      const { data } = await supabaseBrowser.auth.getSession();
+      const token = data.session?.access_token ?? null;
+      if (!token) {
+        setTeamPromptError("Not authenticated. Please sign in again.");
+        return;
+      }
+
+      const res = await fetch("/api/profile", {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ favorite_team: teamPromptChoice }),
+      });
+
+      const body = (await res.json().catch(() => null)) as TeamPromptProfileResponse | null;
+      if (!res.ok) {
+        const details = body?.details ? ` (${body.details})` : "";
+        setTeamPromptError(`${body?.error ?? "Could not save team selection."}${details}`);
+        return;
+      }
+
+      setShowTeamPrompt(false);
+      toast.success("Favourite team saved.");
+    } catch {
+      setTeamPromptError("Could not save team selection right now.");
+    } finally {
+      setTeamPromptSaving(false);
+    }
   }
 
   return (
@@ -536,6 +632,98 @@ export default function AppLayoutChrome({
       )}
 
       <main style={{ maxWidth: 1000, margin: "40px auto", padding: 16 }}>{children}</main>
+
+      {showTeamPrompt && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Select your AFL team"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 120,
+            background: "rgba(0,0,0,0.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 520,
+              borderRadius: 14,
+              border: "1px solid var(--border)",
+              background: "var(--card)",
+              color: "var(--foreground)",
+              padding: 16,
+              display: "grid",
+              gap: 12,
+            }}
+          >
+            <div style={{ fontWeight: 900, fontSize: 24, letterSpacing: -0.2 }}>
+              Add your AFL team
+            </div>
+            <div style={{ opacity: 0.82 }}>
+              Helps with end-of-season insights. You can change this later in My Profile.
+            </div>
+
+            <label style={{ display: "grid", gap: 6 }}>
+              <div style={{ fontWeight: 700 }}>Team</div>
+              <select
+                className="ui-input"
+                value={teamPromptChoice}
+                onChange={(e) => setTeamPromptChoice(e.target.value)}
+                disabled={teamPromptSaving}
+              >
+                <option value="">Select your team</option>
+                {AFL_TEAMS.map((team) => (
+                  <option key={team} value={team}>
+                    {team}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {teamPromptError && (
+              <div
+                style={{
+                  color: "rgb(185, 28, 28)",
+                  fontSize: 13,
+                  fontWeight: 700,
+                }}
+              >
+                {teamPromptError}
+              </div>
+            )}
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className="ui-btn"
+                onClick={() => setShowTeamPrompt(false)}
+                disabled={teamPromptSaving}
+              >
+                Not now
+              </button>
+              <button
+                type="button"
+                className="ui-btn"
+                onClick={saveTeamFromPrompt}
+                disabled={!teamPromptChoice || teamPromptSaving}
+                style={{
+                  background: "var(--foreground)",
+                  color: "var(--background)",
+                  borderColor: "var(--foreground)",
+                }}
+              >
+                {teamPromptSaving ? "Saving..." : "Save team"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

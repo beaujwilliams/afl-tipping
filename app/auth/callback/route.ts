@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isValidAflTeam } from "@/lib/afl-teams";
 import { createClient, createServiceClient } from "@/lib/supabase-server";
 import {
   type AuthOtpType,
@@ -27,6 +28,9 @@ async function bootstrapProfileFromSignupMetadata(
     typeof metadata.username === "string" ? metadata.username : null
   );
   const username = usernameValidated.ok ? usernameValidated.value : null;
+  const rawFavoriteTeam =
+    typeof metadata.favorite_team === "string" ? metadata.favorite_team.trim() : "";
+  const favoriteTeam = isValidAflTeam(rawFavoriteTeam) ? rawFavoriteTeam : null;
 
   const service = createServiceClient();
 
@@ -61,7 +65,12 @@ async function bootstrapProfileFromSignupMetadata(
       (withUsername.data as { id: string; display_name: string | null; username?: string | null } | null) ?? null;
   }
 
-  const update: { id: string; display_name?: string | null; username?: string | null } = {
+  const update: {
+    id: string;
+    display_name?: string | null;
+    username?: string | null;
+    favorite_team?: string | null;
+  } = {
     id: user.id,
   };
   let shouldUpsert = false;
@@ -81,23 +90,42 @@ async function bootstrapProfileFromSignupMetadata(
     update.username = username;
     shouldUpsert = true;
   }
+  if (favoriteTeam) {
+    update.favorite_team = favoriteTeam;
+    shouldUpsert = true;
+  }
 
   if (!shouldUpsert) return;
 
-  const upsert = await service.from("profiles").upsert(update, { onConflict: "id" });
+  const upsertOnce = async (payload: typeof update) =>
+    service.from("profiles").upsert(payload, { onConflict: "id" });
+
+  let upsert = await upsertOnce(update);
   if (!upsert.error) return;
 
   if (isMissingColumnError(upsert.error.message, "username") && update.username !== undefined) {
     delete update.username;
-    await service.from("profiles").upsert(update, { onConflict: "id" });
-    return;
+    upsert = await upsertOnce(update);
+    if (!upsert.error) return;
+  }
+  if (
+    upsert.error &&
+    isMissingColumnError(upsert.error.message, "favorite_team") &&
+    update.favorite_team !== undefined
+  ) {
+    delete update.favorite_team;
+    upsert = await upsertOnce(update);
+    if (!upsert.error) return;
   }
 
-  if (isDuplicateUsernameError(upsert.error.message)) {
-    if (update.display_name !== undefined) {
-      await service
-        .from("profiles")
-        .upsert({ id: user.id, display_name: update.display_name }, { onConflict: "id" });
+  if (upsert.error && isDuplicateUsernameError(upsert.error.message)) {
+    const fallbackUpdate: { id: string; display_name?: string | null; favorite_team?: string | null } = {
+      id: user.id,
+    };
+    if (update.display_name !== undefined) fallbackUpdate.display_name = update.display_name;
+    if (update.favorite_team !== undefined) fallbackUpdate.favorite_team = update.favorite_team;
+    if (fallbackUpdate.display_name !== undefined || fallbackUpdate.favorite_team !== undefined) {
+      await service.from("profiles").upsert(fallbackUpdate, { onConflict: "id" });
     }
   }
 }

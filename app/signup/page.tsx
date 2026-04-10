@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { AFL_TEAMS } from "@/lib/afl-teams";
 import { supabaseBrowser } from "@/lib/supabase-browser";
-import { validateUsername } from "@/lib/username";
 import NextSeasonInterestForm from "@/components/NextSeasonInterestForm";
 import { CURRENT_SEASON, NEXT_SEASON, SIGNUPS_OPEN } from "@/lib/season-config";
 
@@ -24,17 +24,10 @@ function setCooldownNow() {
   window.localStorage.setItem(SIGNUP_COOLDOWN_KEY, String(Date.now()));
 }
 
-type UsernameCheckResponse = {
-  ok?: boolean;
-  available?: boolean;
-  error?: string;
-};
-
 export default function SignupPage() {
   const [email, setEmail] = useState("");
-  const [username, setUsername] = useState("");
+  const [favoriteTeam, setFavoriteTeam] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [cooldownLeftMs, setCooldownLeftMs] = useState<number>(() => msLeftToCooldown());
@@ -77,21 +70,14 @@ export default function SignupPage() {
     }
     if (!canSubmit) return;
 
-    if (password !== confirmPassword) {
-      setMsg("Passwords do not match.");
-      return;
-    }
     if (password.length < 6) {
       setMsg("Password must be at least 6 characters.");
       return;
     }
-
-    const usernameValidation = validateUsername(username);
-    if (!usernameValidation.ok) {
-      setMsg(usernameValidation.error);
+    if (!favoriteTeam) {
+      setMsg("Please select your AFL team.");
       return;
     }
-    const normalizedUsername = usernameValidation.value;
 
     const left = msLeftToCooldown();
     if (left > 0) {
@@ -102,36 +88,18 @@ export default function SignupPage() {
     setMsg(null);
     setBusy(true);
 
-    const check = await fetch(
-      `/api/username-check?username=${encodeURIComponent(normalizedUsername)}`,
-      { cache: "no-store" }
-    );
-    const checkJson = (await check.json().catch(() => null)) as UsernameCheckResponse | null;
-
-    if (!check.ok || !checkJson?.ok) {
-      setBusy(false);
-      setCooldownLeftMs(msLeftToCooldown());
-      setMsg(checkJson?.error ?? "Could not validate username.");
-      return;
-    }
-
-    if (!checkJson.available) {
-      setBusy(false);
-      setCooldownLeftMs(msLeftToCooldown());
-      setMsg("That username is already taken.");
-      return;
-    }
-
     setCooldownNow();
+    const trimmedEmail = email.trim();
+    const emailLocalName = trimmedEmail.split("@")[0]?.trim() ?? "";
 
     const { error } = await supabaseBrowser.auth.signUp({
-      email,
+      email: trimmedEmail,
       password,
       options: {
         emailRedirectTo: `${window.location.origin}/auth/callback`,
         data: {
-          username: normalizedUsername,
-          display_name: normalizedUsername,
+          display_name: emailLocalName || null,
+          favorite_team: favoriteTeam,
         },
       },
     });
@@ -182,7 +150,7 @@ export default function SignupPage() {
         Create account
       </h1>
       <div className="ui-caption" style={{ marginTop: 6 }}>
-        Enter your details to join the comp.
+        Enter your email, password and AFL team to join the comp.
       </div>
 
       <form onSubmit={createAccount} className="ui-card ui-stack" style={{ marginTop: 16 }}>
@@ -204,26 +172,6 @@ export default function SignupPage() {
 
         <label>
           <div className="ui-caption" style={{ marginBottom: 6 }}>
-            Username
-          </div>
-          <input
-            className="ui-input"
-            style={{ width: "100%" }}
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            type="text"
-            required
-            placeholder="e.g. beau_w"
-            autoComplete="username"
-            maxLength={24}
-          />
-          <div className="ui-caption" style={{ marginTop: 6 }}>
-            Lowercase letters, numbers, underscores only (3-24 chars).
-          </div>
-        </label>
-
-        <label>
-          <div className="ui-caption" style={{ marginBottom: 6 }}>
             Password
           </div>
           <input
@@ -240,18 +188,22 @@ export default function SignupPage() {
 
         <label>
           <div className="ui-caption" style={{ marginBottom: 6 }}>
-            Confirm password
+            AFL team
           </div>
-          <input
+          <select
             className="ui-input"
             style={{ width: "100%" }}
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            type="password"
+            value={favoriteTeam}
+            onChange={(e) => setFavoriteTeam(e.target.value)}
             required
-            placeholder="••••••••"
-            autoComplete="new-password"
-          />
+          >
+            <option value="">Select your team</option>
+            {AFL_TEAMS.map((team) => (
+              <option key={team} value={team}>
+                {team}
+              </option>
+            ))}
+          </select>
         </label>
 
         <button

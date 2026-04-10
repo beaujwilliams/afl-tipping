@@ -30,6 +30,14 @@ type RoundRow = {
 
 export async function GET(req: Request) {
   const startedAtUtc = new Date().toISOString();
+  let logContext:
+    | {
+        competitionId: string;
+        season: number;
+        triggerMode: "cron" | "bearer";
+        requestPath: string;
+      }
+    | null = null;
   try {
     const gate = await requireAdminOrCron(req);
     if (!gate.ok) return NextResponse.json(gate.json, { status: gate.status });
@@ -42,6 +50,7 @@ export async function GET(req: Request) {
     const season = Number(url.searchParams.get("season") || "2026");
     const force = url.searchParams.get("force") === "1";
     const onlyRoundParam = url.searchParams.get("round"); // optional
+    const requestPath = url.pathname + url.search;
 
     const supabase = createServiceClient();
 
@@ -54,6 +63,12 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "No competition" }, { status: 404 });
     }
     const resolvedCompetitionId = competitionId;
+    logContext = {
+      competitionId: resolvedCompetitionId,
+      season,
+      triggerMode,
+      requestPath,
+    };
 
     async function respond(status: number, body: Record<string, unknown>) {
       try {
@@ -63,7 +78,7 @@ export async function GET(req: Request) {
           season,
           jobKind: "snapshot_odds_due",
           triggerMode,
-          requestPath: url.pathname + url.search,
+          requestPath,
           startedAtUtc,
           finishedAtUtc: new Date().toISOString(),
           runStatus: classification.runStatus,
@@ -84,7 +99,7 @@ export async function GET(req: Request) {
           targetType: "season",
           targetLabel: `Season ${season}`,
           summary: classification.summary,
-          requestPath: url.pathname + url.search,
+          requestPath,
           details: body,
         });
         if (auditError) {
@@ -133,10 +148,10 @@ export async function GET(req: Request) {
 
     const { data: rounds, error } = await q;
     if (error) {
-      return NextResponse.json(
-        { error: "Failed to read rounds", details: error.message },
-        { status: 500 }
-      );
+      return respond(500, {
+        error: "Failed to read rounds",
+        details: error.message,
+      });
     }
 
     if (!rounds?.length) {
@@ -315,6 +330,24 @@ export async function GET(req: Request) {
     });
   } catch (e: unknown) {
     const details = e instanceof Error ? e.message : String(e);
+    if (logContext) {
+      try {
+        await recordAutomationJobRun({
+          competitionId: logContext.competitionId,
+          season: logContext.season,
+          jobKind: "snapshot_odds_due",
+          triggerMode: logContext.triggerMode,
+          requestPath: logContext.requestPath,
+          startedAtUtc,
+          finishedAtUtc: new Date().toISOString(),
+          runStatus: "failed",
+          summary: details,
+          details: { error: "Unexpected error", details },
+        });
+      } catch {
+        // Swallow logging failures so caller still receives the original error response.
+      }
+    }
     return NextResponse.json(
       { error: "Unexpected error", details, started_at_utc: startedAtUtc },
       { status: 500 }

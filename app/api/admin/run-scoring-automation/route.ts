@@ -118,6 +118,43 @@ export async function GET(req: Request) {
 
     if (skipIdleActiveRun) {
       const finishedAtUtc = new Date().toISOString();
+      const details = {
+        sync_results: syncResults,
+        recalc_leaderboard: {
+          status: 412,
+          json: {
+            ok: false,
+            error: "Skipped recalc because there is no locked unfinished round.",
+          },
+        },
+        skip_reason: "no_live_round",
+      };
+
+      let logInsertError: string | null = null;
+      const logInsert = await supabase.from("scoring_automation_runs").insert({
+        competition_id: competitionId,
+        season,
+        job_kind: jobKind,
+        scope,
+        trigger_mode: gate.mode,
+        run_status: "success",
+        sync_ok: syncOk,
+        sync_updated: syncUpdated,
+        leaderboard_recalc_ran: false,
+        leaderboard_recalc_ok: null,
+        started_at_utc: startedAtUtc,
+        finished_at_utc: finishedAtUtc,
+        details,
+      });
+
+      if (logInsert.error) {
+        logInsertError = logInsert.error.message;
+        if (isMissingRelationError(logInsert.error.message, "scoring_automation_runs")) {
+          logInsertError =
+            `${logInsert.error.message} (hint: apply migration db/migrations/20260327_scoring_automation_runs.sql)`;
+        }
+      }
+
       return NextResponse.json({
         ok: true,
         season,
@@ -129,18 +166,9 @@ export async function GET(req: Request) {
         rounds_targeted: roundsTargetedCount,
         sync_updated: syncUpdated,
         recalc_triggered: false,
-        steps: {
-          sync_results: syncResults,
-          recalc_leaderboard: {
-            status: 412,
-            json: {
-              ok: false,
-              error: "Skipped recalc because there is no locked unfinished round.",
-            },
-          },
-        },
-        log_saved: false,
-        log_skipped_reason: "active_round_not_live",
+        steps: details,
+        log_saved: !logInsertError,
+        log_error: logInsertError,
         started_at_utc: startedAtUtc,
         finished_at_utc: finishedAtUtc,
       });

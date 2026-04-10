@@ -318,6 +318,14 @@ async function sendReminderEmail(params: {
 
 export async function GET(req: Request) {
   const startedAtUtc = new Date().toISOString();
+  let logContext:
+    | {
+        competitionId: string;
+        season: number;
+        triggerMode: "cron" | "bearer";
+        requestPath: string;
+      }
+    | null = null;
   try {
     const gate = await requireAdminOrCron(req);
     if (!gate.ok) return NextResponse.json(gate.json, { status: gate.status });
@@ -325,6 +333,7 @@ export async function GET(req: Request) {
 
     const url = new URL(req.url);
     const season = Number(url.searchParams.get("season") || String(DEFAULT_SEASON));
+    const requestPath = url.pathname + url.search;
     const roundParam = url.searchParams.get("round");
     const round = roundParam === null ? null : Number(roundParam);
     const dryRun = url.searchParams.get("dry_run") === "1";
@@ -347,79 +356,7 @@ export async function GET(req: Request) {
       .trim()
       .toLowerCase();
 
-    if (!Number.isFinite(season) || season < 2000 || season > 2100) {
-      return NextResponse.json(
-        { error: "Provide a valid season" },
-        { status: 400 }
-      );
-    }
-
-    if (round !== null && (!Number.isFinite(round) || round < 0)) {
-      return NextResponse.json(
-        { error: "round must be 0 or higher" },
-        { status: 400 }
-      );
-    }
-
-    if (!Number.isFinite(reminderHours) || reminderHours <= 0) {
-      return NextResponse.json(
-        { error: "hours_before_lock must be a positive number" },
-        { status: 400 }
-      );
-    }
-    const reminderType = reminderTypeForHours(reminderHours);
-
-    if (!Number.isFinite(windowMinutes) || windowMinutes < 0) {
-      return NextResponse.json(
-        { error: "window_minutes must be zero or positive" },
-        { status: 400 }
-      );
-    }
-
-    if (
-      windowDirection !== "around" &&
-      windowDirection !== "before" &&
-      windowDirection !== "after"
-    ) {
-      return NextResponse.json(
-        { error: "window_direction must be one of: around, before, after" },
-        { status: 400 }
-      );
-    }
-
-    const resendApiKey = process.env.RESEND_API_KEY || "";
-    const reminderFromEmail = process.env.REMINDER_FROM_EMAIL || "";
-    const reminderReplyTo = process.env.REMINDER_REPLY_TO || null;
-
-    if (!dryRun && (!resendApiKey || !reminderFromEmail)) {
-      return NextResponse.json(
-        {
-          error: "Missing REMINDER_FROM_EMAIL or RESEND_API_KEY for email delivery",
-          hint: "Set both env vars, or call with dry_run=1 for testing.",
-        },
-        { status: 500 }
-      );
-    }
-
     const supabase = createServiceClient();
-
-    // Fail fast if migration is missing.
-    const tableCheck = await supabase
-      .from("prelock_reminder_emails")
-      .select("id")
-      .limit(1);
-
-    if (tableCheck.error) {
-      return NextResponse.json(
-        {
-          error: "prelock_reminder_emails table missing or inaccessible",
-          details: tableCheck.error.message,
-          hint: "Apply migration db/migrations/20260307_prelock_reminder_emails.sql",
-        },
-        { status: 500 }
-      );
-    }
-
     const competitionId =
       gate.mode === "bearer"
         ? gate.competitionId
@@ -429,6 +366,12 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "No competition found" }, { status: 404 });
     }
     const resolvedCompetitionId = competitionId;
+    logContext = {
+      competitionId: resolvedCompetitionId,
+      season,
+      triggerMode,
+      requestPath,
+    };
 
     async function respond(status: number, body: Record<string, unknown>) {
       try {
@@ -438,7 +381,7 @@ export async function GET(req: Request) {
           season,
           jobKind: "prelock_reminders",
           triggerMode,
-          requestPath: url.pathname + url.search,
+          requestPath,
           startedAtUtc,
           finishedAtUtc: new Date().toISOString(),
           runStatus: classification.runStatus,
@@ -454,6 +397,58 @@ export async function GET(req: Request) {
       }
 
       return NextResponse.json(body, { status });
+    }
+
+    if (!Number.isFinite(season) || season < 2000 || season > 2100) {
+      return respond(400, { error: "Provide a valid season" });
+    }
+
+    if (round !== null && (!Number.isFinite(round) || round < 0)) {
+      return respond(400, { error: "round must be 0 or higher" });
+    }
+
+    if (!Number.isFinite(reminderHours) || reminderHours <= 0) {
+      return respond(400, { error: "hours_before_lock must be a positive number" });
+    }
+    const reminderType = reminderTypeForHours(reminderHours);
+
+    if (!Number.isFinite(windowMinutes) || windowMinutes < 0) {
+      return respond(400, { error: "window_minutes must be zero or positive" });
+    }
+
+    if (
+      windowDirection !== "around" &&
+      windowDirection !== "before" &&
+      windowDirection !== "after"
+    ) {
+      return respond(400, {
+        error: "window_direction must be one of: around, before, after",
+      });
+    }
+
+    const resendApiKey = process.env.RESEND_API_KEY || "";
+    const reminderFromEmail = process.env.REMINDER_FROM_EMAIL || "";
+    const reminderReplyTo = process.env.REMINDER_REPLY_TO || null;
+
+    if (!dryRun && (!resendApiKey || !reminderFromEmail)) {
+      return respond(500, {
+        error: "Missing REMINDER_FROM_EMAIL or RESEND_API_KEY for email delivery",
+        hint: "Set both env vars, or call with dry_run=1 for testing.",
+      });
+    }
+
+    // Fail fast if migration is missing.
+    const tableCheck = await supabase
+      .from("prelock_reminder_emails")
+      .select("id")
+      .limit(1);
+
+    if (tableCheck.error) {
+      return respond(500, {
+        error: "prelock_reminder_emails table missing or inaccessible",
+        details: tableCheck.error.message,
+        hint: "Apply migration db/migrations/20260307_prelock_reminder_emails.sql",
+      });
     }
 
     let roundsQuery = supabase
@@ -914,6 +909,24 @@ export async function GET(req: Request) {
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : "Unknown error";
+    if (logContext) {
+      try {
+        await recordAutomationJobRun({
+          competitionId: logContext.competitionId,
+          season: logContext.season,
+          jobKind: "prelock_reminders",
+          triggerMode: logContext.triggerMode,
+          requestPath: logContext.requestPath,
+          startedAtUtc,
+          finishedAtUtc: new Date().toISOString(),
+          runStatus: "failed",
+          summary: message,
+          details: { error: "Unexpected error", details: message },
+        });
+      } catch {
+        // Swallow logging failures so caller still receives the original error response.
+      }
+    }
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -55,6 +55,9 @@ type HealthRun = {
   details: unknown;
 };
 
+const AUTOMATION_LATEST_JOB_KINDS = ["snapshot_odds_due", "prelock_reminders"] as const;
+const SCORING_LATEST_JOB_KINDS = ["scoring_15m", "scoring_daily_full", "manual"] as const;
+
 function toAutomationHealthRun(row: AutomationJobRunRow): HealthRun {
   return {
     source: "automation",
@@ -171,24 +174,145 @@ export async function GET(req: Request) {
       scoringRuns = ((rawScoringRuns.data ?? []) as ScoringRunRow[]).map(toScoringHealthRun);
     }
 
-    const allRuns = [...automationRuns, ...scoringRuns].sort(compareByStartedDesc);
-    const latestByJobKind = new Map<string, HealthRun>();
-    for (const run of allRuns) {
-      if (!latestByJobKind.has(run.job_kind)) {
-        latestByJobKind.set(run.job_kind, run);
-      }
-    }
-    const latest = Array.from(latestByJobKind.values()).sort(compareByStartedDesc);
-
     const failureCutoffUtc = new Date(
       Date.now() - failureWindowHours * 60 * 60 * 1000
     ).toISOString();
 
-    const recentFailures = allRuns
-      .filter((run) => run.run_status === "failed" && run.started_at_utc >= failureCutoffUtc)
+    const latestAutomationRuns: HealthRun[] = [];
+    if (!automationRunsError) {
+      const latestPerKind = await Promise.all(
+        AUTOMATION_LATEST_JOB_KINDS.map(async (jobKind) => {
+          const row = await supabase
+            .from("automation_job_runs")
+            .select(
+              "id, competition_id, season, job_kind, trigger_mode, run_status, request_path, started_at_utc, finished_at_utc, summary, details"
+            )
+            .eq("competition_id", competitionId)
+            .eq("season", season)
+            .eq("job_kind", jobKind)
+            .order("started_at_utc", { ascending: false })
+            .limit(1);
+
+          if (row.error) {
+            if (!automationRunsError) automationRunsError = row.error.message;
+            if (
+              !automationRunsHint &&
+              isMissingRelationError(row.error.message, "automation_job_runs")
+            ) {
+              automationRunsHint = "Apply migration db/migrations/20260407_automation_job_runs.sql";
+            }
+            return null;
+          }
+
+          return ((row.data ?? [])[0] ?? null) as AutomationJobRunRow | null;
+        })
+      );
+
+      latestPerKind.forEach((row) => {
+        if (row) latestAutomationRuns.push(toAutomationHealthRun(row));
+      });
+    }
+
+    const latestScoringRuns: HealthRun[] = [];
+    if (!scoringRunsError) {
+      const latestPerKind = await Promise.all(
+        SCORING_LATEST_JOB_KINDS.map(async (jobKind) => {
+          const row = await supabase
+            .from("scoring_automation_runs")
+            .select(
+              "id, competition_id, season, job_kind, scope, trigger_mode, run_status, sync_updated, leaderboard_recalc_ran, leaderboard_recalc_ok, started_at_utc, finished_at_utc, details"
+            )
+            .eq("competition_id", competitionId)
+            .eq("season", season)
+            .eq("job_kind", jobKind)
+            .order("started_at_utc", { ascending: false })
+            .limit(1);
+
+          if (row.error) {
+            if (!scoringRunsError) scoringRunsError = row.error.message;
+            if (
+              !scoringRunsHint &&
+              isMissingRelationError(row.error.message, "scoring_automation_runs")
+            ) {
+              scoringRunsHint = "Apply migration db/migrations/20260327_scoring_automation_runs.sql";
+            }
+            return null;
+          }
+
+          return ((row.data ?? [])[0] ?? null) as ScoringRunRow | null;
+        })
+      );
+
+      latestPerKind.forEach((row) => {
+        if (row) latestScoringRuns.push(toScoringHealthRun(row));
+      });
+    }
+
+    const latest = [...latestAutomationRuns, ...latestScoringRuns].sort(compareByStartedDesc);
+
+    const automationFailures: HealthRun[] = [];
+    if (!automationRunsError) {
+      const failureRows = await supabase
+        .from("automation_job_runs")
+        .select(
+          "id, competition_id, season, job_kind, trigger_mode, run_status, request_path, started_at_utc, finished_at_utc, summary, details"
+        )
+        .eq("competition_id", competitionId)
+        .eq("season", season)
+        .eq("run_status", "failed")
+        .gte("started_at_utc", failureCutoffUtc)
+        .order("started_at_utc", { ascending: false })
+        .limit(Math.min(limit, 20));
+
+      if (failureRows.error) {
+        if (!automationRunsError) automationRunsError = failureRows.error.message;
+        if (
+          !automationRunsHint &&
+          isMissingRelationError(failureRows.error.message, "automation_job_runs")
+        ) {
+          automationRunsHint = "Apply migration db/migrations/20260407_automation_job_runs.sql";
+        }
+      } else {
+        automationFailures.push(
+          ...((failureRows.data ?? []) as AutomationJobRunRow[]).map(toAutomationHealthRun)
+        );
+      }
+    }
+
+    const scoringFailures: HealthRun[] = [];
+    if (!scoringRunsError) {
+      const failureRows = await supabase
+        .from("scoring_automation_runs")
+        .select(
+          "id, competition_id, season, job_kind, scope, trigger_mode, run_status, sync_updated, leaderboard_recalc_ran, leaderboard_recalc_ok, started_at_utc, finished_at_utc, details"
+        )
+        .eq("competition_id", competitionId)
+        .eq("season", season)
+        .eq("run_status", "failed")
+        .gte("started_at_utc", failureCutoffUtc)
+        .order("started_at_utc", { ascending: false })
+        .limit(Math.min(limit, 20));
+
+      if (failureRows.error) {
+        if (!scoringRunsError) scoringRunsError = failureRows.error.message;
+        if (
+          !scoringRunsHint &&
+          isMissingRelationError(failureRows.error.message, "scoring_automation_runs")
+        ) {
+          scoringRunsHint = "Apply migration db/migrations/20260327_scoring_automation_runs.sql";
+        }
+      } else {
+        scoringFailures.push(
+          ...((failureRows.data ?? []) as ScoringRunRow[]).map(toScoringHealthRun)
+        );
+      }
+    }
+
+    const recentFailures = [...automationFailures, ...scoringFailures]
       .sort(compareByStartedDesc)
       .slice(0, Math.min(limit, 20));
 
+    const allRuns = [...automationRuns, ...scoringRuns].sort(compareByStartedDesc);
     const healthy = recentFailures.length === 0 && !automationRunsError && !scoringRunsError;
 
     return NextResponse.json({

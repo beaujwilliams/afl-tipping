@@ -22,6 +22,13 @@ type RunRow = {
   details: unknown;
 };
 
+function isIdleActiveSkip(row: RunRow) {
+  if (row.job_kind !== "scoring_15m") return false;
+  if (!row.details || typeof row.details !== "object" || Array.isArray(row.details)) return false;
+  const details = row.details as Record<string, unknown>;
+  return details.skip_reason === "no_live_round";
+}
+
 function isMissingRelationError(message: string, relationName: string) {
   const m = String(message ?? "").toLowerCase();
   const rel = relationName.toLowerCase();
@@ -39,6 +46,7 @@ export async function GET(req: Request) {
     const limit = Number.isFinite(limitParam)
       ? Math.max(1, Math.min(100, Math.trunc(limitParam)))
       : 25;
+    const includeIdle = url.searchParams.get("include_idle") === "1";
     const jobKind = String(url.searchParams.get("job_kind") ?? "")
       .trim()
       .toLowerCase();
@@ -57,6 +65,8 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "No competition found" }, { status: 404 });
     }
 
+    const fetchLimit = includeIdle ? limit : Math.min(500, Math.max(limit * 12, limit));
+
     let query = supabase
       .from("scoring_automation_runs")
       .select(
@@ -65,7 +75,7 @@ export async function GET(req: Request) {
       .eq("competition_id", competitionId)
       .eq("season", season)
       .order("started_at_utc", { ascending: false })
-      .limit(limit);
+      .limit(fetchLimit);
 
     if (jobKind === "scoring_15m" || jobKind === "scoring_daily_full" || jobKind === "manual") {
       query = query.eq("job_kind", jobKind);
@@ -90,12 +100,16 @@ export async function GET(req: Request) {
       );
     }
 
+    const rows = ((runs.data ?? []) as RunRow[])
+      .filter((row) => (includeIdle ? true : !isIdleActiveSkip(row)))
+      .slice(0, limit);
+
     return NextResponse.json({
       ok: true,
       season,
       competition_id: competitionId,
       job_kind: jobKind || null,
-      runs: (runs.data ?? []) as RunRow[],
+      runs: rows,
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e);

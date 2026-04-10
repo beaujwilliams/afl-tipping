@@ -129,50 +129,6 @@ function normalizeChampionSource(
   return "none";
 }
 
-function roleChipStyle(role: MemberRole): React.CSSProperties {
-  if (role === "owner") {
-    return {
-      background: "rgba(245, 158, 11, 0.15)",
-      color: "rgb(180, 83, 9)",
-      border: "1px solid rgba(245, 158, 11, 0.35)",
-    };
-  }
-  if (role === "admin") {
-    return {
-      background: "rgba(59, 130, 246, 0.14)",
-      color: "rgb(30, 64, 175)",
-      border: "1px solid rgba(59, 130, 246, 0.30)",
-    };
-  }
-  return {
-    background: "rgba(107, 114, 128, 0.10)",
-    color: "rgb(55, 65, 81)",
-    border: "1px solid rgba(107, 114, 128, 0.25)",
-  };
-}
-
-function paymentChipStyle(status: PaymentStatus): React.CSSProperties {
-  if (status === "paid") {
-    return {
-      background: "rgba(16, 185, 129, 0.14)",
-      color: "rgb(6, 95, 70)",
-      border: "1px solid rgba(16, 185, 129, 0.30)",
-    };
-  }
-  if (status === "waived") {
-    return {
-      background: "rgba(139, 92, 246, 0.14)",
-      color: "rgb(91, 33, 182)",
-      border: "1px solid rgba(139, 92, 246, 0.30)",
-    };
-  }
-  return {
-    background: "rgba(239, 68, 68, 0.14)",
-    color: "rgb(153, 27, 27)",
-    border: "1px solid rgba(239, 68, 68, 0.32)",
-  };
-}
-
 function compareText(a: string, b: string) {
   return a.localeCompare(b, "en", { sensitivity: "base" });
 }
@@ -1033,7 +989,7 @@ export default function PeopleAdminClient({
             <div style={{ padding: 16, opacity: 0.75 }}>No matching members.</div>
           ) : (
             <UiTableScroll>
-              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1160 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1220 }}>
                 <thead>
                   <tr style={{ background: "var(--card-soft)", textAlign: "left", fontSize: 12 }}>
                     {sortableRosterHeader("Name", "name")}
@@ -1060,65 +1016,26 @@ export default function PeopleAdminClient({
 
                     return (
                       <tr key={m.user_id}>
-                        <td style={{ padding: 12, borderTop: "1px solid var(--border)" }}>
+                        <td style={{ padding: "8px 10px", borderTop: "1px solid var(--border)" }}>
                           <input
                             value={draft.display_name}
                             onChange={(e) => setDraftField(m.user_id, { display_name: e.target.value })}
                             placeholder="Display name"
                             style={{
                               width: "100%",
-                              padding: 9,
-                              borderRadius: 9,
+                              padding: "6px 8px",
+                              borderRadius: 8,
                               border: "1px solid var(--border)",
                               background: "var(--card)",
                               color: "var(--foreground)",
+                              fontSize: 13,
                             }}
                           />
-                          <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                            <span
-                              style={{
-                                fontSize: 11,
-                                fontWeight: 800,
-                                borderRadius: 999,
-                                padding: "2px 8px",
-                                ...roleChipStyle(draft.role),
-                              }}
-                            >
-                              {draft.role}
-                            </span>
-                            <span
-                              style={{
-                                fontSize: 11,
-                                fontWeight: 800,
-                                borderRadius: 999,
-                                padding: "2px 8px",
-                                ...paymentChipStyle(draft.payment_status),
-                              }}
-                            >
-                              {draft.payment_status}
-                            </span>
-                            <ChampionSeasonLabels seasons={championSeasonsByUserId[m.user_id]} />
-                            {draft.is_test_account && (
-                              <span
-                                style={{
-                                  fontSize: 11,
-                                  fontWeight: 800,
-                                  borderRadius: 999,
-                                  padding: "2px 8px",
-                                  background: "rgba(251, 191, 36, 0.16)",
-                                  color: "rgb(146, 64, 14)",
-                                  border: "1px solid rgba(245, 158, 11, 0.35)",
-                                }}
-                              >
-                                test
-                              </span>
-                            )}
-                          </div>
                         </td>
-                        <td style={{ padding: 12, borderTop: "1px solid var(--border)", fontSize: 13 }}>
+                        <td style={{ padding: "8px 10px", borderTop: "1px solid var(--border)", fontSize: 13 }}>
                           {(m.favorite_team ?? "").trim() || "—"}
                         </td>
-                        <td style={{ padding: 12, borderTop: "1px solid var(--border)", fontSize: 13 }}>
+                        <td style={{ padding: "8px 10px", borderTop: "1px solid var(--border)", fontSize: 13 }}>
                           <select
                             disabled={saving || removing}
                             value={draft.role}
@@ -1129,12 +1046,13 @@ export default function PeopleAdminClient({
                             }}
                             style={{
                               width: "100%",
-                              padding: 9,
-                              borderRadius: 9,
+                              padding: "6px 8px",
+                              borderRadius: 8,
                               border: "1px solid var(--border)",
                               background: "var(--card)",
                               color: "var(--foreground)",
                               fontWeight: 700,
+                              fontSize: 13,
                             }}
                           >
                             <option value="owner">owner</option>
@@ -1142,7 +1060,7 @@ export default function PeopleAdminClient({
                             <option value="member">member</option>
                           </select>
                         </td>
-                        <td style={{ padding: 12, borderTop: "1px solid var(--border)" }}>
+                        <td style={{ padding: "8px 10px", borderTop: "1px solid var(--border)" }}>
                           <select
                             disabled={saving || removing}
                             value={draft.payment_status}
@@ -1153,12 +1071,13 @@ export default function PeopleAdminClient({
                             }}
                             style={{
                               width: "100%",
-                              padding: 9,
-                              borderRadius: 9,
+                              padding: "6px 8px",
+                              borderRadius: 8,
                               border: "1px solid var(--border)",
                               background: "var(--card)",
                               color: "var(--foreground)",
                               fontWeight: 700,
+                              fontSize: 13,
                             }}
                           >
                             <option value="paid">paid</option>
@@ -1166,19 +1085,27 @@ export default function PeopleAdminClient({
                             <option value="waived">waived</option>
                           </select>
                         </td>
-                        <td style={{ padding: 12, borderTop: "1px solid var(--border)" }}>
+                        <td
+                          style={{
+                            padding: "8px 10px",
+                            borderTop: "1px solid var(--border)",
+                            fontSize: 13,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
                           {m.email ?? `${m.user_id.slice(0, 8)}…`}
                         </td>
-                        <td style={{ padding: 12, borderTop: "1px solid var(--border)" }}>
-                          <div style={{ display: "grid", gap: 8 }}>
+                        <td style={{ padding: "8px 10px", borderTop: "1px solid var(--border)" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "nowrap" }}>
                             <label
                               style={{
                                 display: "inline-flex",
                                 alignItems: "center",
-                                gap: 6,
-                                fontSize: 12,
+                                gap: 5,
+                                fontSize: 11,
                                 fontWeight: 700,
                                 opacity: saving || removing ? 0.7 : 1,
+                                whiteSpace: "nowrap",
                               }}
                             >
                               <input
@@ -1198,45 +1125,56 @@ export default function PeopleAdminClient({
                                   height: 16,
                                 }}
                               />
-                              <span>Test Acc</span>
+                              <span>Test</span>
                             </label>
-                            <div style={{ display: "flex", gap: 8 }}>
+                            {displayNameDirty && (
                               <button
                                 disabled={!displayNameDirty || saving || removing}
                                 onClick={() => saveMember(m.user_id, { display_name: draft.display_name })}
                                 style={{
-                                  padding: "9px 10px",
-                                  borderRadius: 10,
+                                  padding: "6px 9px",
+                                  borderRadius: 8,
                                   border: "1px solid var(--border)",
                                   background: "var(--card)",
                                   color: "var(--foreground)",
+                                  fontSize: 13,
                                   fontWeight: 800,
+                                  whiteSpace: "nowrap",
                                   cursor: !displayNameDirty || saving || removing ? "not-allowed" : "pointer",
                                   opacity: !displayNameDirty || saving || removing ? 0.7 : 1,
                                 }}
                               >
-                                {saving ? "Saving…" : "Save name"}
+                                {saving ? "Saving…" : "Save"}
                               </button>
-                              <button
-                                disabled={saving || removing}
-                                onClick={() => removeMember(m.user_id)}
-                                style={{
-                                  padding: "9px 10px",
-                                  borderRadius: 10,
-                                  border: "1px solid rgba(236, 72, 153, 0.45)",
-                                  background: "var(--card)",
-                                  color: "var(--foreground)",
-                                  fontWeight: 900,
-                                  cursor: saving || removing ? "not-allowed" : "pointer",
-                                  opacity: saving || removing ? 0.7 : 1,
-                                }}
-                              >
-                                {removing ? "Removing…" : "Remove"}
-                              </button>
-                            </div>
+                            )}
+                            <button
+                              disabled={saving || removing}
+                              onClick={() => removeMember(m.user_id)}
+                              style={{
+                                padding: "6px 9px",
+                                borderRadius: 8,
+                                border: "1px solid rgba(236, 72, 153, 0.45)",
+                                background: "var(--card)",
+                                color: "var(--foreground)",
+                                fontSize: 13,
+                                fontWeight: 900,
+                                whiteSpace: "nowrap",
+                                cursor: saving || removing ? "not-allowed" : "pointer",
+                                opacity: saving || removing ? 0.7 : 1,
+                              }}
+                            >
+                              {removing ? "Removing…" : "Remove"}
+                            </button>
                           </div>
                         </td>
-                        <td style={{ padding: 12, borderTop: "1px solid var(--border)", fontSize: 13 }}>
+                        <td
+                          style={{
+                            padding: "8px 10px",
+                            borderTop: "1px solid var(--border)",
+                            fontSize: 13,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
                           {fmtMelbourne(m.joined_at)}
                         </td>
                       </tr>

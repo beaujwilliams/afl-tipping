@@ -1,17 +1,11 @@
 import { NextResponse } from "next/server";
-import { requireAdminOrCron, resolveCompetitionIdForAdminRequest } from "@/lib/admin-auth";
-import {
-  classifyPrelockReminderRun,
-  recordAutomationJobRun,
-  type AutomationJobKind,
-} from "@/lib/automation-observability";
-import { createServiceClient } from "@/lib/supabase-server";
+import { requireAdminOrCron } from "@/lib/admin-auth";
 
 export const DEFAULT_SEASON = 2026;
 
 type ForwardCronToAdminOptions = {
   season?: number | null;
-  jobKind?: AutomationJobKind | null;
+  jobKind?: string | null;
 };
 
 export function parseSeason(req: Request) {
@@ -31,9 +25,9 @@ function withSecret(pathWithQuery: string, secret: string) {
 export async function forwardCronToAdmin(
   req: Request,
   pathWithQuery: string,
-  options?: ForwardCronToAdminOptions
+  _options?: ForwardCronToAdminOptions
 ) {
-  const startedAtUtc = new Date().toISOString();
+  void _options;
   const gate = await requireAdminOrCron(req);
   if (!gate.ok) {
     return NextResponse.json(gate.json, { status: gate.status });
@@ -66,34 +60,6 @@ export async function forwardCronToAdmin(
       status: res.status,
       bodyHead: text.slice(0, 500),
     };
-  }
-
-  if (options?.jobKind === "prelock_reminders" && options.season != null) {
-    try {
-      const supabase = createServiceClient();
-      const competitionId = await resolveCompetitionIdForAdminRequest(req, supabase);
-      if (competitionId) {
-        const classification = classifyPrelockReminderRun(body, status);
-        const logError = await recordAutomationJobRun({
-          competitionId,
-          season: options.season,
-          jobKind: "prelock_reminders",
-          triggerMode: gate.mode,
-          requestPath: pathWithQuery,
-          startedAtUtc,
-          finishedAtUtc: new Date().toISOString(),
-          runStatus: classification.runStatus,
-          summary: classification.summary,
-          details: body,
-        });
-        if (logError) {
-          body.observability_log_error = logError;
-        }
-      }
-    } catch (error: unknown) {
-      body.observability_log_error =
-        error instanceof Error ? error.message : "Failed to record automation run";
-    }
   }
 
   return NextResponse.json(body, { status });

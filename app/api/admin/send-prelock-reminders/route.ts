@@ -5,6 +5,10 @@ import {
   resolveCompetitionIdForAdminRequest,
 } from "@/lib/admin-auth";
 import { invalidateRoundTipStatusCache } from "@/lib/round-tip-status-data";
+import {
+  classifyPrelockReminderRun,
+  recordAutomationJobRun,
+} from "@/lib/automation-observability";
 const DEFAULT_SEASON = 2026;
 const DEFAULT_REMINDER_HOURS = 4;
 const DEFAULT_WINDOW_MINUTES = 10;
@@ -313,9 +317,11 @@ async function sendReminderEmail(params: {
 }
 
 export async function GET(req: Request) {
+  const startedAtUtc = new Date().toISOString();
   try {
     const gate = await requireAdminOrCron(req);
     if (!gate.ok) return NextResponse.json(gate.json, { status: gate.status });
+    const triggerMode = gate.mode;
 
     const url = new URL(req.url);
     const season = Number(url.searchParams.get("season") || String(DEFAULT_SEASON));
@@ -422,6 +428,33 @@ export async function GET(req: Request) {
     if (!competitionId) {
       return NextResponse.json({ error: "No competition found" }, { status: 404 });
     }
+    const resolvedCompetitionId = competitionId;
+
+    async function respond(status: number, body: Record<string, unknown>) {
+      try {
+        const classification = classifyPrelockReminderRun(body, status);
+        const logError = await recordAutomationJobRun({
+          competitionId: resolvedCompetitionId,
+          season,
+          jobKind: "prelock_reminders",
+          triggerMode,
+          requestPath: url.pathname + url.search,
+          startedAtUtc,
+          finishedAtUtc: new Date().toISOString(),
+          runStatus: classification.runStatus,
+          summary: classification.summary,
+          details: body,
+        });
+        if (logError) {
+          body.observability_log_error = logError;
+        }
+      } catch (error: unknown) {
+        body.observability_log_error =
+          error instanceof Error ? error.message : "Failed to record automation run";
+      }
+
+      return NextResponse.json(body, { status });
+    }
 
     let roundsQuery = supabase
       .from("rounds")
@@ -436,15 +469,15 @@ export async function GET(req: Request) {
 
     const { data: rounds, error: rErr } = await roundsQuery;
     if (rErr) {
-      return NextResponse.json(
-        { error: "Failed to load rounds", details: rErr.message },
-        { status: 500 }
-      );
+      return respond(500, {
+        error: "Failed to load rounds",
+        details: rErr.message,
+      });
     }
 
     const roundRows = (rounds ?? []) as RoundRow[];
     if (roundRows.length === 0) {
-      return NextResponse.json({
+      return respond(200, {
         ok: true,
         season,
         rounds_considered: 0,
@@ -855,7 +888,7 @@ export async function GET(req: Request) {
       });
     }
 
-    return NextResponse.json({
+    return respond(200, {
       ok: roundErrors.length === 0,
       season,
       reminder_type: reminderType,

@@ -172,9 +172,13 @@ export async function GET(req: Request) {
     }
 
     const allRuns = [...automationRuns, ...scoringRuns].sort(compareByStartedDesc);
-    const latest = Array.from(
-      new Map(allRuns.map((run) => [run.job_kind, run])).values()
-    ).sort(compareByStartedDesc);
+    const latestByJobKind = new Map<string, HealthRun>();
+    for (const run of allRuns) {
+      if (!latestByJobKind.has(run.job_kind)) {
+        latestByJobKind.set(run.job_kind, run);
+      }
+    }
+    const latest = Array.from(latestByJobKind.values()).sort(compareByStartedDesc);
 
     const failureCutoffUtc = new Date(
       Date.now() - failureWindowHours * 60 * 60 * 1000

@@ -305,6 +305,10 @@ export default function AdminPage() {
       );
       if (!ok || !json || typeof json !== "object") return;
 
+      const latestLockedRound =
+        typeof (json as { latest_locked_round?: unknown }).latest_locked_round === "number"
+          ? Number((json as { latest_locked_round: number }).latest_locked_round)
+          : null;
       const latestFinishedRound =
         typeof (json as { latest_finished_round?: unknown }).latest_finished_round === "number"
           ? Number((json as { latest_finished_round: number }).latest_finished_round)
@@ -314,7 +318,9 @@ export default function AdminPage() {
           ? Number((json as { targeted_round: number }).targeted_round)
           : null;
 
-      const nextRound = Number.isFinite(latestFinishedRound)
+      const nextRound = Number.isFinite(latestLockedRound)
+        ? Math.max(0, Math.trunc(latestLockedRound as number))
+        : Number.isFinite(latestFinishedRound)
         ? Math.max(0, Math.trunc(latestFinishedRound as number))
         : Number.isFinite(targetedRound)
           ? Math.max(0, Math.trunc(targetedRound as number))
@@ -715,7 +721,7 @@ export default function AdminPage() {
                   />
                 </div>
                 <div className="ui-admin-summary ui-admin-summary--tight">
-                  Defaults to the latest finished round for this season.
+                  Defaults to the latest locked round for this season.
                 </div>
                 <UiButton
                   disabled={isRunning}

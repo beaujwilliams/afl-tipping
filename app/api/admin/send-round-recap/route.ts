@@ -615,6 +615,15 @@ export async function GET(req: Request) {
       nowMs,
       hoursAfterFirst,
     });
+    const latestLockedRound =
+      candidateRounds
+        .filter((x) => {
+          const lockBase = x.row.lock_time_utc ?? x.first_game_utc;
+          const lockMs = new Date(lockBase).getTime();
+          return x.match_count > 0 && Number.isFinite(lockMs) && nowMs >= lockMs;
+        })
+        .map((x) => Number(x.row.round_number))
+        .pop() ?? null;
     const latestFinishedRound =
       candidateRounds
         .filter((x) => x.match_count > 0 && x.finished_count === x.match_count)
@@ -632,6 +641,7 @@ export async function GET(req: Request) {
           round: roundFilter,
           hours_after_first: hoursAfterFirst,
           rounds_considered: candidateRounds.length,
+          latest_locked_round: latestLockedRound,
           latest_finished_round: latestFinishedRound,
           targeted_round: null,
           sent: 0,
@@ -646,6 +656,7 @@ export async function GET(req: Request) {
           round: target.row.round_number,
           hours_after_first: hoursAfterFirst,
           rounds_considered: candidateRounds.length,
+          latest_locked_round: latestLockedRound,
           latest_finished_round: latestFinishedRound,
           targeted_round: target.row.round_number,
           sent: 0,
@@ -664,6 +675,7 @@ export async function GET(req: Request) {
           season,
           hours_after_first: hoursAfterFirst,
           rounds_considered: candidateRounds.length,
+          latest_locked_round: latestLockedRound,
           latest_finished_round: latestFinishedRound,
           targeted_round: null,
           sent: 0,
@@ -680,6 +692,7 @@ export async function GET(req: Request) {
         season,
         hours_after_first: hoursAfterFirst,
         rounds_considered: candidateRounds.length,
+        latest_locked_round: latestLockedRound,
         latest_finished_round: latestFinishedRound,
         targeted_round: null,
         sent: 0,
@@ -734,6 +747,7 @@ export async function GET(req: Request) {
           season,
           round: roundNumber,
           hours_after_first: hoursAfterFirst,
+          latest_locked_round: latestLockedRound,
           latest_finished_round: latestFinishedRound,
           targeted_round: roundNumber,
           sent: 0,
@@ -2029,6 +2043,7 @@ export async function GET(req: Request) {
       recap_type: RECAP_TYPE,
       recipient_source: recipientSource,
       hours_after_first: hoursAfterFirst,
+      latest_locked_round: latestLockedRound,
       latest_finished_round: latestFinishedRound,
       targeted_round: roundNumber,
       first_game_utc: target.first_game_utc,

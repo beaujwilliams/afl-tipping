@@ -4,6 +4,7 @@ import {
   recordAdminAuditEvent,
   shortUserLabel,
 } from "@/lib/admin-audit";
+import { isValidAflTeam } from "@/lib/afl-teams";
 import { createServiceClient } from "@/lib/supabase-server";
 import { requireAdminOrCron, resolveCompetitionIdForAdminRequest } from "@/lib/admin-auth";
 import { invalidateRoundTipStatusCache } from "@/lib/round-tip-status-data";
@@ -77,6 +78,7 @@ type ProfileMemberRow = {
 
 type MemberAuditSnapshot = {
   display_name: string | null;
+  favorite_team: string | null;
   role: string | null;
   payment_status: string | null;
   is_test_account: boolean | null;
@@ -121,15 +123,34 @@ async function loadMemberAuditSnapshot(
     membership = (withAll.data as MembershipAuditRow | null) ?? null;
   }
 
-  const profile = await supabase
+  let profileData: { display_name?: string | null; favorite_team?: string | null } | null = null;
+  const profileWithTeam = await supabase
     .from("profiles")
-    .select("display_name")
+    .select("display_name, favorite_team")
     .eq("id", userId)
     .maybeSingle();
 
+  if (
+    profileWithTeam.error &&
+    isMissingColumnError(profileWithTeam.error.message, "favorite_team")
+  ) {
+    const profileFallback = await supabase
+      .from("profiles")
+      .select("display_name")
+      .eq("id", userId)
+      .maybeSingle();
+    profileData =
+      (profileFallback.data as { display_name?: string | null } | null) ?? null;
+  } else {
+    profileData =
+      (profileWithTeam.data as
+        | { display_name?: string | null; favorite_team?: string | null }
+        | null) ?? null;
+  }
+
   return {
-    display_name:
-      ((profile.data as { display_name?: string | null } | null)?.display_name ?? null),
+    display_name: profileData?.display_name ?? null,
+    favorite_team: profileData?.favorite_team ?? null,
     role: membership?.role ?? null,
     payment_status: membership?.payment_status ?? null,
     is_test_account:
@@ -287,6 +308,7 @@ export async function PATCH(req: Request) {
     const body = (await req.json().catch(() => null)) as null | {
       user_id?: string;
       display_name?: string;
+      favorite_team?: string | null;
       role?: string;
       payment_status?: string;
       is_test_account?: boolean;
@@ -297,6 +319,20 @@ export async function PATCH(req: Request) {
       typeof body?.display_name === "string" ? body.display_name.trim() : undefined;
     const role =
       typeof body?.role === "string" ? body.role.trim().toLowerCase() : undefined;
+    const hasFavoriteTeam = !!body && Object.prototype.hasOwnProperty.call(body, "favorite_team");
+    const rawFavoriteTeam = hasFavoriteTeam ? body?.favorite_team : undefined;
+    if (
+      rawFavoriteTeam !== undefined &&
+      rawFavoriteTeam !== null &&
+      typeof rawFavoriteTeam !== "string"
+    ) {
+      return NextResponse.json({ error: "Invalid favorite_team" }, { status: 400 });
+    }
+    const favorite_team = hasFavoriteTeam
+      ? typeof rawFavoriteTeam === "string"
+        ? rawFavoriteTeam.trim() || null
+        : null
+      : undefined;
     const payment_status =
       typeof body?.payment_status === "string"
         ? body.payment_status.trim().toLowerCase()
@@ -307,6 +343,7 @@ export async function PATCH(req: Request) {
     if (!user_id) return NextResponse.json({ error: "Missing user_id" }, { status: 400 });
     if (
       display_name === undefined &&
+      favorite_team === undefined &&
       role === undefined &&
       payment_status === undefined &&
       is_test_account === undefined
@@ -322,6 +359,9 @@ export async function PATCH(req: Request) {
     ) {
       return NextResponse.json({ error: "Invalid payment_status" }, { status: 400 });
     }
+    if (favorite_team && !isValidAflTeam(favorite_team)) {
+      return NextResponse.json({ error: "Invalid favorite team selection" }, { status: 400 });
+    }
     const competitionId = await getCompetitionId(supabase, req);
     if (!competitionId) {
       return NextResponse.json({ error: "No competition found" }, { status: 404 });
@@ -331,18 +371,39 @@ export async function PATCH(req: Request) {
     const actorUserId = admin.mode === "bearer" ? admin.userId : null;
     const beforeSnapshot = await loadMemberAuditSnapshot(supabase, competitionId, user_id);
 
-    if (display_name !== undefined) {
+    if (display_name !== undefined || favorite_team !== undefined) {
+      const profileUpdate: { id: string; display_name?: string | null; favorite_team?: string | null } = {
+        id: user_id,
+      };
+      if (display_name !== undefined) {
+        profileUpdate.display_name = display_name.length ? display_name : null;
+      }
+      if (favorite_team !== undefined) {
+        profileUpdate.favorite_team = favorite_team;
+      }
+
       const { error } = await supabase.from("profiles").upsert(
-        {
-          id: user_id,
-          display_name: display_name.length ? display_name : null,
-        },
+        profileUpdate,
         { onConflict: "id" }
       );
 
       if (error) {
+        if (
+          favorite_team !== undefined &&
+          isMissingColumnError(error.message, "favorite_team")
+        ) {
+          return NextResponse.json(
+            {
+              error: "Database is missing favorite_team column",
+              details:
+                "Run db/migrations/20260307_profiles_favorite_team.sql and redeploy.",
+            },
+            { status: 500 }
+          );
+        }
+
         return NextResponse.json(
-          { error: "Failed to save display name", details: error.message },
+          { error: "Failed to save profile fields", details: error.message },
           { status: 500 }
         );
       }
@@ -418,6 +479,8 @@ export async function PATCH(req: Request) {
             ? display_name
             : null
           : beforeSnapshot.display_name,
+      favorite_team:
+        favorite_team !== undefined ? favorite_team : beforeSnapshot.favorite_team,
       role: role !== undefined ? role : beforeSnapshot.role,
       payment_status:
         payment_status !== undefined ? payment_status : beforeSnapshot.payment_status,

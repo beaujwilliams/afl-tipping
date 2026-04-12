@@ -13,6 +13,7 @@ import {
   UiTableShell,
 } from "@/components/ui";
 import { ChampionSeasonLabels } from "@/components/ChampionSeasonLabels";
+import { AFL_TEAMS } from "@/lib/afl-teams";
 import {
   editableChampionSeasons,
   normalizeChampionSeasonsByUserId,
@@ -41,6 +42,7 @@ type RosterSortDirection = "asc" | "desc";
 
 type RowDraft = {
   display_name: string;
+  favorite_team: string | null;
   role: MemberRole;
   payment_status: PaymentStatus;
   is_test_account: boolean;
@@ -188,6 +190,7 @@ export default function PeopleAdminClient({
     rows.forEach((m) => {
       out[m.user_id] = {
         display_name: m.display_name ?? "",
+        favorite_team: m.favorite_team ?? null,
         role: normalizeRole(m.role),
         payment_status: normalizePaymentStatus(m.payment_status),
         is_test_account: !!m.is_test_account,
@@ -351,7 +354,11 @@ export default function PeopleAdminClient({
       const role = normalizeRole(m.role);
       const name = (m.display_name ?? "").toLowerCase();
       const email = (m.email ?? "").toLowerCase();
-      const team = (m.favorite_team ?? "").toLowerCase();
+      const team = (
+        draftById[m.user_id]
+          ? draftById[m.user_id].favorite_team ?? ""
+          : m.favorite_team ?? ""
+      ).toLowerCase();
       const uid = m.user_id.toLowerCase();
       const testToken = m.is_test_account ? "test" : "live";
       return (
@@ -378,8 +385,8 @@ export default function PeopleAdminClient({
       const bRole = bDraft?.role ?? normalizeRole(b.role);
       const aPayment = aDraft?.payment_status ?? normalizePaymentStatus(a.payment_status);
       const bPayment = bDraft?.payment_status ?? normalizePaymentStatus(b.payment_status);
-      const aTeam = (a.favorite_team ?? "").trim();
-      const bTeam = (b.favorite_team ?? "").trim();
+      const aTeam = (aDraft ? aDraft.favorite_team ?? "" : a.favorite_team ?? "").trim();
+      const bTeam = (bDraft ? bDraft.favorite_team ?? "" : b.favorite_team ?? "").trim();
       const aEmail = (a.email ?? "").trim();
       const bEmail = (b.email ?? "").trim();
       const aJoined = Number(new Date(a.joined_at).getTime()) || 0;
@@ -407,6 +414,10 @@ export default function PeopleAdminClient({
       ...prev,
       [userId]: {
         display_name: patch.display_name ?? prev[userId]?.display_name ?? "",
+        favorite_team:
+          patch.favorite_team !== undefined
+            ? patch.favorite_team
+            : prev[userId]?.favorite_team ?? null,
         role: patch.role ?? prev[userId]?.role ?? "member",
         payment_status: patch.payment_status ?? prev[userId]?.payment_status ?? "pending",
         is_test_account: patch.is_test_account ?? prev[userId]?.is_test_account ?? false,
@@ -422,6 +433,7 @@ export default function PeopleAdminClient({
 
     const draft = draftById[userId] ?? {
       display_name: member.display_name ?? "",
+      favorite_team: member.favorite_team ?? null,
       role: normalizeRole(member.role),
       payment_status: normalizePaymentStatus(member.payment_status),
       is_test_account: !!member.is_test_account,
@@ -429,6 +441,7 @@ export default function PeopleAdminClient({
 
     const hasPatchField =
       patch?.display_name !== undefined ||
+      patch?.favorite_team !== undefined ||
       patch?.role !== undefined ||
       patch?.payment_status !== undefined ||
       patch?.is_test_account !== undefined;
@@ -440,6 +453,7 @@ export default function PeopleAdminClient({
     const body: {
       user_id: string;
       display_name?: string;
+      favorite_team?: string | null;
       role?: MemberRole;
       payment_status?: PaymentStatus;
       is_test_account?: boolean;
@@ -447,11 +461,13 @@ export default function PeopleAdminClient({
 
     if (patch) {
       if (patch.display_name !== undefined) body.display_name = patch.display_name;
+      if (patch.favorite_team !== undefined) body.favorite_team = patch.favorite_team;
       if (patch.role !== undefined) body.role = patch.role;
       if (patch.payment_status !== undefined) body.payment_status = patch.payment_status;
       if (patch.is_test_account !== undefined) body.is_test_account = patch.is_test_account;
     } else {
       body.display_name = draft.display_name;
+      body.favorite_team = draft.favorite_team;
       body.role = draft.role;
       body.payment_status = draft.payment_status;
       body.is_test_account = draft.is_test_account;
@@ -486,6 +502,12 @@ export default function PeopleAdminClient({
                   : patch
                     ? m.display_name
                     : draft.display_name.trim() || null,
+              favorite_team:
+                patch?.favorite_team !== undefined
+                  ? patch.favorite_team
+                  : patch
+                    ? m.favorite_team
+                    : draft.favorite_team,
               role:
                 patch?.role !== undefined
                   ? patch.role
@@ -1005,6 +1027,7 @@ export default function PeopleAdminClient({
                   {filteredMembers.map((m) => {
                     const draft = draftById[m.user_id] ?? {
                       display_name: m.display_name ?? "",
+                      favorite_team: m.favorite_team ?? null,
                       role: normalizeRole(m.role),
                       payment_status: normalizePaymentStatus(m.payment_status),
                       is_test_account: !!m.is_test_account,
@@ -1032,8 +1055,33 @@ export default function PeopleAdminClient({
                             }}
                           />
                         </td>
-                        <td style={{ padding: "8px 10px", borderTop: "1px solid var(--border)", fontSize: 13 }}>
-                          {(m.favorite_team ?? "").trim() || "—"}
+                        <td style={{ padding: "8px 10px", borderTop: "1px solid var(--border)" }}>
+                          <select
+                            disabled={saving || removing}
+                            value={draft.favorite_team ?? ""}
+                            onChange={(e) => {
+                              const favorite_team = e.target.value.trim() || null;
+                              setDraftField(m.user_id, { favorite_team });
+                              void saveMember(m.user_id, { favorite_team });
+                            }}
+                            style={{
+                              width: "100%",
+                              padding: "6px 8px",
+                              borderRadius: 8,
+                              border: "1px solid var(--border)",
+                              background: "var(--card)",
+                              color: "var(--foreground)",
+                              fontWeight: 600,
+                              fontSize: 13,
+                            }}
+                          >
+                            <option value="">—</option>
+                            {AFL_TEAMS.map((team) => (
+                              <option key={team} value={team}>
+                                {team}
+                              </option>
+                            ))}
+                          </select>
                         </td>
                         <td style={{ padding: "8px 10px", borderTop: "1px solid var(--border)", fontSize: 13 }}>
                           <select

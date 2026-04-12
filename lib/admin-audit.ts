@@ -28,6 +28,7 @@ type AdminAuditEventParams = {
 
 type MemberAuditSnapshot = {
   display_name?: string | null;
+  favorite_team?: string | null;
   role?: string | null;
   payment_status?: string | null;
   is_test_account?: boolean | null;
@@ -70,6 +71,12 @@ export function describeMemberAuditChanges(params: {
   const afterRole = normalizeString(params.after.role) ?? "member";
   if (beforeRole !== afterRole) {
     parts.push(`role ${beforeRole} -> ${afterRole}`);
+  }
+
+  const beforeTeam = normalizeString(params.before.favorite_team) ?? "none";
+  const afterTeam = normalizeString(params.after.favorite_team) ?? "none";
+  if (beforeTeam !== afterTeam) {
+    parts.push(`team ${beforeTeam} -> ${afterTeam}`);
   }
 
   const beforePayment = normalizeString(params.before.payment_status) ?? "pending";

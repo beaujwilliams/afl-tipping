@@ -16,6 +16,12 @@ import {
   summarizeScoringRun,
 } from "@/lib/automation-observability";
 import {
+  ACTIVE_SCORING_FAILURE_ALERT_THRESHOLD_DEFAULT,
+  ACTIVE_SCORING_STALE_WARNING_MINUTES_DEFAULT,
+  countLeadingFailedRuns,
+  readBoundedInt,
+} from "@/lib/scoring-automation-alerts";
+import {
   requireAdminOrCron,
   resolveCompetitionIdForAdminRequest,
 } from "@/lib/admin-auth";
@@ -39,6 +45,18 @@ type AutomationFailureRow = {
 };
 
 type ScoringFailureRow = {
+  id: string;
+  job_kind: string;
+  scope: string;
+  run_status: string;
+  sync_updated: number;
+  leaderboard_recalc_ran: boolean;
+  leaderboard_recalc_ok: boolean | null;
+  started_at_utc: string;
+  details: unknown;
+};
+
+type ScoringRecentActiveRow = {
   id: string;
   job_kind: string;
   scope: string;
@@ -95,6 +113,18 @@ export async function GET(req: Request) {
       url.searchParams.get("failure_window_hours"),
       72
     );
+    const activeFailureThreshold = readBoundedInt(
+      process.env.ACTIVE_SCORING_FAILURE_ALERT_THRESHOLD,
+      ACTIVE_SCORING_FAILURE_ALERT_THRESHOLD_DEFAULT,
+      2,
+      12
+    );
+    const activeRunStaleMinutes = readBoundedInt(
+      process.env.ACTIVE_SCORING_STALE_WARNING_MINUTES,
+      ACTIVE_SCORING_STALE_WARNING_MINUTES_DEFAULT,
+      10,
+      180
+    );
 
     if (!Number.isFinite(season) || season < 2000 || season > 2100) {
       return NextResponse.json({ error: "Provide a valid season" }, { status: 400 });
@@ -141,6 +171,7 @@ export async function GET(req: Request) {
       nextSeasonInterestResult,
       automationFailuresResult,
       scoringFailuresResult,
+      scoringRecentActiveResult,
     ] = await Promise.all([
       roundIds.length > 0
         ? supabase
@@ -189,6 +220,16 @@ export async function GET(req: Request) {
         .eq("season", season)
         .eq("run_status", "failed")
         .gte("started_at_utc", failureCutoffUtc)
+        .order("started_at_utc", { ascending: false })
+        .limit(12),
+      supabase
+        .from("scoring_automation_runs")
+        .select(
+          "id, job_kind, scope, run_status, sync_updated, leaderboard_recalc_ran, leaderboard_recalc_ok, started_at_utc, details"
+        )
+        .eq("competition_id", competitionId)
+        .eq("season", season)
+        .eq("job_kind", "scoring_15m")
         .order("started_at_utc", { ascending: false })
         .limit(12),
     ]);
@@ -285,6 +326,26 @@ export async function GET(req: Request) {
       scoringFailures = (scoringFailuresResult.data ?? []) as ScoringFailureRow[];
     }
 
+    let scoringRecentActive: ScoringRecentActiveRow[] = [];
+    if (scoringRecentActiveResult.error) {
+      if (
+        isMissingRelationError(scoringRecentActiveResult.error.message, "scoring_automation_runs")
+      ) {
+        sourceHints.scoring_automation_runs =
+          "Apply migration db/migrations/20260327_scoring_automation_runs.sql";
+      } else {
+        return NextResponse.json(
+          {
+            error: "Failed to read recent active scoring runs",
+            details: scoringRecentActiveResult.error.message,
+          },
+          { status: 500 }
+        );
+      }
+    } else {
+      scoringRecentActive = (scoringRecentActiveResult.data ?? []) as ScoringRecentActiveRow[];
+    }
+
     const anomalies: AdminAnomaly[] = [];
 
     dedupeLatestByJobKind(scoringFailures).forEach((run) => {
@@ -298,6 +359,48 @@ export async function GET(req: Request) {
         cta: "Open scoring log",
       });
     });
+
+    if (scoringRecentActive.length > 0) {
+      const consecutiveActiveFailures = countLeadingFailedRuns(scoringRecentActive);
+      if (consecutiveActiveFailures >= activeFailureThreshold) {
+        const latest = scoringRecentActive[0];
+        anomalies.push({
+          id: `scoring-active-failure-streak-${latest.id}`,
+          severity: "critical",
+          category: "automation",
+          title: `Active scoring check failing repeatedly (${consecutiveActiveFailures} in a row)`,
+          detail: summarizeScoringRun(latest),
+          href: `/admin/scoring-sync?season=${encodeURIComponent(String(season))}`,
+          cta: "Open scoring log",
+        });
+      }
+
+      const latestStartedMs = new Date(scoringRecentActive[0].started_at_utc).getTime();
+      if (Number.isFinite(latestStartedMs)) {
+        const ageMinutes = Math.floor((Date.now() - latestStartedMs) / 60000);
+        if (ageMinutes > activeRunStaleMinutes) {
+          anomalies.push({
+            id: `scoring-active-stale-${scoringRecentActive[0].id}`,
+            severity: "warning",
+            category: "automation",
+            title: "Active scoring checks appear stale",
+            detail: `Latest active scoring run was ${ageMinutes} minute${ageMinutes === 1 ? "" : "s"} ago. Cron may not be hitting on schedule.`,
+            href: `/admin/scoring-sync?season=${encodeURIComponent(String(season))}`,
+            cta: "Open scoring log",
+          });
+        }
+      }
+    } else {
+      anomalies.push({
+        id: `scoring-active-none-${season}`,
+        severity: "warning",
+        category: "automation",
+        title: "No active scoring checks recorded",
+        detail: "No scoring_15m runs are logged for this season yet.",
+        href: `/admin/scoring-sync?season=${encodeURIComponent(String(season))}`,
+        cta: "Open scoring log",
+      });
+    }
 
     dedupeLatestByJobKind(automationFailures).forEach((run) => {
       anomalies.push({

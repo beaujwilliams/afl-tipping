@@ -90,7 +90,7 @@ function readErrorFromResult(result: unknown): { message: string } | null {
   return { message };
 }
 
-async function withSupabaseRetry<T>(fn: () => Promise<T>): Promise<T> {
+async function withSupabaseRetry<T>(fn: () => PromiseLike<T> | T): Promise<T> {
   for (let attempt = 1; attempt <= SUPABASE_RETRY_ATTEMPTS; attempt += 1) {
     const result = await fn();
     const err = readErrorFromResult(result);
@@ -101,7 +101,7 @@ async function withSupabaseRetry<T>(fn: () => Promise<T>): Promise<T> {
     const delayMs = SUPABASE_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
     await sleep(delayMs);
   }
-  return fn();
+  return await fn();
 }
 
 export async function GET(req: Request) {

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { unstable_cache } from "next/cache";
+import { revalidateTag, unstable_cache } from "next/cache";
 import {
   getLeaderboardSnapshot,
   type LeaderboardResponse,
@@ -19,6 +19,7 @@ import {
 export { createEmptyStatsInsights, EMPTY_TEAM_TOTALS } from "@/lib/stats-rules";
 
 const SUPABASE_PAGE_SIZE = 1000;
+const STATS_SEASON_BASE_CACHE_TAG = "stats-season-base-v1";
 
 type RoundRow = {
   id: string;
@@ -288,10 +289,14 @@ const loadCachedStatsSeasonBase = unstable_cache(
     });
   },
   ["stats-season-base-v1"],
-  { revalidate: 60 }
+  { revalidate: 60, tags: [STATS_SEASON_BASE_CACHE_TAG] }
 );
 
 export async function getStatsPagePayload(params: { season: number; userId: string }) {
   const base = await loadCachedStatsSeasonBase(params.season);
   return buildStatsPayloadFromBase({ base, userId: params.userId });
+}
+
+export function invalidateStatsSeasonBaseCache() {
+  revalidateTag(STATS_SEASON_BASE_CACHE_TAG, "max");
 }

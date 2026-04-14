@@ -7,6 +7,7 @@ import {
 import { createServiceClient } from "@/lib/supabase-server";
 import { invalidateLeaderboardSnapshotCache } from "@/lib/leaderboard-snapshot";
 import { invalidateRoundTipStatusCache } from "@/lib/round-tip-status-data";
+import { invalidateStatsSeasonBaseCache } from "@/lib/stats-data";
 
 type SquiggleGame = {
   id?: number | string | null;
@@ -408,6 +409,7 @@ export async function GET(req: Request) {
           season,
           supabase,
         });
+        invalidateStatsSeasonBaseCache();
       } catch (cacheErr) {
         console.warn("cache invalidation failed after sync-results", cacheErr);
       }

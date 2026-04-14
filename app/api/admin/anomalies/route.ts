@@ -44,7 +44,7 @@ type AutomationFailureRow = {
   summary: string | null;
 };
 
-type ScoringFailureRow = {
+type ScoringRunRow = {
   id: string;
   job_kind: string;
   scope: string;
@@ -67,6 +67,13 @@ type ScoringRecentActiveRow = {
   started_at_utc: string;
   details: unknown;
 };
+
+function isRunInFailureWindow(startedAtUtc: string, failureCutoffUtc: string) {
+  const startedMs = new Date(startedAtUtc).getTime();
+  const cutoffMs = new Date(failureCutoffUtc).getTime();
+  if (!Number.isFinite(startedMs) || !Number.isFinite(cutoffMs)) return false;
+  return startedMs >= cutoffMs;
+}
 
 function makeFailureHref(jobKind: string, season: number) {
   if (jobKind === "scoring_15m" || jobKind === "scoring_daily_full" || jobKind === "manual") {
@@ -169,8 +176,8 @@ export async function GET(req: Request) {
       pendingMembersResult,
       recapResult,
       nextSeasonInterestResult,
-      automationFailuresResult,
-      scoringFailuresResult,
+      automationRecentResult,
+      scoringRecentResult,
       scoringRecentActiveResult,
     ] = await Promise.all([
       roundIds.length > 0
@@ -207,10 +214,8 @@ export async function GET(req: Request) {
         .select("id, job_kind, run_status, started_at_utc, summary")
         .eq("competition_id", competitionId)
         .eq("season", season)
-        .eq("run_status", "failed")
-        .gte("started_at_utc", failureCutoffUtc)
         .order("started_at_utc", { ascending: false })
-        .limit(12),
+        .limit(40),
       supabase
         .from("scoring_automation_runs")
         .select(
@@ -218,10 +223,8 @@ export async function GET(req: Request) {
         )
         .eq("competition_id", competitionId)
         .eq("season", season)
-        .eq("run_status", "failed")
-        .gte("started_at_utc", failureCutoffUtc)
         .order("started_at_utc", { ascending: false })
-        .limit(12),
+        .limit(40),
       supabase
         .from("scoring_automation_runs")
         .select(
@@ -296,34 +299,34 @@ export async function GET(req: Request) {
       nextSeasonPendingCount = Number(nextSeasonInterestResult.count ?? 0);
     }
 
-    let automationFailures: AutomationFailureRow[] = [];
-    if (automationFailuresResult.error) {
-      if (isMissingRelationError(automationFailuresResult.error.message, "automation_job_runs")) {
+    let automationRecent: AutomationFailureRow[] = [];
+    if (automationRecentResult.error) {
+      if (isMissingRelationError(automationRecentResult.error.message, "automation_job_runs")) {
         sourceHints.automation_job_runs =
           "Apply migration db/migrations/20260407_automation_job_runs.sql";
       } else {
         return NextResponse.json(
-          { error: "Failed to read automation failures", details: automationFailuresResult.error.message },
+          { error: "Failed to read automation runs", details: automationRecentResult.error.message },
           { status: 500 }
         );
       }
     } else {
-      automationFailures = (automationFailuresResult.data ?? []) as AutomationFailureRow[];
+      automationRecent = (automationRecentResult.data ?? []) as AutomationFailureRow[];
     }
 
-    let scoringFailures: ScoringFailureRow[] = [];
-    if (scoringFailuresResult.error) {
-      if (isMissingRelationError(scoringFailuresResult.error.message, "scoring_automation_runs")) {
+    let scoringRecent: ScoringRunRow[] = [];
+    if (scoringRecentResult.error) {
+      if (isMissingRelationError(scoringRecentResult.error.message, "scoring_automation_runs")) {
         sourceHints.scoring_automation_runs =
           "Apply migration db/migrations/20260327_scoring_automation_runs.sql";
       } else {
         return NextResponse.json(
-          { error: "Failed to read scoring failures", details: scoringFailuresResult.error.message },
+          { error: "Failed to read scoring runs", details: scoringRecentResult.error.message },
           { status: 500 }
         );
       }
     } else {
-      scoringFailures = (scoringFailuresResult.data ?? []) as ScoringFailureRow[];
+      scoringRecent = (scoringRecentResult.data ?? []) as ScoringRunRow[];
     }
 
     let scoringRecentActive: ScoringRecentActiveRow[] = [];
@@ -348,7 +351,13 @@ export async function GET(req: Request) {
 
     const anomalies: AdminAnomaly[] = [];
 
-    dedupeLatestByJobKind(scoringFailures).forEach((run) => {
+    dedupeLatestByJobKind(scoringRecent)
+      .filter(
+        (run) =>
+          String(run.run_status).toLowerCase() === "failed" &&
+          isRunInFailureWindow(run.started_at_utc, failureCutoffUtc)
+      )
+      .forEach((run) => {
       anomalies.push({
         id: `scoring-failure-${run.id}`,
         severity: "critical",
@@ -358,7 +367,7 @@ export async function GET(req: Request) {
         href: makeFailureHref(run.job_kind, season),
         cta: "Open scoring log",
       });
-    });
+      });
 
     if (scoringRecentActive.length > 0) {
       const consecutiveActiveFailures = countLeadingFailedRuns(scoringRecentActive);
@@ -402,7 +411,13 @@ export async function GET(req: Request) {
       });
     }
 
-    dedupeLatestByJobKind(automationFailures).forEach((run) => {
+    dedupeLatestByJobKind(automationRecent)
+      .filter(
+        (run) =>
+          String(run.run_status).toLowerCase() === "failed" &&
+          isRunInFailureWindow(run.started_at_utc, failureCutoffUtc)
+      )
+      .forEach((run) => {
       anomalies.push({
         id: `automation-failure-${run.id}`,
         severity: "critical",
@@ -412,7 +427,7 @@ export async function GET(req: Request) {
         href: makeFailureHref(run.job_kind, season),
         cta: "Open automation health",
       });
-    });
+      });
 
     findDueSnapshotRounds({ rounds }).slice(0, 3).forEach((round) => {
       anomalies.push({

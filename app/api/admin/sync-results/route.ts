@@ -35,6 +35,9 @@ type RoundRow = {
   lock_time_utc: string | null;
 };
 
+const SUPABASE_RETRY_ATTEMPTS = 3;
+const SUPABASE_RETRY_BASE_DELAY_MS = 350;
+
 function pickGameId(g: SquiggleGame) {
   const id = g?.id ?? g?.game ?? g?.gameid ?? null;
   if (id === null || id === undefined) return null;
@@ -53,6 +56,52 @@ function pickWinner(g: SquiggleGame) {
     if (as > hs) return String(g?.ateam ?? "");
   }
   return null;
+}
+
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, Math.max(0, ms));
+  });
+}
+
+function isRetryableSupabaseMessage(message: string) {
+  const m = String(message ?? "").toLowerCase();
+  if (!m) return false;
+  return (
+    m.includes("502") ||
+    m.includes("bad gateway") ||
+    m.includes("cloudflare") ||
+    m.includes("gateway") ||
+    m.includes("fetch failed") ||
+    m.includes("network") ||
+    m.includes("timeout") ||
+    m.includes("timed out") ||
+    m.includes("temporarily unavailable")
+  );
+}
+
+function readErrorFromResult(result: unknown): { message: string } | null {
+  if (!result || typeof result !== "object") return null;
+  const obj = result as { error?: unknown };
+  if (!obj.error || typeof obj.error !== "object") return null;
+  const errObj = obj.error as { message?: unknown };
+  const message = typeof errObj.message === "string" ? errObj.message : "";
+  if (!message) return null;
+  return { message };
+}
+
+async function withSupabaseRetry<T>(fn: () => Promise<T>): Promise<T> {
+  for (let attempt = 1; attempt <= SUPABASE_RETRY_ATTEMPTS; attempt += 1) {
+    const result = await fn();
+    const err = readErrorFromResult(result);
+    if (!err) return result;
+    const shouldRetry =
+      isRetryableSupabaseMessage(err.message) && attempt < SUPABASE_RETRY_ATTEMPTS;
+    if (!shouldRetry) return result;
+    const delayMs = SUPABASE_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
+    await sleep(delayMs);
+  }
+  return fn();
 }
 
 export async function GET(req: Request) {
@@ -127,12 +176,14 @@ export async function GET(req: Request) {
       return NextResponse.json(body, { status });
     }
 
-    const roundsQuery = await supabase
-      .from("rounds")
-      .select("id, round_number, lock_time_utc")
-      .eq("competition_id", competitionId)
-      .eq("season", season)
-      .order("round_number", { ascending: true });
+    const roundsQuery = await withSupabaseRetry(() =>
+      supabase
+        .from("rounds")
+        .select("id, round_number, lock_time_utc")
+        .eq("competition_id", competitionId)
+        .eq("season", season)
+        .order("round_number", { ascending: true })
+    );
 
     if (roundsQuery.error) {
       return respond(500,
@@ -167,10 +218,12 @@ export async function GET(req: Request) {
       });
     }
 
-    const matchesQuery = await supabase
-      .from("matches")
-      .select("id, round_id, squiggle_game_id, winner_team")
-      .in("round_id", roundIds);
+    const matchesQuery = await withSupabaseRetry(() =>
+      supabase
+        .from("matches")
+        .select("id, round_id, squiggle_game_id, winner_team")
+        .in("round_id", roundIds)
+    );
 
     if (matchesQuery.error) {
       return respond(500,
@@ -328,10 +381,12 @@ export async function GET(req: Request) {
         continue;
       }
 
-      const { error: updErr } = await supabase
-        .from("matches")
-        .update({ winner_team: winner, status: "final" })
-        .eq("id", match.id);
+      const { error: updErr } = await withSupabaseRetry(() =>
+        supabase
+          .from("matches")
+          .update({ winner_team: winner, status: "final" })
+          .eq("id", match.id)
+      );
 
       if (updErr) {
         updateErrors.push({ gameId, step: "update", message: updErr.message, code: updErr.code });

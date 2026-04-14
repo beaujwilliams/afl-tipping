@@ -68,6 +68,10 @@ type ScoringRecentActiveRow = {
   details: unknown;
 };
 
+type AnomalyDismissalRow = {
+  dismiss_key: string;
+};
+
 function isRunInFailureWindow(startedAtUtc: string, failureCutoffUtc: string) {
   const startedMs = new Date(startedAtUtc).getTime();
   const cutoffMs = new Date(failureCutoffUtc).getTime();
@@ -179,6 +183,7 @@ export async function GET(req: Request) {
       automationRecentResult,
       scoringRecentResult,
       scoringRecentActiveResult,
+      dismissalsResult,
     ] = await Promise.all([
       roundIds.length > 0
         ? supabase
@@ -235,6 +240,13 @@ export async function GET(req: Request) {
         .eq("job_kind", "scoring_15m")
         .order("started_at_utc", { ascending: false })
         .limit(12),
+      supabase
+        .from("admin_anomaly_dismissals")
+        .select("dismiss_key")
+        .eq("competition_id", competitionId)
+        .eq("season", season)
+        .gt("expires_at_utc", new Date().toISOString())
+        .limit(200),
     ]);
 
     if (matchesResult.error) {
@@ -263,6 +275,7 @@ export async function GET(req: Request) {
       next_season_interest: null,
       automation_job_runs: null,
       scoring_automation_runs: null,
+      admin_anomaly_dismissals: null,
     };
 
     const recapRoundNumbers: number[] = [];
@@ -349,6 +362,30 @@ export async function GET(req: Request) {
       scoringRecentActive = (scoringRecentActiveResult.data ?? []) as ScoringRecentActiveRow[];
     }
 
+    let dismissalRows: AnomalyDismissalRow[] = [];
+    if (dismissalsResult.error) {
+      if (
+        isMissingRelationError(dismissalsResult.error.message, "admin_anomaly_dismissals")
+      ) {
+        sourceHints.admin_anomaly_dismissals =
+          "Apply migration db/migrations/20260415_admin_anomaly_dismissals.sql";
+      } else {
+        return NextResponse.json(
+          {
+            error: "Failed to read anomaly dismissals",
+            details: dismissalsResult.error.message,
+          },
+          { status: 500 }
+        );
+      }
+    } else {
+      dismissalRows = (dismissalsResult.data ?? []) as AnomalyDismissalRow[];
+    }
+
+    const dismissedKeys = new Set(
+      dismissalRows.map((row) => String(row.dismiss_key ?? "").trim()).filter(Boolean)
+    );
+
     const anomalies: AdminAnomaly[] = [];
 
     dedupeLatestByJobKind(scoringRecent)
@@ -358,15 +395,17 @@ export async function GET(req: Request) {
           isRunInFailureWindow(run.started_at_utc, failureCutoffUtc)
       )
       .forEach((run) => {
-      anomalies.push({
-        id: `scoring-failure-${run.id}`,
-        severity: "critical",
-        category: "automation",
-        title: `${automationJobLabel(run.job_kind)} failed`,
-        detail: summarizeScoringRun(run),
-        href: makeFailureHref(run.job_kind, season),
-        cta: "Open scoring log",
-      });
+        const jobKind = String(run.job_kind ?? "").trim().toLowerCase() || "unknown";
+        anomalies.push({
+          id: `scoring-failure-${run.id}`,
+          dismiss_key: `scoring-failure:${jobKind}`,
+          severity: "critical",
+          category: "automation",
+          title: `${automationJobLabel(run.job_kind)} failed`,
+          detail: summarizeScoringRun(run),
+          href: makeFailureHref(run.job_kind, season),
+          cta: "Open scoring log",
+        });
       });
 
     if (scoringRecentActive.length > 0) {
@@ -375,6 +414,7 @@ export async function GET(req: Request) {
         const latest = scoringRecentActive[0];
         anomalies.push({
           id: `scoring-active-failure-streak-${latest.id}`,
+          dismiss_key: "scoring-active-failure-streak",
           severity: "critical",
           category: "automation",
           title: `Active scoring check failing repeatedly (${consecutiveActiveFailures} in a row)`,
@@ -390,6 +430,7 @@ export async function GET(req: Request) {
         if (ageMinutes > activeRunStaleMinutes) {
           anomalies.push({
             id: `scoring-active-stale-${scoringRecentActive[0].id}`,
+            dismiss_key: "scoring-active-stale",
             severity: "warning",
             category: "automation",
             title: "Active scoring checks appear stale",
@@ -402,6 +443,7 @@ export async function GET(req: Request) {
     } else {
       anomalies.push({
         id: `scoring-active-none-${season}`,
+        dismiss_key: "scoring-active-none",
         severity: "warning",
         category: "automation",
         title: "No active scoring checks recorded",
@@ -418,20 +460,23 @@ export async function GET(req: Request) {
           isRunInFailureWindow(run.started_at_utc, failureCutoffUtc)
       )
       .forEach((run) => {
-      anomalies.push({
-        id: `automation-failure-${run.id}`,
-        severity: "critical",
-        category: "automation",
-        title: `${automationJobLabel(run.job_kind)} failed`,
-        detail: run.summary?.trim() || "Automation reported a failure.",
-        href: makeFailureHref(run.job_kind, season),
-        cta: "Open automation health",
-      });
+        const jobKind = String(run.job_kind ?? "").trim().toLowerCase() || "unknown";
+        anomalies.push({
+          id: `automation-failure-${run.id}`,
+          dismiss_key: `automation-failure:${jobKind}`,
+          severity: "critical",
+          category: "automation",
+          title: `${automationJobLabel(run.job_kind)} failed`,
+          detail: run.summary?.trim() || "Automation reported a failure.",
+          href: makeFailureHref(run.job_kind, season),
+          cta: "Open automation health",
+        });
       });
 
     findDueSnapshotRounds({ rounds }).slice(0, 3).forEach((round) => {
       anomalies.push({
         id: `snapshot-due-${round.round_id}`,
+        dismiss_key: `snapshot-due:${round.round_id}`,
         severity: "critical",
         category: "odds",
         title: `Locked odds snapshot overdue for Round ${round.round_number}`,
@@ -449,6 +494,7 @@ export async function GET(req: Request) {
       .forEach((round) => {
         anomalies.push({
           id: `stale-results-${round.round_id}`,
+          dismiss_key: `stale-results:${round.round_id}`,
           severity: "warning",
           category: "results",
           title: `Results may be stale for Round ${round.round_number}`,
@@ -467,6 +513,7 @@ export async function GET(req: Request) {
       .forEach((round) => {
         anomalies.push({
           id: `recap-due-${round.round_id}`,
+          dismiss_key: `recap-due:${round.round_id}`,
           severity: "warning",
           category: "recaps",
           title: `Round ${round.round_number} recap is due`,
@@ -485,6 +532,7 @@ export async function GET(req: Request) {
     if (pendingPaymentAttention) {
       anomalies.push({
         id: `pending-payments-${pendingPaymentAttention.round_id}`,
+        dismiss_key: `pending-payments:${pendingPaymentAttention.round_id}`,
         severity: "warning",
         category: "payments",
         title: `${pendingPaymentAttention.pending_member_count} pending member${
@@ -499,6 +547,7 @@ export async function GET(req: Request) {
     if (includeNextSeasonInterest && nextSeasonPendingCount > 0) {
       anomalies.push({
         id: `next-season-interest-${NEXT_SEASON}`,
+        dismiss_key: `next-season-interest:${NEXT_SEASON}`,
         severity: "info",
         category: "growth",
         title: `${nextSeasonPendingCount} next-season registration${
@@ -510,7 +559,10 @@ export async function GET(req: Request) {
       });
     }
 
-    const sorted = sortAdminAnomalies(anomalies).slice(0, limit);
+    const activeAnomalies = anomalies.filter(
+      (item) => !dismissedKeys.has(String(item.dismiss_key ?? "").trim())
+    );
+    const sorted = sortAdminAnomalies(activeAnomalies).slice(0, limit);
 
     return NextResponse.json({
       ok: true,
@@ -523,6 +575,7 @@ export async function GET(req: Request) {
         warning: sorted.filter((item) => item.severity === "warning").length,
         info: sorted.filter((item) => item.severity === "info").length,
       },
+      dismissed_keys_count: dismissedKeys.size,
       sources: sourceHints,
     });
   } catch (error: unknown) {

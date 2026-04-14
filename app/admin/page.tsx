@@ -44,6 +44,7 @@ type AutomationHealthResponse = {
 
 type AdminAnomalyRow = {
   id: string;
+  dismiss_key: string;
   severity: "critical" | "warning" | "info";
   title: string;
   detail: string;
@@ -170,6 +171,7 @@ export default function AdminPage() {
   const [anomalyLoading, setAnomalyLoading] = useState(false);
   const [anomalyData, setAnomalyData] = useState<AdminAnomaliesResponse | null>(null);
   const [anomalyMsg, setAnomalyMsg] = useState("");
+  const [dismissingAnomalyId, setDismissingAnomalyId] = useState<string | null>(null);
   const isRunning = loading !== null;
 
   useEffect(() => {
@@ -331,6 +333,49 @@ export default function AdminPage() {
       }
     } catch {
       // Best-effort defaulting only.
+    }
+  }
+
+  async function dismissAnomaly(anomaly: AdminAnomalyRow) {
+    try {
+      setDismissingAnomalyId(anomaly.id);
+      const token = await getToken();
+      if (!token) {
+        toast.error("Not authenticated. Please sign in again.");
+        return;
+      }
+
+      const res = await fetch("/api/admin/anomalies/dismiss", {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          season,
+          dismiss_key: anomaly.dismiss_key || anomaly.id,
+          hours: 24,
+        }),
+      });
+
+      const json = (await res.json().catch(() => null)) as
+        | { error?: string; details?: string }
+        | null;
+
+      if (!res.ok || !json || (typeof json.error === "string" && json.error)) {
+        const parts = [json?.error ?? "Could not dismiss anomaly."];
+        if (json?.details) parts.push(json.details);
+        toast.error(parts.join(" - "));
+        return;
+      }
+
+      toast.success("Dismissed for 24 hours.");
+      await loadAnomalies();
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Could not dismiss anomaly.");
+    } finally {
+      setDismissingAnomalyId(null);
     }
   }
 
@@ -621,6 +666,13 @@ export default function AdminPage() {
                     <UiButtonLink href={anomaly.href} className="ui-admin-btn">
                       {anomaly.cta}
                     </UiButtonLink>
+                    <UiButton
+                      disabled={dismissingAnomalyId === anomaly.id}
+                      onClick={() => void dismissAnomaly(anomaly)}
+                      className="ui-admin-btn"
+                    >
+                      {dismissingAnomalyId === anomaly.id ? "Dismissing..." : "Dismiss (24h)"}
+                    </UiButton>
                   </div>
                 </UiCard>
               ))}

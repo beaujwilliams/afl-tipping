@@ -2,6 +2,7 @@ export type AdminAnomalySeverity = "critical" | "warning" | "info";
 
 export type AdminAnomaly = {
   id: string;
+  dismiss_key: string;
   severity: AdminAnomalySeverity;
   title: string;
   detail: string;

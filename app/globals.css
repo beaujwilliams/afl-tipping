@@ -842,6 +842,32 @@ button {
   font-size: 12px;
 }
 
+.ui-scoring-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ui-scoring-copy-btn {
+  width: 30px;
+  height: 30px;
+  min-height: 0;
+  padding: 0;
+  line-height: 1;
+}
+
+.ui-scoring-copy-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.ui-scoring-copy-state {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
 @media (max-width: 980px) {
   .ui-scoring-filter-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

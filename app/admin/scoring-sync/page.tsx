@@ -75,6 +75,7 @@ export default function ScoringSyncLogPage() {
   const [runs, setRuns] = useState<ScoringAutomationRun[]>([]);
   const [runsMsg, setRunsMsg] = useState<string>("Loading...");
   const [openRunId, setOpenRunId] = useState<string | null>(null);
+  const [copiedRunId, setCopiedRunId] = useState<string | null>(null);
 
   useEffect(() => {
     const rawSeason = new URLSearchParams(window.location.search).get("season");
@@ -160,6 +161,40 @@ export default function ScoringSyncLogPage() {
     void refreshLogs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, season]);
+
+  useEffect(() => {
+    if (!copiedRunId) return;
+    const timer = window.setTimeout(() => {
+      setCopiedRunId((current) => (current === copiedRunId ? null : current));
+    }, 1400);
+    return () => window.clearTimeout(timer);
+  }, [copiedRunId]);
+
+  function copyWithTextarea(value: string) {
+    const textarea = document.createElement("textarea");
+    textarea.value = value;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.top = "-9999px";
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand("copy");
+    document.body.removeChild(textarea);
+  }
+
+  async function copyRunDetails(run: ScoringAutomationRun) {
+    const payload = JSON.stringify(run.details ?? {}, null, 2);
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(payload);
+      } else {
+        copyWithTextarea(payload);
+      }
+      setCopiedRunId(run.id);
+    } catch {
+      setCopiedRunId(null);
+    }
+  }
 
   const filteredRuns = runs.filter((run) => {
     const isActive = run.job_kind === "scoring_15m" || run.scope === "active";
@@ -301,14 +336,56 @@ export default function ScoringSyncLogPage() {
                             <UiTableCell>{toYesNo(updatedScores)}</UiTableCell>
                             <UiTableCell>{toYesNo(leaderboardSynced)}</UiTableCell>
                             <UiTableCell>
-                              <UiButton
-                                onClick={() =>
-                                  setOpenRunId((prev) => (prev === run.id ? null : run.id))
-                                }
-                                className="ui-admin-btn ui-admin-btn--compact ui-scoring-log-btn"
-                              >
-                                {isOpen ? "Hide" : "View"}
-                              </UiButton>
+                              <div className="ui-scoring-row-actions">
+                                <UiButton
+                                  onClick={() =>
+                                    setOpenRunId((prev) => (prev === run.id ? null : run.id))
+                                  }
+                                  className="ui-admin-btn ui-admin-btn--compact ui-scoring-log-btn"
+                                >
+                                  {isOpen ? "Hide" : "View"}
+                                </UiButton>
+                                <button
+                                  type="button"
+                                  onClick={() => void copyRunDetails(run)}
+                                  className="ui-btn ui-admin-btn ui-admin-btn--compact ui-scoring-copy-btn"
+                                  aria-label={`Copy details JSON for ${runType} at ${fmtMelbourne(
+                                    run.started_at_utc
+                                  )}`}
+                                  title={
+                                    copiedRunId === run.id ? "Copied" : "Copy details JSON"
+                                  }
+                                >
+                                  <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    aria-hidden="true"
+                                  >
+                                    <rect
+                                      x="9"
+                                      y="7"
+                                      width="11"
+                                      height="13"
+                                      rx="2.5"
+                                      stroke="currentColor"
+                                      strokeWidth="2"
+                                    />
+                                    <rect
+                                      x="4"
+                                      y="4"
+                                      width="11"
+                                      height="13"
+                                      rx="2.5"
+                                      stroke="currentColor"
+                                      strokeWidth="2"
+                                    />
+                                  </svg>
+                                </button>
+                                {copiedRunId === run.id ? (
+                                  <span className="ui-scoring-copy-state">Copied</span>
+                                ) : null}
+                              </div>
                               {isOpen && (
                                 <div style={{ marginTop: 8 }}>
                                   <div className="ui-admin-summary ui-admin-summary--tight">

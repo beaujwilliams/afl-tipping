@@ -121,6 +121,26 @@ function formatMelbourne(isoUtc: string) {
   }).format(d);
 }
 
+function formatLockoutForSubject(isoUtc: string) {
+  const d = new Date(isoUtc);
+  if (Number.isNaN(d.getTime())) return formatMelbourne(isoUtc);
+
+  const day = new Intl.DateTimeFormat("en-AU", {
+    timeZone: "Australia/Melbourne",
+    weekday: "long",
+  }).format(d);
+
+  const rawTime = new Intl.DateTimeFormat("en-AU", {
+    timeZone: "Australia/Melbourne",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(d);
+
+  const time = rawTime.replace(/\s/g, "").toLowerCase();
+  return `${time} ${day}`;
+}
+
 function formatOdds(value: number | null | undefined) {
   const n = Number(value ?? NaN);
   if (!Number.isFinite(n) || n <= 0) return "TBC";
@@ -232,7 +252,8 @@ async function sendOddsAddedEmail(params: {
   }
 
   const lockMelbourne = formatMelbourne(params.lockTimeUtc);
-  const subject = `Round ${params.round}: odds are live`;
+  const lockForSubject = formatLockoutForSubject(params.lockTimeUtc);
+  const subject = `Round ${params.round} Odds Are In | Lockout ${lockForSubject}`;
   const textLines = params.fixtureLines.map((row) => `${row.index}. ${row.line}`);
   const htmlRows = params.fixtureLines
     .map((row) => `<li>${escapeHtml(row.line)}</li>`)
@@ -257,12 +278,32 @@ async function sendOddsAddedEmail(params: {
     <div style="font-family: Arial, Helvetica, sans-serif; line-height: 1.45; color: #111;">
       <p style="margin: 0 0 12px;">Hi ${escapeHtml(params.displayName)},</p>
       <p style="margin: 0 0 12px;"><b>Round ${params.round} odds are now live.</b></p>
-      <p style="margin: 0 0 16px;"><b>Lockout (Melbourne):</b> ${escapeHtml(lockMelbourne)}</p>
-      <p style="margin: 0 0 16px;"><a href="${escapeHtml(params.roundUrl)}">Submit your tips for Round ${
-        params.round
-      }</a></p>
+      <div style="margin: 0 0 16px; padding: 12px 14px; border: 1px solid #f5c2c7; border-radius: 10px; background: #fff3f4;">
+        <div style="margin: 0; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: #8c1d1d; font-weight: 700;">
+          Lockout
+        </div>
+        <div style="margin: 4px 0 0; font-size: 18px; font-weight: 700; color: #111;">
+          ${escapeHtml(lockMelbourne)} (Melbourne time)
+        </div>
+      </div>
+      <p style="margin: 0 0 16px;">
+        <a
+          href="${escapeHtml(params.roundUrl)}"
+          style="display: inline-block; padding: 11px 16px; border-radius: 8px; background: #111; color: #fff; text-decoration: none; font-weight: 700;"
+        >
+          Submit your tips for Round ${params.round}
+        </a>
+      </p>
       <p style="margin: 0 0 8px;"><b>Round ${params.round} fixtures and odds</b></p>
       <ol style="margin: 0; padding-left: 20px;">${htmlRows}</ol>
+      <p style="margin: 18px 0 0;">
+        <a
+          href="${escapeHtml(params.roundUrl)}"
+          style="display: inline-block; padding: 11px 16px; border-radius: 8px; background: #111; color: #fff; text-decoration: none; font-weight: 700;"
+        >
+          Submit your tips for Round ${params.round}
+        </a>
+      </p>
       <p style="margin: 20px 0 0;">Needlessly Complicated AFL Tipping</p>
     </div>
   `;

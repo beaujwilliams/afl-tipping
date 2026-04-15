@@ -302,6 +302,58 @@ export async function GET(req: Request) {
       "ok" in json &&
       (json as { ok?: unknown }).ok === true;
     const capturedRounds = res.status === 200 && jsonOk ? 1 : 0;
+    const oddsCapturedForRound =
+      typeof json === "object" &&
+      json !== null &&
+      "oddsCapturedForRound" in json &&
+      (json as { oddsCapturedForRound?: unknown }).oddsCapturedForRound === true;
+
+    let oddsAddedEmailNotice:
+      | {
+          triggered: boolean;
+          reason?: string;
+          status?: number;
+          json?: unknown;
+        }
+      | null = null;
+
+    if (!force && capturedRounds > 0 && oddsCapturedForRound) {
+      const notifyUrl =
+        `${url.origin}/api/admin/send-odds-added-emails` +
+        `?season=${season}` +
+        `&round=${target.round_number}` +
+        `&snapshot_for_time_utc=${encodeURIComponent(target.snapshotForTimeUtc)}` +
+        `&competition_id=${encodeURIComponent(competitionId)}` +
+        `${secretQS}`;
+
+      const notifyRes = await fetch(notifyUrl, { headers, cache: "no-store" });
+      const notifyText = await notifyRes.text();
+      let notifyJson: unknown;
+      try {
+        notifyJson = JSON.parse(notifyText);
+      } catch {
+        notifyJson = {
+          error: "Non-JSON response from send-odds-added-emails",
+          status: notifyRes.status,
+          bodyHead: notifyText.slice(0, 800),
+        };
+      }
+
+      oddsAddedEmailNotice = {
+        triggered: true,
+        status: notifyRes.status,
+        json: notifyJson,
+      };
+    } else {
+      oddsAddedEmailNotice = {
+        triggered: false,
+        reason: force
+          ? "skipped_on_force_snapshot"
+          : capturedRounds <= 0
+            ? "snapshot_not_captured"
+            : "odds_not_marked_as_captured",
+      };
+    }
 
     return respond(200, {
       ok: true,
@@ -325,8 +377,10 @@ export async function GET(req: Request) {
           snapshotForTimeUtc: target.snapshotForTimeUtc,
           status: res.status,
           snapshotResult: json,
+          oddsAddedEmailNotice,
         },
       ],
+      oddsAddedEmailNotice,
     });
   } catch (e: unknown) {
     const details = e instanceof Error ? e.message : String(e);

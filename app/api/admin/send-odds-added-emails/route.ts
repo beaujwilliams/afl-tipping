@@ -232,7 +232,7 @@ async function sendOddsAddedEmail(params: {
   }
 
   const lockMelbourne = formatMelbourne(params.lockTimeUtc);
-  const subject = `Round ${params.round} odds are now set + lockout time`;
+  const subject = `Round ${params.round}: odds are live`;
   const textLines = params.fixtureLines.map((row) => `${row.index}. ${row.line}`);
   const htmlRows = params.fixtureLines
     .map((row) => `<li>${escapeHtml(row.line)}</li>`)
@@ -241,13 +241,13 @@ async function sendOddsAddedEmail(params: {
   const text = [
     `Hi ${params.displayName},`,
     "",
-    `Round ${params.round} odds have now been added and are locked in for this round.`,
+    `Round ${params.round} odds are now live.`,
     "",
-    `Round ${params.round} lockout: ${lockMelbourne} (Melbourne time)`,
+    `Lockout (Melbourne): ${lockMelbourne}`,
     "",
-    `Submit your tips before lockout: ${params.roundUrl}`,
+    `Submit your tips: ${params.roundUrl}`,
     "",
-    `Round ${params.round} fixtures + odds`,
+    `Round ${params.round} fixtures and odds`,
     ...textLines,
     "",
     "Needlessly Complicated AFL Tipping",
@@ -255,15 +255,15 @@ async function sendOddsAddedEmail(params: {
 
   const html = `
     <div style="font-family: Arial, Helvetica, sans-serif; line-height: 1.45; color: #111;">
-      <p>Hi ${escapeHtml(params.displayName)},</p>
-      <p>Round <b>${params.round}</b> odds have now been added and are locked in for this round.</p>
-      <p><b>Round ${params.round} lockout:</b> ${escapeHtml(lockMelbourne)} (Melbourne time)</p>
-      <p>Submit your tips before lockout: <a href="${escapeHtml(params.roundUrl)}">${escapeHtml(
-        params.roundUrl
-      )}</a></p>
-      <p><b>Round ${params.round} fixtures + odds</b></p>
+      <p style="margin: 0 0 12px;">Hi ${escapeHtml(params.displayName)},</p>
+      <p style="margin: 0 0 12px;"><b>Round ${params.round} odds are now live.</b></p>
+      <p style="margin: 0 0 16px;"><b>Lockout (Melbourne):</b> ${escapeHtml(lockMelbourne)}</p>
+      <p style="margin: 0 0 16px;"><a href="${escapeHtml(params.roundUrl)}">Submit your tips for Round ${
+        params.round
+      }</a></p>
+      <p style="margin: 0 0 8px;"><b>Round ${params.round} fixtures and odds</b></p>
       <ol style="margin: 0; padding-left: 20px;">${htmlRows}</ol>
-      <p style="margin-top: 24px;">Needlessly Complicated AFL Tipping</p>
+      <p style="margin: 20px 0 0;">Needlessly Complicated AFL Tipping</p>
     </div>
   `;
 
@@ -483,7 +483,7 @@ export async function GET(req: Request) {
       const awayOdds = formatOdds(odds?.away_odds ?? null);
       return {
         index: i + 1,
-        line: `${match.home_team} [${match.home_team} ${homeOdds}] vs ${match.away_team} [${match.away_team} ${awayOdds}]`,
+        line: `${match.home_team} (${homeOdds}) vs ${match.away_team} (${awayOdds})`,
       };
     });
 

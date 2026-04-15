@@ -67,6 +67,40 @@ type FixtureLine = {
   line: string;
 };
 
+function isLikelyEmail(value: string) {
+  const email = value.trim();
+  if (!email) return false;
+  if (!email.includes("@")) return false;
+  if (email.startsWith("@") || email.endsWith("@")) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function parseEmailList(raw: string | null | undefined) {
+  const input = String(raw ?? "").trim();
+  if (!input) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of input.split(/[,\s;]+/g)) {
+    const email = part.trim().toLowerCase();
+    if (!isLikelyEmail(email)) continue;
+    if (seen.has(email)) continue;
+    seen.add(email);
+    out.push(email);
+  }
+  return out;
+}
+
+function normalizeNameFromEmail(email: string) {
+  const local = String(email.split("@")[0] ?? "").trim();
+  const cleaned = local.replace(/[._-]+/g, " ").trim();
+  if (!cleaned) return "there";
+  return cleaned
+    .split(/\s+/g)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 function isMissingColumnError(message: string, columnName: string) {
   const m = String(message ?? "").toLowerCase();
   const col = columnName.toLowerCase();
@@ -321,6 +355,8 @@ export async function GET(req: Request) {
     const dryRun = url.searchParams.get("dry_run") === "1";
     const forceResend = url.searchParams.get("force_resend") === "1";
     const snapshotOverride = String(url.searchParams.get("snapshot_for_time_utc") || "").trim();
+    const toEmailOverride = parseEmailList(url.searchParams.get("to_email"));
+    const directTestMode = toEmailOverride.length > 0;
 
     if (!Number.isFinite(season) || season < 2000 || season > 2100) {
       return NextResponse.json({ error: "Provide a valid season" }, { status: 400 });
@@ -351,21 +387,6 @@ export async function GET(req: Request) {
 
     if (!competitionId) {
       return NextResponse.json({ error: "No competition found" }, { status: 404 });
-    }
-
-    const tableCheck = await supabase
-      .from("odds_snapshot_notification_emails")
-      .select("id")
-      .limit(1);
-    if (tableCheck.error) {
-      return NextResponse.json(
-        {
-          error: "odds_snapshot_notification_emails table missing or inaccessible",
-          details: tableCheck.error.message,
-          hint: "Apply migration db/migrations/20260415_odds_snapshot_notification_emails.sql",
-        },
-        { status: 500 }
-      );
     }
 
     const roundQuery = await supabase
@@ -467,6 +488,95 @@ export async function GET(req: Request) {
     });
 
     const missingOddsMatches = matches.filter((match) => !oddsByMatchId.has(String(match.id))).length;
+
+    if (directTestMode) {
+      let sent = 0;
+      let simulated = 0;
+      let failed = 0;
+      let lastSendAttemptAtMs = 0;
+
+      const results: Array<{
+        email: string;
+        status: SendStatus;
+        error?: string | null;
+      }> = [];
+
+      for (const email of toEmailOverride) {
+        if (!dryRun && lastSendAttemptAtMs > 0) {
+          const elapsed = Date.now() - lastSendAttemptAtMs;
+          if (elapsed < MIN_SEND_SPACING_MS) {
+            await sleep(MIN_SEND_SPACING_MS - elapsed);
+          }
+        }
+        lastSendAttemptAtMs = Date.now();
+
+        const roundUrl = `${url.origin}/round/${season}/${round}`;
+        const sendResult = await sendOddsAddedEmail({
+          apiKey: resendApiKey,
+          fromEmail: reminderFromEmail,
+          replyTo: reminderReplyTo,
+          toEmail: email,
+          displayName: normalizeNameFromEmail(email),
+          season,
+          round,
+          lockTimeUtc: roundRow.lock_time_utc,
+          roundUrl,
+          fixtureLines,
+          dryRun,
+        });
+
+        if (sendResult.status === "sent") sent += 1;
+        else if (sendResult.status === "simulated") simulated += 1;
+        else failed += 1;
+
+        results.push({
+          email,
+          status: sendResult.status,
+          error: sendResult.error,
+        });
+      }
+
+      return NextResponse.json({
+        ok: true,
+        season,
+        round,
+        competition_id: competitionId,
+        direct_test_mode: true,
+        notification_type: NOTIFICATION_TYPE,
+        dry_run: dryRun,
+        force_resend: forceResend,
+        snapshot_for_time_utc: snapshotForTimeUtc,
+        lock_time_utc: roundRow.lock_time_utc,
+        lock_time_melbourne: formatMelbourne(roundRow.lock_time_utc),
+        fixtures_total: fixtureLines.length,
+        fixtures_missing_odds: missingOddsMatches,
+        recipients_targeted: toEmailOverride.length,
+        totals: {
+          sent,
+          simulated,
+          failed,
+          no_email: 0,
+          skipped_already_sent: 0,
+        },
+        results,
+        fixture_preview: fixtureLines,
+      });
+    }
+
+    const tableCheck = await supabase
+      .from("odds_snapshot_notification_emails")
+      .select("id")
+      .limit(1);
+    if (tableCheck.error) {
+      return NextResponse.json(
+        {
+          error: "odds_snapshot_notification_emails table missing or inaccessible",
+          details: tableCheck.error.message,
+          hint: "Apply migration db/migrations/20260415_odds_snapshot_notification_emails.sql",
+        },
+        { status: 500 }
+      );
+    }
 
     const withTestFlag = await supabase
       .from("memberships")

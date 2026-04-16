@@ -76,6 +76,40 @@ type RoundResult = {
   skipped_no_matches: boolean;
 };
 
+function isLikelyEmail(value: string) {
+  const email = value.trim();
+  if (!email) return false;
+  if (!email.includes("@")) return false;
+  if (email.startsWith("@") || email.endsWith("@")) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function parseEmailList(raw: string | null | undefined) {
+  const input = String(raw ?? "").trim();
+  if (!input) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of input.split(/[,\s;]+/g)) {
+    const email = part.trim().toLowerCase();
+    if (!isLikelyEmail(email)) continue;
+    if (seen.has(email)) continue;
+    seen.add(email);
+    out.push(email);
+  }
+  return out;
+}
+
+function normalizeNameFromEmail(email: string) {
+  const local = String(email.split("@")[0] ?? "").trim();
+  const cleaned = local.replace(/[._-]+/g, " ").trim();
+  if (!cleaned) return "there";
+  return cleaned
+    .split(/\s+/g)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 function safeDisplayName(name: string | null | undefined, userId: string) {
   const n = String(name ?? "").trim();
   if (n) return n;
@@ -343,6 +377,8 @@ export async function GET(req: Request) {
       url.searchParams.get("force_resend") === "1" &&
       round !== null &&
       Number.isFinite(round);
+    const toEmailOverride = parseEmailList(url.searchParams.get("to_email"));
+    const directTestMode = toEmailOverride.length > 0;
 
     const reminderHours = Number(
       url.searchParams.get("hours_before_lock") || String(DEFAULT_REMINDER_HOURS)
@@ -520,6 +556,110 @@ export async function GET(req: Request) {
       }
 
       skippedNotDue.push(r.round_number);
+    }
+
+    if (directTestMode) {
+      if (round === null || !Number.isFinite(round)) {
+        return respond(400, {
+          error: "to_email direct test requires round query parameter",
+          hint: "Call with round=<round_number>&force=1&to_email=<email>",
+        });
+      }
+
+      if (!forceRound) {
+        return respond(400, {
+          error: "to_email direct test requires force=1",
+          hint: "Use force=1 to send a test outside the normal reminder window.",
+        });
+      }
+
+      if (targetedRounds.length === 0) {
+        return respond(404, {
+          error: "No round matched for direct test",
+          season,
+          round,
+        });
+      }
+
+      const targetRound = targetedRounds[0];
+      if (!targetRound.lock_time_utc) {
+        return respond(400, {
+          error: "Target round lock_time_utc is missing",
+          season,
+          round: targetRound.round_number,
+        });
+      }
+
+      const roundUrl = `${url.origin}/round/${season}/${targetRound.round_number}`;
+      let sent = 0;
+      let simulated = 0;
+      let failed = 0;
+      let lastSendAttemptAtMs = 0;
+
+      const testResults: Array<{
+        email: string;
+        status: SendStatus;
+        error?: string | null;
+      }> = [];
+
+      for (const email of toEmailOverride) {
+        if (!dryRun && lastSendAttemptAtMs > 0) {
+          const elapsed = Date.now() - lastSendAttemptAtMs;
+          if (elapsed < MIN_SEND_SPACING_MS) {
+            await sleep(MIN_SEND_SPACING_MS - elapsed);
+          }
+        }
+        lastSendAttemptAtMs = Date.now();
+
+        const sendResult = await sendReminderEmail({
+          apiKey: resendApiKey,
+          fromEmail: reminderFromEmail,
+          replyTo: reminderReplyTo,
+          toEmail: email,
+          displayName: normalizeNameFromEmail(email),
+          season,
+          roundNumber: targetRound.round_number,
+          lockTimeUtc: targetRound.lock_time_utc,
+          roundUrl,
+          dryRun,
+        });
+
+        if (sendResult.status === "sent") sent += 1;
+        else if (sendResult.status === "simulated") simulated += 1;
+        else failed += 1;
+
+        testResults.push({
+          email,
+          status: sendResult.status,
+          error: sendResult.error,
+        });
+      }
+
+      return respond(200, {
+        ok: true,
+        season,
+        round: targetRound.round_number,
+        direct_test_mode: true,
+        reminder_type: reminderType,
+        reminder_hours_before_lock: reminderHours,
+        reminder_window_minutes: windowMinutes,
+        reminder_window_direction: windowDirection,
+        dry_run: dryRun,
+        force_round: forceRound,
+        force_resend: forceResend,
+        rounds_considered: roundRows.length,
+        rounds_targeted: 1,
+        lock_time_utc: targetRound.lock_time_utc,
+        lock_time_melbourne: formatMelbourne(targetRound.lock_time_utc),
+        recipients_targeted: toEmailOverride.length,
+        totals: {
+          sent,
+          simulated,
+          failed,
+          no_email: 0,
+        },
+        results: testResults,
+      });
     }
 
     const results: RoundResult[] = [];

@@ -30,6 +30,7 @@ type MatchRow = {
 type MembershipRow = {
   user_id: string;
   is_test_account?: boolean | null;
+  role?: string | null;
 };
 
 type TipRow = {
@@ -710,14 +711,14 @@ export async function GET(req: Request) {
 
       const withTestFlag = await supabase
         .from("memberships")
-        .select("user_id, is_test_account")
+        .select("user_id, is_test_account, role")
         .eq("competition_id", competitionId);
 
       let memberRows: MembershipRow[] = [];
       if (withTestFlag.error && isMissingColumnError(withTestFlag.error.message, "is_test_account")) {
         const fallback = await supabase
           .from("memberships")
-          .select("user_id")
+          .select("user_id, role")
           .eq("competition_id", competitionId);
         if (fallback.error) {
           roundErrors.push({
@@ -741,8 +742,12 @@ export async function GET(req: Request) {
         .filter((m) => !Boolean(m.is_test_account))
         .map((m) => String(m.user_id));
       const memberSet = new Set(memberIds);
+      const ownerUserIds = memberRows
+        .filter((m) => String(m.role ?? "").trim().toLowerCase() === "owner")
+        .map((m) => String(m.user_id));
+      const ownerSet = new Set(ownerUserIds);
 
-      if (memberIds.length === 0) {
+      if (memberIds.length === 0 && ownerUserIds.length === 0) {
         results.push({
           round: r.round_number,
           lock_time_utc: r.lock_time_utc,
@@ -786,13 +791,19 @@ export async function GET(req: Request) {
       const missingMemberIds = memberIds.filter(
         (userId) => (tipMatchIdsByUser.get(userId)?.size ?? 0) < totalMatches
       );
+      const recipientUserIds = missingMemberIds.slice();
+      for (const ownerUserId of ownerSet) {
+        if (!recipientUserIds.includes(ownerUserId)) {
+          recipientUserIds.push(ownerUserId);
+        }
+      }
 
-      if (missingMemberIds.length === 0) {
+      if (recipientUserIds.length === 0) {
         results.push({
           round: r.round_number,
           lock_time_utc: r.lock_time_utc,
           total_members: memberIds.length,
-          missing_tip_members: 0,
+          missing_tip_members: missingMemberIds.length,
           already_reminded: 0,
           candidates: 0,
           no_email: 0,
@@ -811,7 +822,7 @@ export async function GET(req: Request) {
         .eq("competition_id", competitionId)
         .eq("round_id", r.id)
         .eq("reminder_type", reminderType)
-        .in("user_id", missingMemberIds)
+        .in("user_id", recipientUserIds)
         .eq("status", "sent");
 
       if (exErr) {
@@ -837,8 +848,8 @@ export async function GET(req: Request) {
 
       const alreadyRemindedSkipped = resendOverrideApplied ? 0 : alreadyRemindedSet.size;
       const candidateUserIds = resendOverrideApplied
-        ? missingMemberIds
-        : missingMemberIds.filter((u) => !alreadyRemindedSet.has(u));
+        ? recipientUserIds
+        : recipientUserIds.filter((u) => !alreadyRemindedSet.has(u));
 
       if (candidateUserIds.length === 0) {
         results.push({

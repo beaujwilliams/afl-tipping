@@ -43,7 +43,7 @@ Use an external cron service to call these endpoints:
 
 - Every 5 minutes:
   - `/api/cron/scoring-active?season=2026`
-- Every 10 minutes:
+- Every 5 minutes:
   - `/api/cron/prelock-reminders?season=2026`
 - Once daily (UTC):
   - `/api/cron/scoring-daily-full?season=2026`
@@ -54,7 +54,7 @@ Auth header required for all calls:
 
 Pre-lock reminder behavior:
 
-- Targets reminder emails for the 10-minute lead-up to 3 hours before lock (`window_minutes=10`, `window_direction=before`).
+- Targets reminder emails for the 15-minute lead-up to 4 hours before lock (`window_minutes=15`, `window_direction=before`).
 - Deduplicates sends per user/round.
 
 ## Scheduled Odds Snapshot

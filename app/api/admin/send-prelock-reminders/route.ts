@@ -11,7 +11,7 @@ import {
 } from "@/lib/automation-observability";
 const DEFAULT_SEASON = 2026;
 const DEFAULT_REMINDER_HOURS = 4;
-const DEFAULT_WINDOW_MINUTES = 10;
+const DEFAULT_WINDOW_MINUTES = 15;
 const DEFAULT_WINDOW_DIRECTION = "before";
 const RESEND_RATE_LIMIT_RETRY_ATTEMPTS = 3;
 const MIN_SEND_SPACING_MS = 1100;

@@ -11,7 +11,7 @@ export async function GET(req: Request) {
 
   return forwardCronToAdmin(
     req,
-    `/api/admin/send-prelock-reminders?season=${season}&hours_before_lock=4&window_minutes=10&window_direction=before`,
+    `/api/admin/send-prelock-reminders?season=${season}&hours_before_lock=4&window_minutes=15&window_direction=before`,
     { season, jobKind: "prelock_reminders" }
   );
 }

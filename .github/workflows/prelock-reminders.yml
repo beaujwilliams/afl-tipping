@@ -45,7 +45,7 @@ jobs:
             exit 1
           fi
 
-          URL="${BASE_URL}/api/admin/send-prelock-reminders?season=${SEASON}&hours_before_lock=4&window_minutes=10&window_direction=before"
+          URL="${BASE_URL}/api/admin/send-prelock-reminders?season=${SEASON}&hours_before_lock=4&window_minutes=15&window_direction=before"
           echo "Calling ${URL}"
 
           curl -fsS \

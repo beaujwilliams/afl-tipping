@@ -296,14 +296,6 @@ async function sendOddsAddedEmail(params: {
       </p>
       <p style="margin: 0 0 8px;"><b>Round ${params.round} fixtures and odds</b></p>
       <ol style="margin: 0; padding-left: 20px;">${htmlRows}</ol>
-      <p style="margin: 18px 0 0;">
-        <a
-          href="${escapeHtml(params.roundUrl)}"
-          style="display: inline-block; padding: 11px 16px; border-radius: 8px; background: #111; color: #fff; text-decoration: none; font-weight: 700;"
-        >
-          Submit your tips for Round ${params.round}
-        </a>
-      </p>
       <p style="margin: 20px 0 0;">Needlessly Complicated AFL Tipping</p>
     </div>
   `;

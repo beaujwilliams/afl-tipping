@@ -542,7 +542,7 @@ export default function AdminPaymentsPage() {
               placeholder="If they emailed proof"
             />
           </label>
-          <label className="ui-stack" style={{ gridColumn: "span 2" }}>
+          <label className="ui-stack" style={{ gridColumn: "1 / -1" }}>
             <span className="ui-caption">Reference text</span>
             <input
               type="text"

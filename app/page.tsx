@@ -7,6 +7,15 @@ import { getLeaderboardSnapshot } from "@/lib/leaderboard-snapshot";
 
 const CURRENT_SEASON = 2026;
 
+type HomeTodayPickRow = {
+  match_id: string;
+  commence_time_utc: string;
+  home_team: string;
+  away_team: string;
+  picked_team: string | null;
+  winner_team: string | null;
+};
+
 function fallbackWelcomeName(user: {
   email?: string | null;
   user_metadata?: Record<string, unknown> | null;
@@ -19,6 +28,17 @@ function fallbackWelcomeName(user: {
     .split("@")[0]
     ?.trim();
   return metadataNameCandidates[0] || emailName || "";
+}
+
+function melbourneDayKey(value: string | Date) {
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Australia/Melbourne",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
 }
 
 export default async function HomePage() {
@@ -36,6 +56,7 @@ export default async function HomePage() {
   let initialMessage: string | null = null;
   let rounds = [] as Awaited<ReturnType<typeof getRoundTipStatusResponse>>["rounds"];
   let me = null as Awaited<ReturnType<typeof getLeaderboardSnapshot>>["rows"][number] | null;
+  let todayPicks: HomeTodayPickRow[] = [];
 
   try {
     const competitionId = await resolveCompetitionIdForSeason({
@@ -76,6 +97,60 @@ export default async function HomePage() {
 
       rounds = roundStatus.rounds;
       me = leaderboard.rows.find((row) => row.user_id === user.id) ?? null;
+
+      const roundIds = Array.from(
+        new Set(
+          rounds
+            .map((round) => String(round.round_id ?? "").trim())
+            .filter((roundId) => roundId.length > 0)
+        )
+      );
+
+      if (roundIds.length > 0) {
+        const { data: matchRows, error: matchError } = await supabase
+          .from("matches")
+          .select("id, round_id, commence_time_utc, home_team, away_team, winner_team")
+          .in("round_id", roundIds)
+          .order("commence_time_utc", { ascending: true });
+
+        if (!matchError) {
+          const todayKey = melbourneDayKey(new Date());
+          const todaysMatches = (matchRows ?? []).filter((match) => {
+            return melbourneDayKey(String(match.commence_time_utc ?? "")) === todayKey;
+          });
+
+          const matchIds = todaysMatches.map((match) => String(match.id));
+          const pickedTeamByMatchId = new Map<string, string>();
+
+          if (matchIds.length > 0) {
+            const { data: tipRows, error: tipError } = await supabase
+              .from("tips")
+              .select("match_id, picked_team")
+              .eq("competition_id", competitionId)
+              .eq("user_id", user.id)
+              .in("match_id", matchIds);
+
+            if (!tipError) {
+              (tipRows ?? []).forEach((tip) => {
+                pickedTeamByMatchId.set(String(tip.match_id), String(tip.picked_team ?? ""));
+              });
+            }
+          }
+
+          todayPicks = todaysMatches.map((match) => {
+            const matchId = String(match.id);
+            const picked = String(pickedTeamByMatchId.get(matchId) ?? "").trim();
+            return {
+              match_id: matchId,
+              commence_time_utc: String(match.commence_time_utc ?? ""),
+              home_team: String(match.home_team ?? ""),
+              away_team: String(match.away_team ?? ""),
+              picked_team: picked || null,
+              winner_team: String(match.winner_team ?? "").trim() || null,
+            };
+          });
+        }
+      }
     }
   } catch (error) {
     initialMessage =
@@ -87,6 +162,7 @@ export default async function HomePage() {
       welcomeName={welcomeName}
       rounds={rounds}
       me={me}
+      todayPicks={todayPicks}
       initialMessage={initialMessage}
     />
   );

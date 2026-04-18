@@ -1150,6 +1150,53 @@ button {
   min-height: 118px;
 }
 
+.dashboard-today-picks {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card-soft);
+}
+
+.dashboard-today-empty {
+  margin-top: 6px;
+}
+
+.dashboard-today-list {
+  margin-top: 8px;
+  display: grid;
+  gap: 0;
+}
+
+.dashboard-today-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+
+.dashboard-today-list .dashboard-today-item:first-child {
+  border-top: none;
+  padding-top: 6px;
+}
+
+.dashboard-today-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.dashboard-today-picked {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .dashboard-live-strip {
   margin-top: 16px;
   padding-top: 14px;
@@ -1234,6 +1281,14 @@ button {
 
 @media (max-width: 720px) {
   .dashboard-hero-title {
+    white-space: normal;
+  }
+
+  .dashboard-today-item {
+    align-items: flex-start;
+  }
+
+  .dashboard-today-picked {
     white-space: normal;
   }
 }

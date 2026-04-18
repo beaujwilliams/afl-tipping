@@ -28,6 +28,15 @@ export type HomeLeaderboardRow = {
   payment_status?: string | null;
 };
 
+export type HomeTodayPickRow = {
+  match_id: string;
+  commence_time_utc: string;
+  home_team: string;
+  away_team: string;
+  picked_team: string | null;
+  winner_team: string | null;
+};
+
 type DashboardReminder = {
   id: string;
   title: string;
@@ -40,6 +49,7 @@ type HomePageClientProps = {
   welcomeName: string;
   rounds: HomeRoundStatusRow[];
   me: HomeLeaderboardRow | null;
+  todayPicks?: HomeTodayPickRow[];
   initialMessage?: string | null;
 };
 
@@ -87,6 +97,20 @@ function fmtMelbourneLockLine(iso: string | null) {
     .toLowerCase();
 
   return `${weekday}, ${dayMonth} at ${time}`;
+}
+
+function fmtMelbourneTime(iso: string | null) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return new Intl.DateTimeFormat("en-AU", {
+    timeZone: "Australia/Melbourne",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  })
+    .format(d)
+    .toLowerCase();
 }
 
 function msToCountdown(ms: number) {
@@ -142,6 +166,7 @@ export default function HomePageClient({
   welcomeName,
   rounds,
   me,
+  todayPicks = [],
   initialMessage,
 }: HomePageClientProps) {
   const msg = initialMessage ?? "";
@@ -301,6 +326,12 @@ export default function HomePageClient({
     return null;
   }, [liveRound, lockedRoundStillLive, nextOpenRound]);
 
+  const sortedTodayPicks = useMemo(() => {
+    return [...todayPicks].sort((a, b) => {
+      return new Date(a.commence_time_utc).getTime() - new Date(b.commence_time_utc).getTime();
+    });
+  }, [todayPicks]);
+
   return (
     <main className="ui-page ui-page--content">
       <div className="ui-page-header">
@@ -418,6 +449,58 @@ export default function HomePageClient({
                 </>
               )}
             </UiCardGrid>
+
+            <div className="dashboard-today-picks">
+              <div className="ui-kicker">Who you tipped today</div>
+              {sortedTodayPicks.length === 0 ? (
+                <div className="ui-meta dashboard-today-empty">No matches scheduled today.</div>
+              ) : (
+                <div className="dashboard-today-list">
+                  {sortedTodayPicks.map((pick) => {
+                    const pickedTeam = String(pick.picked_team ?? "").trim();
+                    const winnerTeam = String(pick.winner_team ?? "").trim();
+                    const hasWinner = winnerTeam.length > 0;
+                    const opponent =
+                      pickedTeam === pick.home_team
+                        ? pick.away_team
+                        : pickedTeam === pick.away_team
+                        ? pick.home_team
+                        : `${pick.home_team} vs ${pick.away_team}`;
+
+                    let tone: "warning" | "info" | "success" | "danger" = "warning";
+                    let statusLabel = "Not tipped";
+                    if (pickedTeam) {
+                      if (!hasWinner) {
+                        tone = "info";
+                        statusLabel = "Pending";
+                      } else if (pickedTeam === winnerTeam) {
+                        tone = "success";
+                        statusLabel = "Correct";
+                      } else {
+                        tone = "danger";
+                        statusLabel = "Incorrect";
+                      }
+                    }
+
+                    return (
+                      <div key={pick.match_id} className="dashboard-today-item">
+                        <div className="dashboard-today-copy">
+                          <div className="dashboard-today-picked">
+                            {pickedTeam || `${pick.home_team} vs ${pick.away_team}`}
+                          </div>
+                          <div className="ui-meta">
+                            {pickedTeam
+                              ? `vs ${opponent} • ${fmtMelbourneTime(pick.commence_time_utc)}`
+                              : `${fmtMelbourneTime(pick.commence_time_utc)} • Tip not saved`}
+                          </div>
+                        </div>
+                        <UiBadge tone={tone}>{statusLabel}</UiBadge>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
 
             <div className="dashboard-action-row">
               {primaryTipRound && !lockedRoundStillLive && (

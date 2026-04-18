@@ -260,31 +260,37 @@ export default function SeasonRoundsPageClient({
       {!msg && !hasRows && <div className="ui-caption ui-mt-4">No tip rounds found.</div>}
 
       {!msg && hasRows && currentRound && (
-        <UiCard soft className="ui-row-between ui-mt-4">
-          <div className="ui-grid" style={{ gap: 6 }}>
-            <div className="ui-title--section">
-              Current round: {getRoundDisplayName(currentRound.round_number)}
-            </div>
-            <div className="ui-meta">
-              {currentRoundLocked
-                ? `Locked ${fmtMelbourneShort(currentRound.lock_time_utc)}`
-                : `Locks in ${currentRoundCountdown} (${fmtMelbourneShort(currentRound.lock_time_utc)})`}
-            </div>
-            <div className="ui-meta">
-              Your tips:{" "}
-              <b>
-                {currentRoundTipsPlaced}/{currentRoundTipsPossible || "—"}
-              </b>
+        <div className="ui-mt-4">
+          <div className="ui-divider-top" style={{ marginBottom: 12 }}>
+            <div style={{ marginTop: 4, fontWeight: 900, fontSize: 18, letterSpacing: -0.2 }}>
+              Current round
             </div>
           </div>
 
-          <UiButtonLink
-            href={`/round/${season}/${currentRound.round_number}`}
-            style={{ padding: "10px 14px" }}
-          >
-            {currentRoundLocked ? "View round" : "Continue tipping"}
-          </UiButtonLink>
-        </UiCard>
+          <UiCard soft className="ui-row-between">
+            <div className="ui-grid" style={{ gap: 6 }}>
+              <div className="ui-title--section">{getRoundDisplayName(currentRound.round_number)}</div>
+              <div className="ui-meta">
+                {currentRoundLocked
+                  ? `Locked ${fmtMelbourneShort(currentRound.lock_time_utc)}`
+                  : `Locks in ${currentRoundCountdown} (${fmtMelbourneShort(currentRound.lock_time_utc)})`}
+              </div>
+              <div className="ui-meta">
+                Your tips:{" "}
+                <b>
+                  {currentRoundTipsPlaced}/{currentRoundTipsPossible || "—"}
+                </b>
+              </div>
+            </div>
+
+            <UiButtonLink
+              href={`/round/${season}/${currentRound.round_number}`}
+              style={{ padding: "10px 14px" }}
+            >
+              {currentRoundLocked ? "View round" : "Continue tipping"}
+            </UiButtonLink>
+          </UiCard>
+        </div>
       )}
 
       {!msg && hasRows && (

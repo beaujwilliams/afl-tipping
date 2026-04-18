@@ -771,30 +771,6 @@ export default function RoundPageClient({
               <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
                 Tip all matches before the lock time.
               </div>
-              {!isLocked && !paymentLocked && (
-                <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8 }}>
-                  <button
-                    className="ui-btn"
-                    onClick={autoPickRemaining}
-                    disabled={autoPicking || savingMatchId !== null || remainingTipCount === 0}
-                    style={{ minWidth: 220 }}
-                  >
-                    {autoPicking
-                      ? "Auto-picking..."
-                      : remainingTipCount > 0
-                      ? `Auto-pick remaining (${remainingTipCount})`
-                      : "All tips picked"}
-                  </button>
-                  <button
-                    className="ui-btn ui-btn--danger-soft"
-                    onClick={autoPickAll}
-                    disabled={autoPicking || savingMatchId !== null || matches.length === 0}
-                    style={{ minWidth: 190 }}
-                  >
-                    {autoPicking ? "Auto-picking..." : "Auto-pick all"}
-                  </button>
-                </div>
-              )}
             </div>
 
             {isLocked ? (
@@ -858,6 +834,29 @@ export default function RoundPageClient({
               Payment status: <b>{paymentStatus}</b>
             </div>
           )}
+        </div>
+      )}
+
+      {!isLocked && !paymentLocked && !!matches.length && (
+        <div className="round-autopick-row ui-mt-3">
+          <button
+            className="ui-btn"
+            onClick={autoPickRemaining}
+            disabled={autoPicking || savingMatchId !== null || remainingTipCount === 0}
+          >
+            {autoPicking
+              ? "Auto-picking..."
+              : remainingTipCount > 0
+              ? `Auto-pick remaining (${remainingTipCount})`
+              : "All tips picked"}
+          </button>
+          <button
+            className="ui-btn ui-btn--danger-soft"
+            onClick={autoPickAll}
+            disabled={autoPicking || savingMatchId !== null || matches.length === 0}
+          >
+            {autoPicking ? "Auto-picking..." : "Auto-pick all"}
+          </button>
         </div>
       )}
 

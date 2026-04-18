@@ -1292,3 +1292,27 @@ button {
     white-space: normal;
   }
 }
+
+/* ===============================
+   Round Auto Pick Actions
+================================ */
+
+.round-autopick-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.round-autopick-row .ui-btn {
+  width: 100%;
+  min-width: 0;
+  justify-content: center;
+}
+
+@media (max-width: 720px) {
+  .round-autopick-row .ui-btn {
+    padding-left: 10px;
+    padding-right: 10px;
+    font-size: 14px;
+  }
+}

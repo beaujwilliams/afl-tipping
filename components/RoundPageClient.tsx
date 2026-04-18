@@ -418,7 +418,10 @@ export default function RoundPageClient({
     }
   }
 
-  async function autoPickRemaining() {
+  async function runAutoPick(params: {
+    targetMatches: MatchRow[];
+    mode: "remaining" | "all";
+  }) {
     if (!compId || !userId) return;
     if (isLocked) return;
     if (autoPicking) return;
@@ -427,18 +430,21 @@ export default function RoundPageClient({
       return;
     }
 
-    const remainingMatches = matches.filter((m) => !tipsByMatchId[m.id]);
-    if (!remainingMatches.length) {
+    const targetMatches = params.targetMatches;
+    if (!targetMatches.length) {
       toast.info("All matches already have tips.");
       return;
     }
 
+    const isOverwrite = params.mode === "all";
+    const confirmMessage = isOverwrite
+      ? `Randomly overwrite all ${targetMatches.length} ${pluralize(targetMatches.length, "tip", "tips")} for ${getRoundDisplayName(round)}? This will replace your current picks.`
+      : `Randomly fill ${targetMatches.length} remaining ${pluralize(targetMatches.length, "tip", "tips")} for ${getRoundDisplayName(round)}?`;
+
     const proceed =
       typeof window === "undefined"
         ? true
-        : window.confirm(
-            `Randomly fill ${remainingMatches.length} remaining ${pluralize(remainingMatches.length, "tip", "tips")} for ${getRoundDisplayName(round)}?`
-          );
+        : window.confirm(confirmMessage);
     if (!proceed) return;
 
     setAutoPicking(true);
@@ -454,7 +460,7 @@ export default function RoundPageClient({
         return;
       }
 
-      for (const match of remainingMatches) {
+      for (const match of targetMatches) {
         if (hardStop) break;
 
         const pickedTeam = pickRandomTeamSecure(match);
@@ -508,7 +514,7 @@ export default function RoundPageClient({
 
       if (savedCount > 0) {
         toast.success(
-          `Auto-picked ${savedCount} ${pluralize(savedCount, "tip", "tips")} for ${getRoundDisplayName(round)}.`
+          `${isOverwrite ? "Re-randomised" : "Auto-picked"} ${savedCount} ${pluralize(savedCount, "tip", "tips")} for ${getRoundDisplayName(round)}.`
         );
       }
       if (failedCount > 0) {
@@ -517,6 +523,15 @@ export default function RoundPageClient({
     } finally {
       setAutoPicking(false);
     }
+  }
+
+  async function autoPickRemaining() {
+    const remainingMatches = matches.filter((m) => !tipsByMatchId[m.id]);
+    await runAutoPick({ targetMatches: remainingMatches, mode: "remaining" });
+  }
+
+  async function autoPickAll() {
+    await runAutoPick({ targetMatches: matches, mode: "all" });
   }
 
   const oddsLockLabel = useCallback((snapshot: string | null) => {
@@ -757,7 +772,7 @@ export default function RoundPageClient({
                 Tip all matches before the lock time.
               </div>
               {!isLocked && !paymentLocked && (
-                <div style={{ marginTop: 10 }}>
+                <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8 }}>
                   <button
                     className="ui-btn"
                     onClick={autoPickRemaining}
@@ -769,6 +784,14 @@ export default function RoundPageClient({
                       : remainingTipCount > 0
                       ? `Auto-pick remaining (${remainingTipCount})`
                       : "All tips picked"}
+                  </button>
+                  <button
+                    className="ui-btn ui-btn--danger-soft"
+                    onClick={autoPickAll}
+                    disabled={autoPicking || savingMatchId !== null || matches.length === 0}
+                    style={{ minWidth: 190 }}
+                  >
+                    {autoPicking ? "Auto-picking..." : "Auto-pick all"}
                   </button>
                 </div>
               )}

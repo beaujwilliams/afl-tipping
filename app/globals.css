@@ -1357,6 +1357,16 @@ button {
   text-align: center;
 }
 
+.round-clear-row {
+  margin-top: 12px;
+  display: flex;
+  justify-content: center;
+}
+
+.round-clear-row .ui-btn {
+  min-width: 220px;
+}
+
 @media (max-width: 720px) {
   .round-autopick-row .ui-btn {
     font-size: 14px;
@@ -1366,5 +1376,10 @@ button {
 
   .round-autopick-meta {
     font-size: 11px;
+  }
+
+  .round-clear-row .ui-btn {
+    width: 100%;
+    min-width: 0;
   }
 }

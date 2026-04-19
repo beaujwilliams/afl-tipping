@@ -197,6 +197,7 @@ export default function RoundPageClient({
   );
   const [savingMatchId, setSavingMatchId] = useState<string | null>(null);
   const [autoPicking, setAutoPicking] = useState(false);
+  const [clearingTips, setClearingTips] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>(
     initialData?.payment_status ?? "pending"
   );
@@ -237,6 +238,7 @@ export default function RoundPageClient({
     setTipsByMatchId(initialData?.tips_by_match_id ?? {});
     setSavingMatchId(null);
     setAutoPicking(false);
+    setClearingTips(false);
     setPaymentStatus(initialData?.payment_status ?? "pending");
     setPaymentLocked(initialData?.payment_locked ?? false);
     setEnforceUnpaidTipLock(initialData?.enforce_unpaid_tip_lock ?? false);
@@ -365,7 +367,7 @@ export default function RoundPageClient({
 
   async function saveTip(matchId: string, pickedTeam: string) {
     if (!compId || !userId) return;
-    if (isLocked || autoPicking) return;
+    if (isLocked || autoPicking || clearingTips) return;
     if (paymentLocked) {
       toast.error("Tipping is disabled while your payment status is pending.");
       return;
@@ -424,7 +426,7 @@ export default function RoundPageClient({
   }) {
     if (!compId || !userId) return;
     if (isLocked) return;
-    if (autoPicking) return;
+    if (autoPicking || clearingTips) return;
     if (paymentLocked) {
       toast.error("Tipping is disabled while your payment status is pending.");
       return;
@@ -533,6 +535,71 @@ export default function RoundPageClient({
       }
     } finally {
       setAutoPicking(false);
+    }
+  }
+
+  async function clearAllSelections() {
+    if (!compId || !userId) return;
+    if (isLocked || paymentLocked || autoPicking || clearingTips) return;
+    if (tippedCount === 0) {
+      toast.info("No saved tips to clear.");
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      const proceed = window.confirm(
+        `Clear all ${tippedCount} saved ${pluralize(tippedCount, "tip", "tips")} for ${getRoundDisplayName(round)}?`
+      );
+      if (!proceed) return;
+    }
+
+    setClearingTips(true);
+    try {
+      const { data: session } = await supabaseBrowser.auth.getSession();
+      const token = session.session?.access_token ?? null;
+      if (!token) {
+        toast.error("Not authenticated. Please sign in again.");
+        return;
+      }
+
+      const res = await fetch("/api/tips/clear-round", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          season,
+          round,
+          competition_id: compId,
+        }),
+      });
+
+      const json = (await res.json().catch(() => null)) as
+        | { error?: string; code?: string; payment_status?: string; cleared_count?: number }
+        | null;
+
+      if (!res.ok) {
+        if (json?.code === "unpaid_locked") {
+          setPaymentLocked(true);
+          if (json.payment_status) {
+            setPaymentStatus(normalizeRoundPagePaymentStatus(json.payment_status));
+          }
+        }
+        toast.error(json?.error ?? "Could not clear tips.");
+        return;
+      }
+
+      setTipsByMatchId({});
+      const clearedCount =
+        typeof json?.cleared_count === "number" && Number.isFinite(json.cleared_count)
+          ? json.cleared_count
+          : tippedCount;
+      toast.success(`Cleared ${clearedCount} ${pluralize(clearedCount, "tip", "tips")}.`);
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Could not clear tips.");
+    } finally {
+      setClearingTips(false);
     }
   }
 
@@ -780,7 +847,7 @@ export default function RoundPageClient({
                 </span>
               </div>
               <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
-                Tip all matches before the lock time.
+                Selected tips are highlighted in bold.
               </div>
             </div>
 
@@ -822,9 +889,7 @@ export default function RoundPageClient({
                   <div>
                     {m.home_team} vs {m.away_team} —{" "}
                     {picked ? (
-                      <span>
-                        tipped <b>{picked}</b>
-                      </span>
+                      <b>{picked}</b>
                     ) : (
                       <span style={{ opacity: 0.6 }}>Not tipped</span>
                     )}
@@ -854,7 +919,7 @@ export default function RoundPageClient({
             <button
               className="ui-btn"
               onClick={autoPickRemaining}
-              disabled={autoPicking || savingMatchId !== null || remainingTipCount === 0}
+              disabled={autoPicking || clearingTips || savingMatchId !== null || remainingTipCount === 0}
             >
               {autoPicking
                 ? "Auto-picking..."
@@ -865,13 +930,13 @@ export default function RoundPageClient({
             <button
               className="ui-btn round-autopick-btn-secondary"
               onClick={autoPickAll}
-              disabled={autoPicking || savingMatchId !== null || matches.length === 0}
+              disabled={autoPicking || clearingTips || savingMatchId !== null || matches.length === 0}
             >
               {autoPicking ? "Auto-picking..." : "Auto-pick all"}
             </button>
           </div>
           <div className="round-autopick-meta">
-            {remainingTipCount} remaining • Auto-pick all overwrites saved tips.
+            When selected, auto-pick randomly assigns your tips for the round.
           </div>
         </div>
       )}
@@ -911,7 +976,7 @@ export default function RoundPageClient({
 
               <div style={{ display: "flex", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
                 <button
-                  disabled={isLocked || saving || paymentLocked || autoPicking}
+                  disabled={isLocked || saving || paymentLocked || autoPicking || clearingTips}
                   onClick={() => saveTip(g.id, g.home_team)}
                   style={tipOptionButtonStyle(
                     picked === g.home_team,
@@ -925,7 +990,7 @@ export default function RoundPageClient({
                 </button>
 
                 <button
-                  disabled={isLocked || saving || paymentLocked || autoPicking}
+                  disabled={isLocked || saving || paymentLocked || autoPicking || clearingTips}
                   onClick={() => saveTip(g.id, g.away_team)}
                   style={tipOptionButtonStyle(
                     picked === g.away_team,
@@ -955,15 +1020,22 @@ export default function RoundPageClient({
                 </div>
               )}
 
-              {!odds && (
-                <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
-                  Odds not captured for this match yet.
-                </div>
-              )}
             </div>
           );
         })}
       </div>
+
+      {!isLocked && !paymentLocked && !!matches.length && (
+        <div className="round-clear-row">
+          <button
+            className="ui-btn ui-btn--danger-soft"
+            onClick={clearAllSelections}
+            disabled={autoPicking || clearingTips || savingMatchId !== null || tippedCount === 0}
+          >
+            {clearingTips ? "Clearing..." : "Clear all selections"}
+          </button>
+        </div>
+      )}
 
     </main>
   );

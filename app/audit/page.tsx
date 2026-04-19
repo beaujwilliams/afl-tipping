@@ -26,19 +26,6 @@ type AuditOptionsResponse = {
 
 type DownloadScope = "all" | "round" | "users";
 
-function formatLockTime(iso: string) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return new Intl.DateTimeFormat("en-AU", {
-    timeZone: "Australia/Melbourne",
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(d);
-}
-
 function parseFileNameFromDisposition(disposition: string | null) {
   if (!disposition) return null;
   const match = disposition.match(/filename="?([^"]+)"?/i);
@@ -274,7 +261,7 @@ export default function AuditPage() {
               ) : (
                 rounds.map((round) => (
                   <option key={round.round_number} value={round.round_number}>
-                    Round {round.round_number} • Locked {formatLockTime(round.lock_time_utc)}
+                    Round {round.round_number}
                   </option>
                 ))
               )}

@@ -308,7 +308,10 @@ export default function AppLayoutChrome({
   const tippingActive =
     pathname.startsWith("/round/") || pathname.startsWith("/results/") || pathname.startsWith("/stats");
   const infoActive =
-    pathname.startsWith("/announcements") || pathname.startsWith("/info") || pathname.startsWith("/admin");
+    pathname.startsWith("/announcements") ||
+    pathname.startsWith("/info") ||
+    pathname.startsWith("/audit") ||
+    pathname.startsWith("/admin");
 
   const tippingItems = useMemo<MenuItem[]>(
     () => [
@@ -323,6 +326,7 @@ export default function AppLayoutChrome({
     const items: MenuItem[] = [
       { href: "/announcements", label: "Announcements", badge: unreadAnnouncements },
       { href: "/info", label: "How it works" },
+      { href: "/audit", label: "Audit" },
     ];
     if (initialIsAdmin) {
       items.push({ href: "/admin", label: "Admin", tone: "danger" });

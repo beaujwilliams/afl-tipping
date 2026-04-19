@@ -343,8 +343,8 @@ export default function HomePageClient({
           <UiCard soft className="dashboard-hero">
             <div className="ui-row-between">
               <div className="ui-kicker">Action center</div>
-              <UiBadge tone={primaryRoundLocked ? "locked" : "open"}>
-                {primaryRoundLocked ? "Locked" : "Open"}
+              <UiBadge tone="open">
+                {liveRound ? "In progress" : "Open"}
               </UiBadge>
             </div>
 

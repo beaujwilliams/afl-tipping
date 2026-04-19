@@ -437,15 +437,26 @@ export default function RoundPageClient({
     }
 
     const isOverwrite = params.mode === "all";
-    const confirmMessage = isOverwrite
-      ? `Randomly overwrite all ${targetMatches.length} ${pluralize(targetMatches.length, "tip", "tips")} for ${getRoundDisplayName(round)}? This will replace your current picks.`
-      : `Randomly fill ${targetMatches.length} remaining ${pluralize(targetMatches.length, "tip", "tips")} for ${getRoundDisplayName(round)}?`;
-
-    const proceed =
-      typeof window === "undefined"
-        ? true
-        : window.confirm(confirmMessage);
-    if (!proceed) return;
+    if (typeof window !== "undefined") {
+      if (isOverwrite) {
+        const overwriteConfirm = window.confirm(
+          `Auto-pick all will replace all ${targetMatches.length} ${pluralize(targetMatches.length, "tip", "tips")} in ${getRoundDisplayName(round)}. Continue?`
+        );
+        if (!overwriteConfirm) return;
+        const overwriteText = window.prompt(
+          "Type OVERWRITE to confirm randomising all tips."
+        );
+        if (String(overwriteText ?? "").trim().toUpperCase() !== "OVERWRITE") {
+          toast.info("Auto-pick all cancelled.");
+          return;
+        }
+      } else {
+        const remainingConfirm = window.confirm(
+          `Randomly fill ${targetMatches.length} remaining ${pluralize(targetMatches.length, "tip", "tips")} for ${getRoundDisplayName(round)}?`
+        );
+        if (!remainingConfirm) return;
+      }
+    }
 
     setAutoPicking(true);
     let savedCount = 0;
@@ -838,25 +849,30 @@ export default function RoundPageClient({
       )}
 
       {!isLocked && !paymentLocked && !!matches.length && (
-        <div className="round-autopick-row ui-mt-3">
-          <button
-            className="ui-btn"
-            onClick={autoPickRemaining}
-            disabled={autoPicking || savingMatchId !== null || remainingTipCount === 0}
-          >
-            {autoPicking
-              ? "Auto-picking..."
-              : remainingTipCount > 0
-              ? `Auto-pick remaining (${remainingTipCount})`
-              : "All tips picked"}
-          </button>
-          <button
-            className="ui-btn ui-btn--danger-soft"
-            onClick={autoPickAll}
-            disabled={autoPicking || savingMatchId !== null || matches.length === 0}
-          >
-            {autoPicking ? "Auto-picking..." : "Auto-pick all"}
-          </button>
+        <div className="round-autopick-panel ui-mt-3">
+          <div className="round-autopick-row">
+            <button
+              className="ui-btn"
+              onClick={autoPickRemaining}
+              disabled={autoPicking || savingMatchId !== null || remainingTipCount === 0}
+            >
+              {autoPicking
+                ? "Auto-picking..."
+                : remainingTipCount > 0
+                ? "Auto-pick remaining"
+                : "All tips picked"}
+            </button>
+            <button
+              className="ui-btn round-autopick-btn-secondary"
+              onClick={autoPickAll}
+              disabled={autoPicking || savingMatchId !== null || matches.length === 0}
+            >
+              {autoPicking ? "Auto-picking..." : "Auto-pick all"}
+            </button>
+          </div>
+          <div className="round-autopick-meta">
+            {remainingTipCount} remaining • Auto-pick all overwrites saved tips.
+          </div>
         </div>
       )}
 

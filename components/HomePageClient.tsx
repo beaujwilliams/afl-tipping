@@ -144,15 +144,6 @@ function pluralize(count: number, single: string, plural: string) {
   return count === 1 ? single : plural;
 }
 
-function paymentStatusLabel(status: string | null | undefined) {
-  const s = String(status ?? "paid")
-    .trim()
-    .toLowerCase();
-  if (s === "pending") return "Pending";
-  if (s === "waived") return "Waived";
-  return "Paid";
-}
-
 function isRoundComplete(row: HomeRoundStatusRow | null | undefined) {
   if (!row) return false;
   return (
@@ -574,7 +565,6 @@ export default function HomePageClient({
             <UiSectionHeader
               kicker="Season position"
               title="Your snapshot"
-              subtitle="The numbers that matter most right now."
             />
             <UiCardGrid columns={4} className="ui-mt-3">
               <UiCard>
@@ -595,22 +585,6 @@ export default function HomePageClient({
                 <div className="ui-kicker">Movement</div>
                 <div className="ui-value" style={{ color: movementColor(me?.movement) }}>
                   {me ? movementText(me.movement) : "-"}
-                </div>
-              </UiCard>
-              <UiCard>
-                <div className="ui-kicker">Unread chat</div>
-                <div className="ui-value">{unreadChat}</div>
-                <div className="ui-meta">
-                  @mentions <b>{unreadMentions}</b>
-                </div>
-              </UiCard>
-              <UiCard>
-                <div className="ui-kicker">Payment</div>
-                <div className="ui-value">{paymentStatusLabel(me?.payment_status)}</div>
-                <div className="ui-meta">
-                  {me?.payment_status === "pending"
-                    ? "Needs admin update"
-                    : "All clear"}
                 </div>
               </UiCard>
             </UiCardGrid>

@@ -1109,33 +1109,70 @@ export default function ChatPage() {
   }
 
   function renderBodyWithMentions(body: string): ReactNode {
-    const regex = /@([a-z0-9_]{2,30})/gi;
-    const parts: ReactNode[] = [];
-    let last = 0;
-    let match: RegExpExecArray | null;
+    function renderMentions(segment: string, keyPrefix: string): ReactNode[] {
+      const mentionRegex = /@([a-z0-9_]{2,30})/gi;
+      const mentionParts: ReactNode[] = [];
+      let mentionLast = 0;
+      let mentionMatch: RegExpExecArray | null;
 
-    while ((match = regex.exec(body)) !== null) {
-      const full = match[0];
-      const username = match[1].toLowerCase();
-      const idx = match.index;
+      while ((mentionMatch = mentionRegex.exec(segment)) !== null) {
+        const full = mentionMatch[0];
+        const username = mentionMatch[1].toLowerCase();
+        const idx = mentionMatch.index;
 
-      if (idx > last) {
-        parts.push(body.slice(last, idx));
+        if (idx > mentionLast) {
+          mentionParts.push(segment.slice(mentionLast, idx));
+        }
+
+        const isMe = myMentionAliases.has(username);
+        mentionParts.push(
+          <span
+            key={`${keyPrefix}-m-${idx}-${full}`}
+            style={{
+              borderRadius: 6,
+              padding: "0 4px",
+              fontWeight: 800,
+              background: isMe ? "rgba(245, 158, 11, 0.22)" : "rgba(255,255,255,0.10)",
+              color: isMe ? "rgb(180, 83, 9)" : "inherit",
+            }}
+          >
+            {full}
+          </span>
+        );
+
+        mentionLast = idx + full.length;
       }
 
-      const isMe = myMentionAliases.has(username);
+      if (mentionLast < segment.length) {
+        mentionParts.push(segment.slice(mentionLast));
+      }
+
+      return mentionParts;
+    }
+
+    const strikeRegex = /~~([\s\S]+?)~~/g;
+    const parts: ReactNode[] = [];
+    let last = 0;
+    let strikeMatch: RegExpExecArray | null;
+
+    while ((strikeMatch = strikeRegex.exec(body)) !== null) {
+      const idx = strikeMatch.index;
+      const full = strikeMatch[0];
+      const inner = strikeMatch[1] ?? "";
+
+      if (idx > last) {
+        parts.push(...renderMentions(body.slice(last, idx), `plain-${idx}`));
+      }
+
       parts.push(
         <span
-          key={`${idx}-${full}`}
+          key={`strike-${idx}-${full.length}`}
           style={{
-            borderRadius: 6,
-            padding: "0 4px",
-            fontWeight: 800,
-            background: isMe ? "rgba(245, 158, 11, 0.22)" : "rgba(255,255,255,0.10)",
-            color: isMe ? "rgb(180, 83, 9)" : "inherit",
+            textDecoration: "line-through",
+            textDecorationThickness: 2,
           }}
         >
-          {full}
+          {renderMentions(inner, `strike-${idx}`)}
         </span>
       );
 
@@ -1143,7 +1180,7 @@ export default function ChatPage() {
     }
 
     if (last < body.length) {
-      parts.push(body.slice(last));
+      parts.push(...renderMentions(body.slice(last), `tail-${last}`));
     }
 
     return parts;

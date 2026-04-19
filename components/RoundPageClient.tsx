@@ -445,13 +445,6 @@ export default function RoundPageClient({
           `Auto-pick all will replace all ${targetMatches.length} ${pluralize(targetMatches.length, "tip", "tips")} in ${getRoundDisplayName(round)}. Continue?`
         );
         if (!overwriteConfirm) return;
-        const overwriteText = window.prompt(
-          "Type OVERWRITE to confirm randomising all tips."
-        );
-        if (String(overwriteText ?? "").trim().toUpperCase() !== "OVERWRITE") {
-          toast.info("Auto-pick all cancelled.");
-          return;
-        }
       } else {
         const remainingConfirm = window.confirm(
           `Randomly fill ${targetMatches.length} remaining ${pluralize(targetMatches.length, "tip", "tips")} for ${getRoundDisplayName(round)}?`
@@ -887,11 +880,25 @@ export default function RoundPageClient({
                   }}
                 >
                   <div>
-                    {m.home_team} vs {m.away_team} —{" "}
                     {picked ? (
-                      <b>{picked}</b>
+                      <>
+                        {picked === m.home_team ? (
+                          <b>{m.home_team}</b>
+                        ) : (
+                          <span style={{ opacity: 0.72 }}>{m.home_team}</span>
+                        )}{" "}
+                        vs{" "}
+                        {picked === m.away_team ? (
+                          <b>{m.away_team}</b>
+                        ) : (
+                          <span style={{ opacity: 0.72 }}>{m.away_team}</span>
+                        )}
+                      </>
                     ) : (
-                      <span style={{ opacity: 0.6 }}>Not tipped</span>
+                      <>
+                        {m.home_team} vs {m.away_team} —{" "}
+                        <span style={{ opacity: 0.6 }}>Not tipped</span>
+                      </>
                     )}
                   </div>
 

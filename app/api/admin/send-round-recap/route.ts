@@ -451,6 +451,7 @@ export async function GET(req: Request) {
     const saveOnly =
       url.searchParams.get("save_only") === "1" ||
       url.searchParams.get("send_email") === "0";
+    const skipIfExists = url.searchParams.get("skip_if_exists") === "1";
     const force = url.searchParams.get("force") === "1";
     const recipientOverrideRaw = url.searchParams.get("to_email");
     const recipientOverride = normalizeRecipientEmails(
@@ -704,6 +705,61 @@ export async function GET(req: Request) {
     const roundNumber = Number(target.row.round_number);
     const roundMatches = matchRows.filter((m) => String(m.round_id) === roundId);
     const roundMatchIds = roundMatches.map((m) => String(m.id));
+
+    if (skipIfExists && !force && !dryRun) {
+      const existingRecap = await supabase
+        .from("round_recaps")
+        .select("id, generated_at, updated_at")
+        .eq("competition_id", competitionId)
+        .eq("round_id", roundId)
+        .eq("recap_type", RECAP_TYPE)
+        .maybeSingle();
+
+      if (existingRecap.error) {
+        return NextResponse.json(
+          { error: "Failed checking existing round recap", details: existingRecap.error.message },
+          { status: 500 }
+        );
+      }
+
+      if (existingRecap.data?.id) {
+        return NextResponse.json({
+          ok: true,
+          season,
+          round: roundNumber,
+          recap_type: RECAP_TYPE,
+          recipient_source: recipientSource,
+          hours_after_first: hoursAfterFirst,
+          latest_locked_round: latestLockedRound,
+          latest_finished_round: latestFinishedRound,
+          targeted_round: roundNumber,
+          first_game_utc: target.first_game_utc,
+          due_at_utc: target.due_at_utc,
+          save_only: saveOnly,
+          dry_run: dryRun,
+          skip_if_exists: skipIfExists,
+          recap_saved: false,
+          skipped_reason: "recap_exists",
+          existing_generated_at:
+            String(
+              (existingRecap.data as { generated_at?: string | null }).generated_at ?? ""
+            ) || null,
+          existing_updated_at:
+            String(
+              (existingRecap.data as { updated_at?: string | null }).updated_at ?? ""
+            ) || null,
+          totals: {
+            recipients_total: recipients.length,
+            recipients_targeted: 0,
+            sent: 0,
+            simulated: 0,
+            failed: 0,
+            skipped_existing: recipients.length,
+          },
+          results: [],
+        });
+      }
+    }
 
     if (roundMatchIds.length === 0) {
       return NextResponse.json({
@@ -2050,6 +2106,7 @@ export async function GET(req: Request) {
       due_at_utc: target.due_at_utc,
       save_only: saveOnly,
       dry_run: dryRun,
+      skip_if_exists: skipIfExists,
       recap_saved: recapSaved,
       totals: {
         recipients_total: recipients.length,

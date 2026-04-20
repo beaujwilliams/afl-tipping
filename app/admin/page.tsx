@@ -136,6 +136,17 @@ function describeRunningAction(value: string | null) {
   return `Running: ${value}`;
 }
 
+function parseFiniteNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const parsed = Number(trimmed);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
 function anomalyBadgeStyle(severity: "critical" | "warning" | "info"): CSSProperties {
   if (severity === "critical") {
     return {
@@ -301,32 +312,56 @@ export default function AdminPage() {
       const token = await getToken();
       if (!token) return;
 
+      let nextRound: number | null = null;
+
       const { ok, json } = await callAdmin(
         `/api/admin/send-round-recap?season=${season}&dry_run=1&save_only=1`,
         token
       );
-      if (!ok || !json || typeof json !== "object") return;
 
-      const latestLockedRound =
-        typeof (json as { latest_locked_round?: unknown }).latest_locked_round === "number"
-          ? Number((json as { latest_locked_round: number }).latest_locked_round)
-          : null;
-      const latestFinishedRound =
-        typeof (json as { latest_finished_round?: unknown }).latest_finished_round === "number"
-          ? Number((json as { latest_finished_round: number }).latest_finished_round)
-          : null;
-      const targetedRound =
-        typeof (json as { targeted_round?: unknown }).targeted_round === "number"
-          ? Number((json as { targeted_round: number }).targeted_round)
-          : null;
+      if (ok && json && typeof json === "object") {
+        const latestLockedRound = parseFiniteNumber(
+          (json as { latest_locked_round?: unknown }).latest_locked_round
+        );
+        const latestFinishedRound = parseFiniteNumber(
+          (json as { latest_finished_round?: unknown }).latest_finished_round
+        );
+        const targetedRound = parseFiniteNumber(
+          (json as { targeted_round?: unknown }).targeted_round
+        );
 
-      const nextRound = Number.isFinite(latestLockedRound)
-        ? Math.max(0, Math.trunc(latestLockedRound as number))
-        : Number.isFinite(latestFinishedRound)
-        ? Math.max(0, Math.trunc(latestFinishedRound as number))
-        : Number.isFinite(targetedRound)
-          ? Math.max(0, Math.trunc(targetedRound as number))
-          : null;
+        nextRound = Number.isFinite(latestLockedRound)
+          ? Math.max(0, Math.trunc(latestLockedRound as number))
+          : Number.isFinite(latestFinishedRound)
+          ? Math.max(0, Math.trunc(latestFinishedRound as number))
+          : Number.isFinite(targetedRound)
+            ? Math.max(0, Math.trunc(targetedRound as number))
+            : null;
+      }
+
+      if (nextRound === null) {
+        const fallback = await callAdmin(`/api/audit/options?season=${season}`, token);
+        if (fallback.ok && fallback.json && typeof fallback.json === "object") {
+          const lockedRounds = Array.isArray(
+            (fallback.json as { locked_rounds?: unknown }).locked_rounds
+          )
+            ? ((fallback.json as { locked_rounds: Array<{ round_number?: unknown }> })
+                .locked_rounds ?? [])
+            : [];
+
+          const latestFromLocked = lockedRounds
+            .map((row) => parseFiniteNumber(row.round_number))
+            .filter((value): value is number => value !== null)
+            .reduce<number | null>(
+              (max, value) => (max === null || value > max ? value : max),
+              null
+            );
+
+          if (latestFromLocked !== null) {
+            nextRound = Math.max(0, Math.trunc(latestFromLocked));
+          }
+        }
+      }
 
       if (nextRound !== null) {
         setRecapRound(nextRound);

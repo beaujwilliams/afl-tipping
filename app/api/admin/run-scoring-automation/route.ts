@@ -550,6 +550,27 @@ export async function GET(req: Request) {
       recalcLeaderboard.status >= 200 &&
       recalcLeaderboard.status < 300 &&
       (recalcLeaderboard.json.ok === true || recalcLeaderboard.json.success === true);
+
+    const shouldRunAutoRoundRecap =
+      syncOk && (syncUpdated > 0 || jobKind === "scoring_daily_full");
+    const autoRoundRecap = shouldRunAutoRoundRecap
+      ? await call(
+        `/api/admin/send-round-recap?season=${season}&save_only=1&hours_after_first=0&skip_if_exists=1&competition_id=${competitionId}${secretQS}`
+      )
+      : {
+        status: 412,
+        json: {
+          ok: false,
+          error: syncOk
+            ? "Skipped auto recap because sync-results.updated was 0"
+            : "Skipped auto recap because sync-results failed",
+        },
+      };
+    const autoRoundRecapOk =
+      autoRoundRecap.status >= 200 &&
+      autoRoundRecap.status < 300 &&
+      (autoRoundRecap.json.ok === true || autoRoundRecap.json.success === true);
+
     const runStatus: ScoringRunStatus =
       syncOk && (!shouldRecalc || recalcOk) ? "success" : "failed";
     const finishedAtUtc = new Date().toISOString();
@@ -557,6 +578,7 @@ export async function GET(req: Request) {
     let details: Record<string, unknown> = {
       sync_results: syncResults,
       recalc_leaderboard: recalcLeaderboard,
+      auto_round_recap: autoRoundRecap,
     };
 
     let logInsertError: string | null = null;
@@ -658,6 +680,8 @@ export async function GET(req: Request) {
       run_status: runStatus,
       sync_updated: syncUpdated,
       recalc_triggered: shouldRecalc,
+      auto_round_recap_triggered: shouldRunAutoRoundRecap,
+      auto_round_recap_ok: autoRoundRecapOk,
       steps: details,
       active_failure_alert: activeFailureAlert,
       log_saved: !logInsertError,

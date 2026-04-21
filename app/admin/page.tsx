@@ -136,17 +136,6 @@ function describeRunningAction(value: string | null) {
   return `Running: ${value}`;
 }
 
-function parseFiniteNumber(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    if (!trimmed) return null;
-    const parsed = Number(trimmed);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return null;
-}
-
 function anomalyBadgeStyle(severity: "critical" | "warning" | "info"): CSSProperties {
   if (severity === "critical") {
     return {
@@ -172,7 +161,6 @@ function anomalyBadgeStyle(severity: "critical" | "warning" | "info"): CSSProper
 export default function AdminPage() {
   const toast = useToast();
   const [season, setSeason] = useState<number>(2026);
-  const [recapRound, setRecapRound] = useState<number>(0);
   const [result, setResult] = useState<unknown>(null);
   const [loading, setLoading] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
@@ -186,7 +174,7 @@ export default function AdminPage() {
   const isRunning = loading !== null;
 
   useEffect(() => {
-    void Promise.all([loadAutomationHealth(), loadAnomalies(), loadRecapDefaultRound()]);
+    void Promise.all([loadAutomationHealth(), loadAnomalies()]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [season]);
 
@@ -304,70 +292,6 @@ export default function AdminPage() {
       setAnomalyMsg(error instanceof Error ? error.message : "Could not load admin anomalies.");
     } finally {
       setAnomalyLoading(false);
-    }
-  }
-
-  async function loadRecapDefaultRound() {
-    try {
-      const token = await getToken();
-      if (!token) return;
-
-      let nextRound: number | null = null;
-
-      const { ok, json } = await callAdmin(
-        `/api/admin/send-round-recap?season=${season}&dry_run=1&save_only=1`,
-        token
-      );
-
-      if (ok && json && typeof json === "object") {
-        const latestLockedRound = parseFiniteNumber(
-          (json as { latest_locked_round?: unknown }).latest_locked_round
-        );
-        const latestFinishedRound = parseFiniteNumber(
-          (json as { latest_finished_round?: unknown }).latest_finished_round
-        );
-        const targetedRound = parseFiniteNumber(
-          (json as { targeted_round?: unknown }).targeted_round
-        );
-
-        nextRound = Number.isFinite(latestLockedRound)
-          ? Math.max(0, Math.trunc(latestLockedRound as number))
-          : Number.isFinite(latestFinishedRound)
-          ? Math.max(0, Math.trunc(latestFinishedRound as number))
-          : Number.isFinite(targetedRound)
-            ? Math.max(0, Math.trunc(targetedRound as number))
-            : null;
-      }
-
-      if (nextRound === null) {
-        const fallback = await callAdmin(`/api/audit/options?season=${season}`, token);
-        if (fallback.ok && fallback.json && typeof fallback.json === "object") {
-          const lockedRounds = Array.isArray(
-            (fallback.json as { locked_rounds?: unknown }).locked_rounds
-          )
-            ? ((fallback.json as { locked_rounds: Array<{ round_number?: unknown }> })
-                .locked_rounds ?? [])
-            : [];
-
-          const latestFromLocked = lockedRounds
-            .map((row) => parseFiniteNumber(row.round_number))
-            .filter((value): value is number => value !== null)
-            .reduce<number | null>(
-              (max, value) => (max === null || value > max ? value : max),
-              null
-            );
-
-          if (latestFromLocked !== null) {
-            nextRound = Math.max(0, Math.trunc(latestFromLocked));
-          }
-        }
-      }
-
-      if (nextRound !== null) {
-        setRecapRound(nextRound);
-      }
-    } catch {
-      // Best-effort defaulting only.
     }
   }
 
@@ -516,58 +440,6 @@ export default function AdminPage() {
             : null) ?? "Leaderboard refresh failed."
         );
       }
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Unknown error";
-      setResult({ error: message });
-      toast.error(message);
-    } finally {
-      setLoading(null);
-      void Promise.all([loadAutomationHealth(), loadAnomalies()]);
-    }
-  }
-
-  function parseMinRound(value: string) {
-    const parsed = Number(value);
-    if (!Number.isFinite(parsed)) return 0;
-    return Math.max(0, Math.trunc(parsed));
-  }
-
-  async function runRecapAndOpenArchive() {
-    const round = Math.trunc(recapRound);
-    if (!Number.isFinite(round) || round < 0) {
-      setResult({ error: "Recap round must be 0 or higher." });
-      toast.error("Recap round must be 0 or higher.");
-      return;
-    }
-
-    try {
-      const path = `/api/admin/send-round-recap?season=${season}&round=${round}&force=1&save_only=1`;
-      setLoading(path);
-      setResult(null);
-
-      const token = await getToken();
-      if (!token) {
-        setResult({ error: "Not authenticated." });
-        toast.error("Not authenticated. Please sign in again.");
-        return;
-      }
-
-      const { ok, status, json } = await callAdmin(path, token);
-      setResult(json);
-
-      if (!ok) {
-        const message =
-          (json &&
-          typeof json === "object" &&
-          typeof (json as { error?: unknown }).error === "string"
-            ? (json as { error?: string }).error
-            : null) ?? `Request failed (${status}).`;
-        toast.error(message);
-        return;
-      }
-
-      toast.success("Round recap generated.");
-      window.location.href = "/admin/recaps";
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Unknown error";
       setResult({ error: message });
@@ -791,33 +663,13 @@ export default function AdminPage() {
 
           <div className="ui-admin-two-col">
             <UiCard className="ui-admin-tool">
-              <div className="ui-admin-subtitle">Round recap</div>
+              <div className="ui-admin-subtitle">Round recaps</div>
               <div className="ui-admin-summary ui-admin-summary--tight">
-                Generate round recap and open recap archive.
+                Open recap archive and manage manual recap generation there.
               </div>
-              <div className="ui-admin-stack">
-                <div className="ui-row-wrap ui-admin-gap-sm ui-admin-form-row">
-                  <label className="ui-admin-label">Round</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={recapRound}
-                    onChange={(e) => setRecapRound(parseMinRound(e.target.value))}
-                    onBlur={() => setRecapRound((prev) => Math.max(0, Math.trunc(prev)))}
-                    className="ui-input ui-admin-input-round"
-                  />
-                </div>
-                <div className="ui-admin-summary ui-admin-summary--tight">
-                  Defaults to the latest locked round for this season.
-                </div>
-                <UiButton
-                  disabled={isRunning}
-                  onClick={() => void runRecapAndOpenArchive()}
-                  className="ui-admin-btn ui-admin-btn--full"
-                >
-                  Generate Round Recap + Open Archive
-                </UiButton>
-              </div>
+              <UiButtonLink href="/admin/recaps" className="ui-admin-btn ui-admin-btn--full">
+                Open Round Recaps
+              </UiButtonLink>
             </UiCard>
           </div>
         </UiCard>

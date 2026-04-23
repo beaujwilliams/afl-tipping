@@ -7,7 +7,7 @@ import { UnpaidTag } from "@/components/UnpaidTag";
 import { ChampionSeasonLabels } from "@/components/ChampionSeasonLabels";
 import { getRoundDisplayName } from "@/lib/round-label";
 import { supabaseBrowser } from "@/lib/supabase-browser";
-import { UiButtonLink, UiCard } from "@/components/ui";
+import { UiButtonLink } from "@/components/ui";
 
 export type SeasonRoundRow = {
   id: string;
@@ -247,6 +247,22 @@ export default function SeasonRoundsPageClient({
     currentRoundLockMs && !currentRoundLocked ? msToCountdown(currentRoundLockMs - nowMs) : null;
   const currentRoundTipsPlaced = currentRoundStatus?.my_tips ?? 0;
   const currentRoundTipsPossible = currentRoundStatus?.total_matches ?? 0;
+  const currentRoundToggleId = currentRound ? `current:${currentRound.id}` : null;
+  const currentRoundTipListOpen = currentRoundToggleId ? openRoundId === currentRoundToggleId : false;
+  const currentRoundOpenTab = currentRound ? openRoundTabById[currentRound.id] ?? "missing" : "missing";
+  const currentRoundMissingPlayers = currentRoundStatus?.missing_players ?? [];
+  const currentRoundTippedPlayers = currentRoundStatus?.tipped_players_list ?? [];
+  const currentRoundActiveList =
+    currentRoundOpenTab === "missing" ? currentRoundMissingPlayers : currentRoundTippedPlayers;
+  const currentRoundSearch = currentRound ? tipListSearchByRoundId[currentRound.id] ?? "" : "";
+  const currentRoundSearchQuery = currentRoundSearch.trim().toLowerCase();
+  const currentRoundFilteredList = currentRoundSearchQuery
+    ? currentRoundActiveList.filter((p) => {
+        const name = String(p.display_name ?? "").toLowerCase();
+        const id = String(p.user_id).toLowerCase();
+        return name.includes(currentRoundSearchQuery) || id.includes(currentRoundSearchQuery);
+      })
+    : currentRoundActiveList;
 
   return (
     <main className="ui-page ui-page--narrow">
@@ -267,29 +283,260 @@ export default function SeasonRoundsPageClient({
             </div>
           </div>
 
-          <UiCard soft className="ui-row-between">
-            <div className="ui-grid" style={{ gap: 6 }}>
-              <div className="ui-title--section">{getRoundDisplayName(currentRound.round_number)}</div>
-              <div className="ui-meta">
-                {currentRoundLocked
-                  ? `Locked ${fmtMelbourneShort(currentRound.lock_time_utc)}`
-                  : `Locks in ${currentRoundCountdown} (${fmtMelbourneShort(currentRound.lock_time_utc)})`}
+          <div className="ui-card ui-card-soft" style={{ padding: 0, overflow: "hidden" }}>
+            <div className="ui-row-between" style={{ padding: 14 }}>
+              <div className="ui-grid" style={{ gap: 6 }}>
+                <div className="ui-title--section">{getRoundDisplayName(currentRound.round_number)}</div>
+                <div className="ui-meta">
+                  {currentRoundLocked
+                    ? `Locked ${fmtMelbourneShort(currentRound.lock_time_utc)}`
+                    : `Locks in ${currentRoundCountdown} (${fmtMelbourneShort(currentRound.lock_time_utc)})`}
+                </div>
+                <div className="ui-meta">
+                  Your tips:{" "}
+                  <b>
+                    {currentRoundTipsPlaced}/{currentRoundTipsPossible || "—"}
+                  </b>
+                </div>
               </div>
-              <div className="ui-meta">
-                Your tips:{" "}
-                <b>
-                  {currentRoundTipsPlaced}/{currentRoundTipsPossible || "—"}
-                </b>
-              </div>
+
+              <UiButtonLink
+                href={`/round/${season}/${currentRound.round_number}`}
+                style={{ padding: "10px 14px" }}
+              >
+                {currentRoundLocked ? "View round" : "Continue tipping"}
+              </UiButtonLink>
             </div>
 
-            <UiButtonLink
-              href={`/round/${season}/${currentRound.round_number}`}
-              style={{ padding: "10px 14px" }}
-            >
-              {currentRoundLocked ? "View round" : "Continue tipping"}
-            </UiButtonLink>
-          </UiCard>
+            {isAdmin && currentRoundStatus?.missing_players && currentRoundToggleId && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const nextOpen = currentRoundTipListOpen ? null : currentRoundToggleId;
+                  setOpenRoundId(nextOpen);
+                  if (nextOpen && currentRound) {
+                    setOpenRoundTabById((prev) => ({
+                      ...prev,
+                      [currentRound.id]: prev[currentRound.id] ?? "missing",
+                    }));
+                    setTipListSearchByRoundId((prev) => ({
+                      ...prev,
+                      [currentRound.id]: prev[currentRound.id] ?? "",
+                    }));
+                  }
+                }}
+                aria-label={currentRoundTipListOpen ? "Collapse tip lists" : "Expand tip lists"}
+                title={currentRoundTipListOpen ? "Collapse tip lists" : "Expand tip lists"}
+                style={{
+                  width: "100%",
+                  height: 22,
+                  padding: 0,
+                  margin: 0,
+                  border: "none",
+                  borderTop: "1px solid rgba(127,127,127,0.26)",
+                  background:
+                    "linear-gradient(180deg, rgba(127,127,127,0.04), rgba(127,127,127,0.12))",
+                  color: "currentColor",
+                  opacity: 0.9,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  lineHeight: 1,
+                  cursor: "pointer",
+                }}
+              >
+                <svg
+                  width="28"
+                  height="12"
+                  viewBox="0 0 28 12"
+                  fill="none"
+                  aria-hidden="true"
+                  style={{ opacity: 0.9 }}
+                >
+                  <path
+                    d={currentRoundTipListOpen ? "M4 8L14 3L24 8" : "M4 4L14 9L24 4"}
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+            )}
+
+            {isAdmin && currentRoundTipListOpen && currentRoundStatus?.missing_players && (
+              <div
+                style={{
+                  padding: "10px 14px 12px",
+                  borderTop: "1px solid rgba(127,127,127,0.18)",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    flexWrap: "wrap",
+                    marginBottom: 8,
+                  }}
+                >
+                  <div style={{ fontWeight: 900, opacity: 0.95 }}>
+                    {getRoundDisplayName(currentRound.round_number)} tip lists
+                  </div>
+                </div>
+
+                <div className="ui-row-wrap" style={{ marginBottom: 10 }}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setOpenRoundTabById((prev) => ({ ...prev, [currentRound.id]: "missing" }))
+                    }
+                    className={`ui-btn ui-btn--pill ${
+                      currentRoundOpenTab === "missing" ? "ui-btn--active-danger" : ""
+                    }`}
+                  >
+                    Not tipped ({currentRoundMissingPlayers.length})
+                  </button>
+
+                  <button
+                    type="button"
+                    className={`ui-btn ui-btn--pill ${
+                      currentRoundOpenTab === "tipped" ? "ui-btn--active-success" : ""
+                    }`}
+                    onClick={() =>
+                      setOpenRoundTabById((prev) => ({ ...prev, [currentRound.id]: "tipped" }))
+                    }
+                  >
+                    Tipped ({currentRoundTippedPlayers.length})
+                  </button>
+                </div>
+
+                <div className="ui-row-wrap" style={{ marginBottom: 10 }}>
+                  <input
+                    value={currentRoundSearch}
+                    onChange={(e) =>
+                      setTipListSearchByRoundId((prev) => ({ ...prev, [currentRound.id]: e.target.value }))
+                    }
+                    placeholder={`Search ${currentRoundOpenTab === "missing" ? "not tipped" : "tipped"} members...`}
+                    className="ui-input"
+                  />
+
+                  {currentRoundOpenTab === "missing" && (
+                    <button
+                      type="button"
+                      onClick={() => sendRoundReminders(currentRound.id, currentRound.round_number)}
+                      disabled={reminderRunningRoundId === currentRound.id || currentRoundMissingPlayers.length === 0}
+                      className="ui-btn ui-btn--pill ui-btn--danger-soft"
+                    >
+                      {reminderRunningRoundId === currentRound.id ? "Sending…" : "Send reminders"}
+                    </button>
+                  )}
+                </div>
+
+                {reminderStatusByRoundId[currentRound.id] && (
+                  <div style={{ marginBottom: 10, fontSize: 12, opacity: 0.8 }}>
+                    {reminderStatusByRoundId[currentRound.id]}
+                  </div>
+                )}
+
+                {currentRoundFilteredList.length === 0 ? (
+                  <div style={{ opacity: 0.7, fontSize: 13 }}>
+                    {currentRoundSearchQuery
+                      ? "No members match your search."
+                      : currentRoundOpenTab === "missing"
+                        ? "Everyone has tipped all games."
+                        : "No fully tipped members yet."}
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: 6,
+                      maxHeight: 300,
+                      overflowY: "auto",
+                      paddingRight: 4,
+                    }}
+                  >
+                    {currentRoundFilteredList.map((p) => {
+                      const tipsEntered = Math.min(
+                        p.tips_entered ?? 0,
+                        currentRoundStatus?.total_matches ?? 0
+                      );
+                      const timestampIso =
+                        currentRoundOpenTab === "missing"
+                          ? p.last_reminded_at_utc ?? null
+                          : p.latest_submitted_at_utc ?? null;
+                      const timestampText =
+                        currentRoundOpenTab === "missing"
+                          ? timestampIso
+                            ? `Reminded ${fmtMelbourneShort(timestampIso)}`
+                            : "Not reminded yet"
+                          : timestampIso
+                            ? `Submitted ${fmtMelbourneShort(timestampIso)}`
+                            : "Submission time unavailable";
+
+                      return (
+                        <div
+                          key={p.user_id}
+                          style={{
+                            display: "grid",
+                            gap: 4,
+                            padding: "6px 10px",
+                            borderRadius: 10,
+                            border: "1px solid rgba(255,255,255,0.10)",
+                            background: "rgba(255,255,255,0.03)",
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontSize: 15,
+                              fontWeight: 650,
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 6,
+                              flexWrap: "wrap",
+                            }}
+                          >
+                            <span
+                              style={{
+                                color: championHighlightSet.has(p.user_id)
+                                  ? "var(--champion-gold)"
+                                  : undefined,
+                              }}
+                            >
+                              {p.display_name?.trim() ? p.display_name : "(no display name)"}
+                            </span>
+                            <ChampionSeasonLabels seasons={championSeasonsByUserId[p.user_id]} />
+                            <UnpaidTag paymentStatus={p.payment_status ?? null} />
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 12,
+                              opacity: 0.78,
+                              display: "flex",
+                              alignItems: "center",
+                              flexWrap: "wrap",
+                              gap: 6,
+                              lineHeight: 1.2,
+                            }}
+                          >
+                            <span>
+                              Tips entered <b>{tipsEntered}</b>/{currentRoundStatus?.total_matches ?? 0}
+                            </span>
+                            <span style={{ opacity: 0.5 }}>•</span>
+                            <span>{timestampText}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

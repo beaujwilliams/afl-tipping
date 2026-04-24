@@ -118,6 +118,14 @@ type MemberDirectoryEntry = {
 type SortKey = LeaderboardSortKey;
 type SortDirection = LeaderboardSortDirection;
 type TrendMetric = "rank" | "points";
+type TrendRangePreset = "full" | "last5" | "last10" | "finals" | "custom";
+const TREND_RANGE_OPTIONS: Array<{ value: TrendRangePreset; label: string }> = [
+  { value: "full", label: "All rounds" },
+  { value: "last5", label: "Last 5" },
+  { value: "last10", label: "Last 10" },
+  { value: "finals", label: "Finals" },
+  { value: "custom", label: "Custom" },
+];
 
 type LeaderboardPageClientProps = {
   season: number;
@@ -290,7 +298,8 @@ function TrendChart(props: {
 }) {
   const { rounds, selectedSeries, totalParticipants, metric, colorByUserId } = props;
   const [hoveredUserId, setHoveredUserId] = useState<string | null>(null);
-  const activeHoveredUserId = selectedSeries.some((series) => series.user_id === hoveredUserId)
+  const seriesWithPoints = selectedSeries.filter((series) => series.points.length > 0);
+  const activeHoveredUserId = seriesWithPoints.some((series) => series.user_id === hoveredUserId)
     ? hoveredUserId
     : null;
   const isRankMode = metric === "rank";
@@ -311,6 +320,14 @@ function TrendChart(props: {
     );
   }
 
+  if (seriesWithPoints.length === 0) {
+    return (
+      <div className="ui-caption" style={{ padding: 12 }}>
+        No trend data is available for the selected range.
+      </div>
+    );
+  }
+
   const width = 980;
   const height = 360;
   const margin = { top: 20, right: 20, bottom: 40, left: 42 };
@@ -319,12 +336,12 @@ function TrendChart(props: {
 
   const maxRankInSeries = Math.max(
     1,
-    ...selectedSeries.flatMap((series) => series.points.map((point) => point.rank))
+    ...seriesWithPoints.flatMap((series) => series.points.map((point) => point.rank))
   );
   const rankMax = Math.max(1, totalParticipants, maxRankInSeries);
   const maxPointsInSeries = Math.max(
     0,
-    ...selectedSeries.flatMap((series) => series.points.map((point) => point.total_points))
+    ...seriesWithPoints.flatMap((series) => series.points.map((point) => point.total_points))
   );
   const pointTicksData = buildNiceNumberTicks(maxPointsInSeries);
 
@@ -414,7 +431,7 @@ function TrendChart(props: {
             </g>
           ))}
 
-          {selectedSeries.map((series) => {
+          {seriesWithPoints.map((series) => {
             const pointByRound = new Map(series.points.map((point) => [point.round_number, point]));
             const orderedPoints = rounds
               .map((roundNumber) => pointByRound.get(roundNumber))
@@ -460,7 +477,7 @@ function TrendChart(props: {
       </div>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-        {selectedSeries.map((series) => {
+        {seriesWithPoints.map((series) => {
           const latest = series.points[series.points.length - 1];
           const isActive =
             activeHoveredUserId === null || activeHoveredUserId === series.user_id;
@@ -654,6 +671,15 @@ export default function LeaderboardPageClient({
   );
   const [trendSearch, setTrendSearch] = useState("");
   const [trendMetric, setTrendMetric] = useState<TrendMetric>("rank");
+  const [trendRangePreset, setTrendRangePreset] = useState<TrendRangePreset>("full");
+  const [trendRangeStartRound, setTrendRangeStartRound] = useState<number | null>(
+    initialLeaderboardState.trendRounds.length > 0 ? initialLeaderboardState.trendRounds[0] : null
+  );
+  const [trendRangeEndRound, setTrendRangeEndRound] = useState<number | null>(
+    initialLeaderboardState.trendRounds.length > 0
+      ? initialLeaderboardState.trendRounds[initialLeaderboardState.trendRounds.length - 1]
+      : null
+  );
   const [msg, setMsg] = useState(initialMessage ?? "");
   const [sortBy, setSortBy] = useState<SortKey>(DEFAULT_LEADERBOARD_SORT_KEY);
   const [sortDirection, setSortDirection] = useState<SortDirection>(
@@ -1302,6 +1328,42 @@ export default function LeaderboardPageClient({
     return trendSeries.filter((series) => selectedGroupUserIdSet.has(series.user_id));
   }, [selectedGroup, selectedGroupUserIdSet, trendSeries, viewMode]);
 
+  const hasFinalsRounds = useMemo(
+    () => trendRounds.some((roundNumber) => roundNumber >= 25),
+    [trendRounds]
+  );
+
+  const activeTrendRounds = useMemo(() => {
+    if (trendRounds.length === 0) return [] as number[];
+    if (trendRangePreset === "full") return trendRounds;
+    if (trendRangePreset === "last5") return trendRounds.slice(-5);
+    if (trendRangePreset === "last10") return trendRounds.slice(-10);
+    if (trendRangePreset === "finals") {
+      const finals = trendRounds.filter((roundNumber) => roundNumber >= 25);
+      return finals.length > 0 ? finals : trendRounds;
+    }
+    const fallbackStart = trendRangeStartRound ?? trendRounds[0];
+    const fallbackEnd = trendRangeEndRound ?? trendRounds[trendRounds.length - 1];
+    const start = Math.min(fallbackStart, fallbackEnd);
+    const end = Math.max(fallbackStart, fallbackEnd);
+    const roundsInRange = trendRounds.filter(
+      (roundNumber) => roundNumber >= start && roundNumber <= end
+    );
+    return roundsInRange.length > 0 ? roundsInRange : trendRounds;
+  }, [trendRangeEndRound, trendRangePreset, trendRangeStartRound, trendRounds]);
+
+  const activeTrendRoundSet = useMemo(() => new Set(activeTrendRounds), [activeTrendRounds]);
+  const trendRangeStart = activeTrendRounds[0] ?? null;
+  const trendRangeEnd = activeTrendRounds.length
+    ? activeTrendRounds[activeTrendRounds.length - 1]
+    : null;
+  const trendRangeSummary =
+    trendRangeStart === null || trendRangeEnd === null
+      ? ""
+      : trendRangeStart === trendRangeEnd
+        ? `Showing R${trendRangeStart}`
+        : `Showing R${trendRangeStart} to R${trendRangeEnd}`;
+
   const filteredTrendOptions = useMemo(() => {
     const query = trendSearch.trim().toLowerCase();
     const list = query
@@ -1319,8 +1381,12 @@ export default function LeaderboardPageClient({
     const byUserId = new Map(scopedTrendSeries.map((series) => [series.user_id, series]));
     return selectedTrendUserIds
       .map((userId) => byUserId.get(userId))
-      .filter((series): series is LeaderboardTrendSeries => Boolean(series));
-  }, [scopedTrendSeries, selectedTrendUserIds]);
+      .filter((series): series is LeaderboardTrendSeries => Boolean(series))
+      .map((series) => ({
+        ...series,
+        points: series.points.filter((point) => activeTrendRoundSet.has(point.round_number)),
+      }));
+  }, [activeTrendRoundSet, scopedTrendSeries, selectedTrendUserIds]);
 
   const trendColorByUserId = useMemo(() => {
     const ordered = [...scopedTrendSeries].sort((a, b) => {
@@ -1337,6 +1403,21 @@ export default function LeaderboardPageClient({
     });
     return byUserId;
   }, [rankByUserId, scopedTrendSeries]);
+
+  useEffect(() => {
+    if (trendRounds.length === 0) {
+      setTrendRangeStartRound(null);
+      setTrendRangeEndRound(null);
+      return;
+    }
+
+    const roundSet = new Set(trendRounds);
+    const firstRound = trendRounds[0];
+    const lastRound = trendRounds[trendRounds.length - 1];
+
+    setTrendRangeStartRound((prev) => (prev !== null && roundSet.has(prev) ? prev : firstRound));
+    setTrendRangeEndRound((prev) => (prev !== null && roundSet.has(prev) ? prev : lastRound));
+  }, [trendRounds]);
 
   useEffect(() => {
     const validIds = new Set(scopedTrendSeries.map((series) => series.user_id));
@@ -2357,41 +2438,140 @@ export default function LeaderboardPageClient({
                   </p>
                 </div>
                 <div
-                  role="group"
-                  aria-label="Trend metric"
                   style={{
-                    display: "inline-flex",
-                    border: "1px solid var(--border)",
-                    borderRadius: 999,
-                    overflow: "hidden",
-                    background: "var(--card)",
+                    display: "grid",
+                    gap: 8,
+                    justifyItems: isMobile ? "stretch" : "end",
+                    minWidth: isMobile ? "100%" : 330,
                   }}
                 >
-                  {(["rank", "points"] as const).map((option) => {
-                    const isActive = trendMetric === option;
-                    return (
-                      <button
-                        key={option}
-                        type="button"
-                        onClick={() => setTrendMetric(option)}
-                        style={{
-                          appearance: "none",
-                          border: "none",
-                          padding: "6px 12px",
-                          cursor: "pointer",
-                          fontSize: 13,
-                          fontWeight: 700,
-                          background: isActive ? "var(--foreground)" : "transparent",
-                          color: isActive ? "var(--background)" : "var(--foreground)",
-                        }}
-                        aria-pressed={isActive}
-                      >
-                        {option === "rank" ? "Rank" : "Points"}
-                      </button>
-                    );
-                  })}
+                  <div
+                    role="group"
+                    aria-label="Trend metric"
+                    style={{
+                      display: "inline-flex",
+                      border: "1px solid var(--border)",
+                      borderRadius: 999,
+                      overflow: "hidden",
+                      background: "var(--card)",
+                    }}
+                  >
+                    {(["rank", "points"] as const).map((option) => {
+                      const isActive = trendMetric === option;
+                      return (
+                        <button
+                          key={option}
+                          type="button"
+                          onClick={() => setTrendMetric(option)}
+                          style={{
+                            appearance: "none",
+                            border: "none",
+                            padding: "6px 12px",
+                            cursor: "pointer",
+                            fontSize: 13,
+                            fontWeight: 700,
+                            background: isActive ? "var(--foreground)" : "transparent",
+                            color: isActive ? "var(--background)" : "var(--foreground)",
+                          }}
+                          aria-pressed={isActive}
+                        >
+                          {option === "rank" ? "Rank" : "Points"}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div
+                    role="group"
+                    aria-label="Trend round range"
+                    style={{
+                      display: "inline-flex",
+                      flexWrap: "wrap",
+                      gap: 6,
+                    }}
+                  >
+                    {TREND_RANGE_OPTIONS.map((option) => {
+                      const isActive = trendRangePreset === option.value;
+                      const isDisabled = option.value === "finals" && !hasFinalsRounds;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => {
+                            if (isDisabled) return;
+                            setTrendRangePreset(option.value);
+                          }}
+                          disabled={isDisabled}
+                          style={{
+                            appearance: "none",
+                            border: "1px solid var(--border)",
+                            borderRadius: 999,
+                            padding: "5px 10px",
+                            cursor: isDisabled ? "not-allowed" : "pointer",
+                            fontSize: 12,
+                            fontWeight: 700,
+                            background: isActive ? "var(--foreground)" : "var(--card)",
+                            color: isActive ? "var(--background)" : "var(--foreground)",
+                            opacity: isDisabled ? 0.45 : 1,
+                          }}
+                          aria-pressed={isActive}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {trendRangePreset === "custom" && trendRounds.length > 0 && (
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 8,
+                        flexWrap: "wrap",
+                        justifyContent: isMobile ? "flex-start" : "flex-end",
+                      }}
+                    >
+                      <label className="ui-caption" style={{ display: "grid", gap: 4 }}>
+                        <span>From</span>
+                        <select
+                          className="ui-input"
+                          value={trendRangeStartRound ?? ""}
+                          onChange={(event) =>
+                            setTrendRangeStartRound(Number(event.target.value))
+                          }
+                          style={{ minWidth: 96, height: 34, padding: "0 10px" }}
+                        >
+                          {trendRounds.map((roundNumber) => (
+                            <option key={`range-start-${roundNumber}`} value={roundNumber}>
+                              R{roundNumber}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="ui-caption" style={{ display: "grid", gap: 4 }}>
+                        <span>To</span>
+                        <select
+                          className="ui-input"
+                          value={trendRangeEndRound ?? ""}
+                          onChange={(event) => setTrendRangeEndRound(Number(event.target.value))}
+                          style={{ minWidth: 96, height: 34, padding: "0 10px" }}
+                        >
+                          {trendRounds.map((roundNumber) => (
+                            <option key={`range-end-${roundNumber}`} value={roundNumber}>
+                              R{roundNumber}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                  )}
                 </div>
               </div>
+              {trendRangeSummary && (
+                <p className="ui-caption" style={{ margin: 0 }}>
+                  {trendRangeSummary}
+                </p>
+              )}
 
               {leaderboardDetailsLoading ? (
                 <LeaderboardTrendLoadingSkeleton isMobile={isMobile} />
@@ -2399,10 +2579,14 @@ export default function LeaderboardPageClient({
                 <p className="ui-caption" style={{ margin: 0 }}>
                   Trend data appears after rounds are scored.
                 </p>
+              ) : activeTrendRounds.length === 0 ? (
+                <p className="ui-caption" style={{ margin: 0 }}>
+                  No rounds found for the selected range.
+                </p>
               ) : (
                 <div style={{ display: "grid", gap: 14 }}>
                   <TrendChart
-                    rounds={trendRounds}
+                    rounds={activeTrendRounds}
                     selectedSeries={selectedTrendSeries}
                     totalParticipants={Math.max(1, scopedRows.length)}
                     metric={trendMetric}

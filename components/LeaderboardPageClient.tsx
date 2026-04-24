@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "@/components/ToastProvider";
 import { supabaseBrowser } from "@/lib/supabase-browser";
@@ -295,8 +295,9 @@ function TrendChart(props: {
   totalParticipants: number;
   metric: TrendMetric;
   colorByUserId: Record<string, string>;
+  rangeControls?: ReactNode;
 }) {
-  const { rounds, selectedSeries, totalParticipants, metric, colorByUserId } = props;
+  const { rounds, selectedSeries, totalParticipants, metric, colorByUserId, rangeControls } = props;
   const [hoveredUserId, setHoveredUserId] = useState<string | null>(null);
   const seriesWithPoints = selectedSeries.filter((series) => series.points.length > 0);
   const activeHoveredUserId = seriesWithPoints.some((series) => series.user_id === hoveredUserId)
@@ -475,6 +476,8 @@ function TrendChart(props: {
           })}
         </svg>
       </div>
+
+      {rangeControls ? <div>{rangeControls}</div> : null}
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
         {seriesWithPoints.map((series) => {
@@ -2480,92 +2483,6 @@ export default function LeaderboardPageClient({
                       );
                     })}
                   </div>
-
-                  <div
-                    role="group"
-                    aria-label="Trend round range"
-                    style={{
-                      display: "flex",
-                      flexWrap: isMobile ? "wrap" : "nowrap",
-                      justifyContent: isMobile ? "flex-start" : "flex-end",
-                      gap: 6,
-                    }}
-                  >
-                    {TREND_RANGE_OPTIONS.map((option) => {
-                      const isActive = trendRangePreset === option.value;
-                      const isDisabled = option.value === "finals" && !hasFinalsRounds;
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          onClick={() => {
-                            if (isDisabled) return;
-                            setTrendRangePreset(option.value);
-                          }}
-                          disabled={isDisabled}
-                          style={{
-                            appearance: "none",
-                            border: "1px solid var(--border)",
-                            borderRadius: 999,
-                            padding: "5px 10px",
-                            cursor: isDisabled ? "not-allowed" : "pointer",
-                            fontSize: 12,
-                            fontWeight: 700,
-                            background: isActive ? "var(--foreground)" : "var(--card)",
-                            color: isActive ? "var(--background)" : "var(--foreground)",
-                            opacity: isDisabled ? 0.45 : 1,
-                          }}
-                          aria-pressed={isActive}
-                        >
-                          {option.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {trendRangePreset === "custom" && trendRounds.length > 0 && (
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: 8,
-                        flexWrap: "wrap",
-                        justifyContent: isMobile ? "flex-start" : "flex-end",
-                      }}
-                    >
-                      <label className="ui-caption" style={{ display: "grid", gap: 4 }}>
-                        <span>From</span>
-                        <select
-                          className="ui-input"
-                          value={trendRangeStartRound ?? ""}
-                          onChange={(event) =>
-                            setTrendRangeStartRound(Number(event.target.value))
-                          }
-                          style={{ minWidth: 96, height: 34, padding: "0 10px" }}
-                        >
-                          {trendRounds.map((roundNumber) => (
-                            <option key={`range-start-${roundNumber}`} value={roundNumber}>
-                              R{roundNumber}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="ui-caption" style={{ display: "grid", gap: 4 }}>
-                        <span>To</span>
-                        <select
-                          className="ui-input"
-                          value={trendRangeEndRound ?? ""}
-                          onChange={(event) => setTrendRangeEndRound(Number(event.target.value))}
-                          style={{ minWidth: 96, height: 34, padding: "0 10px" }}
-                        >
-                          {trendRounds.map((roundNumber) => (
-                            <option key={`range-end-${roundNumber}`} value={roundNumber}>
-                              R{roundNumber}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    </div>
-                  )}
                 </div>
               </div>
               {trendRangeSummary && (
@@ -2592,6 +2509,97 @@ export default function LeaderboardPageClient({
                     totalParticipants={Math.max(1, scopedRows.length)}
                     metric={trendMetric}
                     colorByUserId={trendColorByUserId}
+                    rangeControls={
+                      <div style={{ display: "grid", gap: 8 }}>
+                        <div
+                          role="group"
+                          aria-label="Trend round range"
+                          style={{
+                            display: "flex",
+                            flexWrap: "wrap",
+                            justifyContent: "flex-start",
+                            gap: 6,
+                          }}
+                        >
+                          {TREND_RANGE_OPTIONS.map((option) => {
+                            const isActive = trendRangePreset === option.value;
+                            const isDisabled = option.value === "finals" && !hasFinalsRounds;
+                            return (
+                              <button
+                                key={option.value}
+                                type="button"
+                                onClick={() => {
+                                  if (isDisabled) return;
+                                  setTrendRangePreset(option.value);
+                                }}
+                                disabled={isDisabled}
+                                style={{
+                                  appearance: "none",
+                                  border: "1px solid var(--border)",
+                                  borderRadius: 999,
+                                  padding: "5px 10px",
+                                  cursor: isDisabled ? "not-allowed" : "pointer",
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                  background: isActive ? "var(--foreground)" : "var(--card)",
+                                  color: isActive ? "var(--background)" : "var(--foreground)",
+                                  opacity: isDisabled ? 0.45 : 1,
+                                }}
+                                aria-pressed={isActive}
+                              >
+                                {option.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {trendRangePreset === "custom" && trendRounds.length > 0 && (
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: 8,
+                              flexWrap: "wrap",
+                              justifyContent: "flex-start",
+                            }}
+                          >
+                            <label className="ui-caption" style={{ display: "grid", gap: 4 }}>
+                              <span>From</span>
+                              <select
+                                className="ui-input"
+                                value={trendRangeStartRound ?? ""}
+                                onChange={(event) =>
+                                  setTrendRangeStartRound(Number(event.target.value))
+                                }
+                                style={{ minWidth: 96, height: 34, padding: "0 10px" }}
+                              >
+                                {trendRounds.map((roundNumber) => (
+                                  <option key={`range-start-${roundNumber}`} value={roundNumber}>
+                                    R{roundNumber}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label className="ui-caption" style={{ display: "grid", gap: 4 }}>
+                              <span>To</span>
+                              <select
+                                className="ui-input"
+                                value={trendRangeEndRound ?? ""}
+                                onChange={(event) =>
+                                  setTrendRangeEndRound(Number(event.target.value))
+                                }
+                                style={{ minWidth: 96, height: 34, padding: "0 10px" }}
+                              >
+                                {trendRounds.map((roundNumber) => (
+                                  <option key={`range-end-${roundNumber}`} value={roundNumber}>
+                                    R{roundNumber}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          </div>
+                        )}
+                      </div>
+                    }
                   />
 
                   <div style={{ display: "grid", gap: 10 }}>

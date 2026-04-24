@@ -2423,11 +2423,10 @@ export default function LeaderboardPageClient({
             <div style={{ padding: 16, display: "grid", gap: 14 }}>
               <div
                 style={{
-                  display: "flex",
-                  gap: 12,
-                  justifyContent: "space-between",
-                  alignItems: isMobile ? "flex-start" : "center",
-                  flexWrap: "wrap",
+                  display: "grid",
+                  gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) auto",
+                  gap: isMobile ? 10 : 16,
+                  alignItems: "start",
                 }}
               >
                 <div style={{ display: "grid", gap: 4 }}>
@@ -2442,9 +2441,8 @@ export default function LeaderboardPageClient({
                     display: "flex",
                     flexDirection: "column",
                     gap: 8,
-                    alignItems: isMobile ? "stretch" : "flex-start",
-                    width: isMobile ? "100%" : "fit-content",
-                    marginLeft: isMobile ? 0 : "auto",
+                    alignItems: isMobile ? "stretch" : "flex-end",
+                    justifySelf: isMobile ? "stretch" : "end",
                   }}
                 >
                   <div
@@ -2488,7 +2486,8 @@ export default function LeaderboardPageClient({
                     aria-label="Trend round range"
                     style={{
                       display: "flex",
-                      flexWrap: "wrap",
+                      flexWrap: isMobile ? "wrap" : "nowrap",
+                      justifyContent: isMobile ? "flex-start" : "flex-end",
                       gap: 6,
                     }}
                   >
@@ -2530,7 +2529,7 @@ export default function LeaderboardPageClient({
                         display: "flex",
                         gap: 8,
                         flexWrap: "wrap",
-                        justifyContent: "flex-start",
+                        justifyContent: isMobile ? "flex-start" : "flex-end",
                       }}
                     >
                       <label className="ui-caption" style={{ display: "grid", gap: 4 }}>

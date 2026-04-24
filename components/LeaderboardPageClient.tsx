@@ -2439,10 +2439,12 @@ export default function LeaderboardPageClient({
                 </div>
                 <div
                   style={{
-                    display: "grid",
+                    display: "flex",
+                    flexDirection: "column",
                     gap: 8,
-                    justifyItems: isMobile ? "stretch" : "end",
-                    minWidth: isMobile ? "100%" : 330,
+                    alignItems: isMobile ? "stretch" : "flex-start",
+                    width: isMobile ? "100%" : "fit-content",
+                    marginLeft: isMobile ? 0 : "auto",
                   }}
                 >
                   <div
@@ -2485,7 +2487,7 @@ export default function LeaderboardPageClient({
                     role="group"
                     aria-label="Trend round range"
                     style={{
-                      display: "inline-flex",
+                      display: "flex",
                       flexWrap: "wrap",
                       gap: 6,
                     }}
@@ -2528,7 +2530,7 @@ export default function LeaderboardPageClient({
                         display: "flex",
                         gap: 8,
                         flexWrap: "wrap",
-                        justifyContent: isMobile ? "flex-start" : "flex-end",
+                        justifyContent: "flex-start",
                       }}
                     >
                       <label className="ui-caption" style={{ display: "grid", gap: 4 }}>

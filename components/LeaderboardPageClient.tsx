@@ -298,27 +298,18 @@ function TrendChart(props: {
   rangeControls?: ReactNode;
 }) {
   const { rounds, selectedSeries, totalParticipants, metric, colorByUserId, rangeControls } = props;
-  const [hoveredUserId, setHoveredUserId] = useState<string | null>(null);
-  const [hoveredPoint, setHoveredPoint] = useState<{
-    userId: string;
-    displayName: string;
-    roundNumber: number;
-    rank: number;
-    totalPoints: number;
-    x: number;
-    y: number;
-  } | null>(null);
+  const [activeTrendUserId, setActiveTrendUserId] = useState<string | null>(null);
   const seriesWithPoints = selectedSeries.filter((series) => series.points.length > 0);
-  const activeHoveredUserId = (() => {
-    if (hoveredPoint && seriesWithPoints.some((series) => series.user_id === hoveredPoint.userId)) {
-      return hoveredPoint.userId;
-    }
-    if (seriesWithPoints.some((series) => series.user_id === hoveredUserId)) {
-      return hoveredUserId;
-    }
-    return null;
-  })();
+  const resolvedActiveTrendUserId = seriesWithPoints.some((series) => series.user_id === activeTrendUserId)
+    ? activeTrendUserId
+    : null;
+  const activeTrendSeries =
+    seriesWithPoints.find((series) => series.user_id === resolvedActiveTrendUserId) ??
+    (seriesWithPoints.length === 1 ? seriesWithPoints[0] : null);
   const isRankMode = metric === "rank";
+  const toggleTrendSelection = (userId: string) => {
+    setActiveTrendUserId((current) => (current === userId ? null : userId));
+  };
 
   if (rounds.length === 0) {
     return (
@@ -411,7 +402,6 @@ function TrendChart(props: {
           viewBox={`0 0 ${width} ${height}`}
           width="100%"
           aria-label={chartAriaLabel}
-          onMouseLeave={() => setHoveredPoint(null)}
         >
           <rect x={0} y={0} width={width} height={height} fill="var(--card)" />
 
@@ -475,7 +465,7 @@ function TrendChart(props: {
               .join(" ");
 
             const isActive =
-              activeHoveredUserId === null || activeHoveredUserId === series.user_id;
+              resolvedActiveTrendUserId === null || resolvedActiveTrendUserId === series.user_id;
             const stroke = isActive ? trendColorForUser(colorByUserId, series.user_id) : "var(--muted)";
             const lastPoint = orderedPoints[orderedPoints.length - 1];
             return (
@@ -489,6 +479,26 @@ function TrendChart(props: {
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 />
+                <path
+                  d={pathData}
+                  fill="none"
+                  stroke="transparent"
+                  strokeWidth={20}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  pointerEvents="stroke"
+                  style={{ cursor: "pointer" }}
+                  onClick={() => toggleTrendSelection(series.user_id)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      toggleTrendSelection(series.user_id);
+                    }
+                  }}
+                  tabIndex={0}
+                  role="button"
+                  aria-label={`Highlight ${series.display_name} trend`}
+                />
                 <circle
                   cx={x(lastPoint.round_number)}
                   cy={y(isRankMode ? lastPoint.rank : lastPoint.total_points)}
@@ -498,117 +508,126 @@ function TrendChart(props: {
                   stroke="var(--card)"
                   strokeWidth={1.5}
                 />
-                {orderedPoints.map((point) => {
-                  const cy = y(isRankMode ? point.rank : point.total_points);
-                  const cx = x(point.round_number);
-                  const isPointActive = hoveredPoint?.userId === series.user_id && hoveredPoint.roundNumber === point.round_number;
-                  return (
-                    <g key={`${series.user_id}-${point.round_number}`}>
-                      <circle
-                        cx={cx}
-                        cy={cy}
-                        r={12}
-                        fill="transparent"
-                        style={{ cursor: "pointer" }}
-                        onMouseEnter={() =>
-                          setHoveredPoint({
-                            userId: series.user_id,
-                            displayName: series.display_name,
-                            roundNumber: point.round_number,
-                            rank: point.rank,
-                            totalPoints: point.total_points,
-                            x: cx,
-                            y: cy,
-                          })
-                        }
-                        onFocus={() =>
-                          setHoveredPoint({
-                            userId: series.user_id,
-                            displayName: series.display_name,
-                            roundNumber: point.round_number,
-                            rank: point.rank,
-                            totalPoints: point.total_points,
-                            x: cx,
-                            y: cy,
-                          })
-                        }
-                        onMouseLeave={() => setHoveredPoint(null)}
-                        onBlur={() => setHoveredPoint(null)}
-                      />
-                      {isPointActive ? (
-                        <circle
-                          cx={cx}
-                          cy={cy}
-                          r={6}
-                          fill={trendColorForUser(colorByUserId, series.user_id)}
-                          stroke="var(--card)"
-                          strokeWidth={2}
-                        />
-                      ) : null}
-                    </g>
-                  );
-                })}
               </g>
             );
           })}
         </svg>
-        {hoveredPoint ? (
-          <div
-            style={{
-              position: "absolute",
-              left: `clamp(12px, calc(${((hoveredPoint.x / width) * 100).toFixed(2)}% - 72px), calc(100% - 156px))`,
-              top: `clamp(12px, calc(${((hoveredPoint.y / height) * 100).toFixed(2)}% - 72px), calc(100% - 92px))`,
-              pointerEvents: "none",
-              background: "var(--card)",
-              border: "1px solid var(--border)",
-              borderRadius: 10,
-              padding: "8px 10px",
-              boxShadow: "0 10px 24px rgba(0,0,0,0.16)",
-              minWidth: 132,
-              zIndex: 2,
-            }}
-          >
-            <div style={{ fontSize: 12, fontWeight: 700, lineHeight: 1.25 }}>
-              {hoveredPoint.displayName}
-            </div>
-            <div className="ui-caption" style={{ marginTop: 2 }}>
-              R{hoveredPoint.roundNumber}
-            </div>
-            <div style={{ fontSize: 13, fontWeight: 700, marginTop: 4 }}>
-              {isRankMode
-                ? `Position #${hoveredPoint.rank}`
-                : `${fmtPts(hoveredPoint.totalPoints)} pts`}
-            </div>
-          </div>
-        ) : null}
       </div>
 
       {rangeControls ? <div>{rangeControls}</div> : null}
+
+      {activeTrendSeries ? (
+        <div
+          style={{
+            border: "1px solid var(--border)",
+            borderRadius: 12,
+            padding: 12,
+            display: "grid",
+            gap: 10,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <span
+                aria-hidden
+                style={{
+                  width: 12,
+                  height: 12,
+                  borderRadius: 999,
+                  background: trendColorForUser(colorByUserId, activeTrendSeries.user_id),
+                  flexShrink: 0,
+                }}
+              />
+              <div style={{ fontSize: 16, fontWeight: 700 }}>{activeTrendSeries.display_name}</div>
+              <div className="ui-caption">
+                {isRankMode ? "Round-by-round positions" : "Round-by-round points"}
+              </div>
+            </div>
+            {resolvedActiveTrendUserId ? (
+              <button
+                type="button"
+                onClick={() => setActiveTrendUserId(null)}
+                style={{
+                  appearance: "none",
+                  background: "var(--card)",
+                  color: "var(--foreground)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 999,
+                  padding: "6px 12px",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Clear highlight
+              </button>
+            ) : null}
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {rounds.map((roundNumber) => {
+              const point = activeTrendSeries.points.find((entry) => entry.round_number === roundNumber);
+              if (!point) return null;
+              return (
+                <div
+                  key={`${activeTrendSeries.user_id}-summary-${roundNumber}`}
+                  style={{
+                    border: "1px solid var(--border)",
+                    borderRadius: 999,
+                    padding: "6px 10px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    background: "var(--card)",
+                    fontSize: 13,
+                    fontWeight: 600,
+                  }}
+                >
+                  <span className="ui-caption" style={{ fontSize: 12 }}>
+                    R{roundNumber}
+                  </span>
+                  <span>
+                    {isRankMode ? `#${point.rank}` : `${fmtPts(point.total_points)} pts`}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <div className="ui-caption" style={{ padding: "0 2px" }}>
+          Click a line or name to pin that tipster&apos;s full round-by-round trend.
+        </div>
+      )}
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
         {seriesWithPoints.map((series) => {
           const latest = series.points[series.points.length - 1];
           const isActive =
-            activeHoveredUserId === null || activeHoveredUserId === series.user_id;
-          const isHovered = activeHoveredUserId === series.user_id;
+            resolvedActiveTrendUserId === null || resolvedActiveTrendUserId === series.user_id;
+          const isSelected = resolvedActiveTrendUserId === series.user_id;
           return (
             <button
               type="button"
               key={`legend-${series.user_id}`}
-              onMouseEnter={() => setHoveredUserId(series.user_id)}
-              onMouseLeave={() => setHoveredUserId(null)}
-              onFocus={() => setHoveredUserId(series.user_id)}
-              onBlur={() => setHoveredUserId(null)}
-              title="Highlight this tipster on chart"
+              onClick={() => toggleTrendSelection(series.user_id)}
+              title={isSelected ? "Clear tipster highlight" : "Highlight this tipster on chart"}
               style={{
                 appearance: "none",
-                background: "var(--card)",
+                background: isSelected ? "var(--muted-bg)" : "var(--card)",
                 color: "var(--foreground)",
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 8,
                 border: `1px solid ${
-                  isHovered ? trendColorForUser(colorByUserId, series.user_id) : "var(--border)"
+                  isSelected ? trendColorForUser(colorByUserId, series.user_id) : "var(--border)"
                 }`,
                 borderRadius: 999,
                 padding: "5px 10px",
@@ -616,7 +635,10 @@ function TrendChart(props: {
                 fontWeight: 600,
                 cursor: "pointer",
                 opacity: isActive ? 1 : 0.62,
-                transition: "opacity 120ms ease, border-color 120ms ease",
+                boxShadow: isSelected
+                  ? `0 0 0 1px ${trendColorForUser(colorByUserId, series.user_id)} inset`
+                  : "none",
+                transition: "opacity 120ms ease, border-color 120ms ease, box-shadow 120ms ease",
               }}
             >
               <span

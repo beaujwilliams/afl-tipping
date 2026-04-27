@@ -299,10 +299,25 @@ function TrendChart(props: {
 }) {
   const { rounds, selectedSeries, totalParticipants, metric, colorByUserId, rangeControls } = props;
   const [hoveredUserId, setHoveredUserId] = useState<string | null>(null);
+  const [hoveredPoint, setHoveredPoint] = useState<{
+    userId: string;
+    displayName: string;
+    roundNumber: number;
+    rank: number;
+    totalPoints: number;
+    x: number;
+    y: number;
+  } | null>(null);
   const seriesWithPoints = selectedSeries.filter((series) => series.points.length > 0);
-  const activeHoveredUserId = seriesWithPoints.some((series) => series.user_id === hoveredUserId)
-    ? hoveredUserId
-    : null;
+  const activeHoveredUserId = (() => {
+    if (hoveredPoint && seriesWithPoints.some((series) => series.user_id === hoveredPoint.userId)) {
+      return hoveredPoint.userId;
+    }
+    if (seriesWithPoints.some((series) => series.user_id === hoveredUserId)) {
+      return hoveredUserId;
+    }
+    return null;
+  })();
   const isRankMode = metric === "rank";
 
   if (rounds.length === 0) {
@@ -384,8 +399,20 @@ function TrendChart(props: {
           ? "Round-by-round ladder position (1 = top)."
           : "Round-by-round total points."}
       </div>
-      <div style={{ border: "1px solid var(--border)", borderRadius: 12, padding: 8 }}>
-        <svg viewBox={`0 0 ${width} ${height}`} width="100%" aria-label={chartAriaLabel}>
+      <div
+        style={{
+          border: "1px solid var(--border)",
+          borderRadius: 12,
+          padding: 8,
+          position: "relative",
+        }}
+      >
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          width="100%"
+          aria-label={chartAriaLabel}
+          onMouseLeave={() => setHoveredPoint(null)}
+        >
           <rect x={0} y={0} width={width} height={height} fill="var(--card)" />
 
           {yTicks.map((tick) => (
@@ -471,10 +498,89 @@ function TrendChart(props: {
                   stroke="var(--card)"
                   strokeWidth={1.5}
                 />
+                {orderedPoints.map((point) => {
+                  const cy = y(isRankMode ? point.rank : point.total_points);
+                  const cx = x(point.round_number);
+                  const isPointActive = hoveredPoint?.userId === series.user_id && hoveredPoint.roundNumber === point.round_number;
+                  return (
+                    <g key={`${series.user_id}-${point.round_number}`}>
+                      <circle
+                        cx={cx}
+                        cy={cy}
+                        r={12}
+                        fill="transparent"
+                        style={{ cursor: "pointer" }}
+                        onMouseEnter={() =>
+                          setHoveredPoint({
+                            userId: series.user_id,
+                            displayName: series.display_name,
+                            roundNumber: point.round_number,
+                            rank: point.rank,
+                            totalPoints: point.total_points,
+                            x: cx,
+                            y: cy,
+                          })
+                        }
+                        onFocus={() =>
+                          setHoveredPoint({
+                            userId: series.user_id,
+                            displayName: series.display_name,
+                            roundNumber: point.round_number,
+                            rank: point.rank,
+                            totalPoints: point.total_points,
+                            x: cx,
+                            y: cy,
+                          })
+                        }
+                        onMouseLeave={() => setHoveredPoint(null)}
+                        onBlur={() => setHoveredPoint(null)}
+                      />
+                      {isPointActive ? (
+                        <circle
+                          cx={cx}
+                          cy={cy}
+                          r={6}
+                          fill={trendColorForUser(colorByUserId, series.user_id)}
+                          stroke="var(--card)"
+                          strokeWidth={2}
+                        />
+                      ) : null}
+                    </g>
+                  );
+                })}
               </g>
             );
           })}
         </svg>
+        {hoveredPoint ? (
+          <div
+            style={{
+              position: "absolute",
+              left: `clamp(12px, calc(${((hoveredPoint.x / width) * 100).toFixed(2)}% - 72px), calc(100% - 156px))`,
+              top: `clamp(12px, calc(${((hoveredPoint.y / height) * 100).toFixed(2)}% - 72px), calc(100% - 92px))`,
+              pointerEvents: "none",
+              background: "var(--card)",
+              border: "1px solid var(--border)",
+              borderRadius: 10,
+              padding: "8px 10px",
+              boxShadow: "0 10px 24px rgba(0,0,0,0.16)",
+              minWidth: 132,
+              zIndex: 2,
+            }}
+          >
+            <div style={{ fontSize: 12, fontWeight: 700, lineHeight: 1.25 }}>
+              {hoveredPoint.displayName}
+            </div>
+            <div className="ui-caption" style={{ marginTop: 2 }}>
+              R{hoveredPoint.roundNumber}
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 700, marginTop: 4 }}>
+              {isRankMode
+                ? `Position #${hoveredPoint.rank}`
+                : `${fmtPts(hoveredPoint.totalPoints)} pts`}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {rangeControls ? <div>{rangeControls}</div> : null}

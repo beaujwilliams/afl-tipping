@@ -817,6 +817,8 @@ export default function LeaderboardPageClient({
     DEFAULT_LEADERBOARD_SORT_DIRECTION
   );
   const [isMobile, setIsMobile] = useState(false);
+  const [selectedMobileRowId, setSelectedMobileRowId] = useState<string | null>(null);
+  const [isMyMobileRowVisible, setIsMyMobileRowVisible] = useState(true);
   const [viewMode, setViewMode] = useState<"overall" | "groups">(initialViewMode);
   const [groups, setGroups] = useState<LeaderboardGroup[]>([]);
   const [pendingInvites, setPendingInvites] = useState<GroupInvite[]>([]);
@@ -1452,6 +1454,14 @@ export default function LeaderboardPageClient({
   const sortedRows = useMemo(() => {
     return sortLeaderboardRows(scopedRows, activeSortBy, activeSortDirection);
   }, [activeSortBy, activeSortDirection, scopedRows]);
+  const currentUserLeaderboardRow = useMemo(() => {
+    if (!currentUserId) return null;
+    return sortedRows.find((row) => row.user_id === currentUserId) ?? null;
+  }, [currentUserId, sortedRows]);
+  const selectedMobileRow = useMemo(() => {
+    if (!selectedMobileRowId) return null;
+    return sortedRows.find((row) => row.user_id === selectedMobileRowId) ?? null;
+  }, [selectedMobileRowId, sortedRows]);
 
   const scopedTrendSeries = useMemo(() => {
     if (viewMode !== "groups") return trendSeries;
@@ -1575,6 +1585,42 @@ export default function LeaderboardPageClient({
       return groupUserIds;
     });
   }, [viewMode, selectedGroupId, scopedTrendSeries]);
+
+  useEffect(() => {
+    setSelectedMobileRowId(null);
+  }, [activeSortBy, activeSortDirection, season, selectedGroupId, viewMode]);
+
+  useEffect(() => {
+    if (!isMobile || !currentUserId || !currentUserLeaderboardRow) {
+      setIsMyMobileRowVisible(true);
+      return;
+    }
+
+    const element = document.getElementById(`leaderboard-mobile-row-${currentUserId}`);
+    if (!element || typeof IntersectionObserver === "undefined") {
+      setIsMyMobileRowVisible(false);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setIsMyMobileRowVisible(entry?.isIntersecting ?? true);
+      },
+      {
+        threshold: 0.75,
+      }
+    );
+
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [currentUserId, currentUserLeaderboardRow, isMobile, sortedRows]);
+
+  function jumpToMyLeaderboardRow() {
+    if (!currentUserId || typeof document === "undefined") return;
+    document
+      .getElementById(`leaderboard-mobile-row-${currentUserId}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
 
   function onSort(nextKey: SortKey) {
     if (sortBy === nextKey) {
@@ -2428,7 +2474,7 @@ export default function LeaderboardPageClient({
             </UiCard>
           )}
 
-          <UiTableShell className="ui-mt-3">
+          <UiTableShell className={`ui-mt-3 ${isMobile ? "leaderboard-mobile-shell" : ""}`}>
             {scopedRows.length === 0 ? (
               <div style={{ padding: 16 }} className="ui-caption">
                 {viewMode === "groups"
@@ -2436,15 +2482,35 @@ export default function LeaderboardPageClient({
                   : "No leaderboard data yet."}
               </div>
             ) : isMobile ? (
-              <div className="mobile-standings-list">
-                {sortedRows.map((r) => {
-                  const scopedRank = scopeRankMetaByUserId.get(r.user_id)?.rank ?? r.rank;
-                  const scopedBehind =
-                    scopeRankMetaByUserId.get(r.user_id)?.behind ?? r.behind_leader;
-                  const isChampion = championHighlightSet.has(r.user_id);
-                  return (
-                    <details key={r.user_id} className="mobile-standings-card">
-                      <summary className="mobile-standings-summary">
+              <>
+                <div className="mobile-standings-toolbar">
+                  <span>Tap a row for full detail</span>
+                  {currentUserLeaderboardRow && !isMyMobileRowVisible && (
+                    <button type="button" onClick={jumpToMyLeaderboardRow}>
+                      Jump to me
+                    </button>
+                  )}
+                </div>
+                <div className="mobile-standings-list" role="list">
+                  {sortedRows.map((r) => {
+                    const scopedRank = scopeRankMetaByUserId.get(r.user_id)?.rank ?? r.rank;
+                    const scopedBehind =
+                      scopeRankMetaByUserId.get(r.user_id)?.behind ?? r.behind_leader;
+                    const isChampion = championHighlightSet.has(r.user_id);
+                    const isCurrentUser = currentUserId === r.user_id;
+                    const movementTone =
+                      r.movement > 0 ? "up" : r.movement < 0 ? "down" : "flat";
+
+                    return (
+                      <button
+                        key={r.user_id}
+                        id={`leaderboard-mobile-row-${r.user_id}`}
+                        type="button"
+                        role="listitem"
+                        className={`mobile-standings-row${isCurrentUser ? " mobile-standings-row--mine" : ""}`}
+                        onClick={() => setSelectedMobileRowId(r.user_id)}
+                        aria-label={`Open leaderboard detail for ${r.display_name}`}
+                      >
                         <span className="mobile-standings-rank">#{scopedRank}</span>
                         <span className="mobile-standings-person">
                           <span className="mobile-standings-name-line">
@@ -2462,45 +2528,123 @@ export default function LeaderboardPageClient({
                           </span>
                           <span className="mobile-standings-meta">
                             {r.correct_tips} correct
+                            <span aria-hidden="true"> · </span>
+                            {scopedBehind <= 0 ? "Leader" : `${fmtPts(scopedBehind)} behind`}
                           </span>
+                        </span>
+                        <span className={`mobile-standings-move mobile-standings-move--${movementTone}`}>
+                          {movementBadgeText(r.movement)}
                         </span>
                         <span className="mobile-standings-primary">
                           <strong>{fmtPts(r.total_points)}</strong>
                           <span>Pts</span>
                         </span>
-                      </summary>
-                      <div className="mobile-standings-extra">
-                        <div className="mobile-standings-stat">
-                          <span>Behind</span>
-                          <strong>{scopedBehind <= 0 ? "-" : fmtPts(scopedBehind)}</strong>
-                        </div>
-                        <div className="mobile-standings-stat">
-                          <span>Move</span>
-                          <strong style={{ color: movementColor(r.movement) }}>
-                            {movementText(r.movement)}
-                          </strong>
-                        </div>
-                        <div className="mobile-standings-stat">
-                          <span>Current round</span>
-                          <strong>{fmtPts(r.round_score)}</strong>
-                        </div>
-                        <div className="mobile-standings-stat">
-                          <span>Avg odds</span>
-                          <strong>{fmtPts(r.avg_winning_odds)}</strong>
-                        </div>
-                        <div className="mobile-standings-stat">
-                          <span>Streak</span>
-                          <strong>{r.current_streak}</strong>
-                        </div>
-                        <div className="mobile-standings-stat">
-                          <span>Accuracy</span>
-                          <strong>{fmtPct(r.accuracy_pct)}</strong>
-                        </div>
-                      </div>
-                    </details>
-                  );
-                })}
-              </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {selectedMobileRow && (
+                  <div
+                    className="mobile-standings-sheet-backdrop"
+                    role="presentation"
+                    onClick={() => setSelectedMobileRowId(null)}
+                  >
+                    <section
+                      className="mobile-standings-sheet"
+                      role="dialog"
+                      aria-modal="true"
+                      aria-label={`${selectedMobileRow.display_name} leaderboard detail`}
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      {(() => {
+                        const scopedRank =
+                          scopeRankMetaByUserId.get(selectedMobileRow.user_id)?.rank ??
+                          selectedMobileRow.rank;
+                        const scopedBehind =
+                          scopeRankMetaByUserId.get(selectedMobileRow.user_id)?.behind ??
+                          selectedMobileRow.behind_leader;
+                        const isChampion = championHighlightSet.has(selectedMobileRow.user_id);
+
+                        return (
+                          <>
+                            <div className="mobile-standings-sheet-header">
+                              <div>
+                                <div className="mobile-standings-sheet-kicker">Rank #{scopedRank}</div>
+                                <h2>
+                                  <UnpaidTag
+                                    paymentStatus={selectedMobileRow.payment_status ?? null}
+                                    compact
+                                  />
+                                  <span
+                                    style={{
+                                      color: isChampion ? "var(--champion-gold)" : undefined,
+                                    }}
+                                  >
+                                    {selectedMobileRow.display_name}
+                                  </span>
+                                  <ChampionSeasonLabels
+                                    seasons={championSeasonsByUserId[selectedMobileRow.user_id]}
+                                    fontSize={12}
+                                  />
+                                </h2>
+                              </div>
+                              <button
+                                type="button"
+                                className="mobile-standings-sheet-close"
+                                onClick={() => setSelectedMobileRowId(null)}
+                                aria-label="Close leaderboard detail"
+                              >
+                                Close
+                              </button>
+                            </div>
+
+                            <div className="mobile-standings-sheet-hero">
+                              <div>
+                                <span>Total points</span>
+                                <strong>{fmtPts(selectedMobileRow.total_points)}</strong>
+                              </div>
+                              <div>
+                                <span>Movement</span>
+                                <strong style={{ color: movementColor(selectedMobileRow.movement) }}>
+                                  {movementBadgeText(selectedMobileRow.movement)}
+                                </strong>
+                              </div>
+                            </div>
+
+                            <div className="mobile-standings-sheet-grid">
+                              <div className="mobile-standings-stat">
+                                <span>Behind</span>
+                                <strong>{scopedBehind <= 0 ? "Leader" : fmtPts(scopedBehind)}</strong>
+                              </div>
+                              <div className="mobile-standings-stat">
+                                <span>Correct</span>
+                                <strong>{selectedMobileRow.correct_tips}</strong>
+                              </div>
+                              <div className="mobile-standings-stat">
+                                <span>Current round</span>
+                                <strong>{fmtPts(selectedMobileRow.round_score)}</strong>
+                              </div>
+                              <div className="mobile-standings-stat">
+                                <span>Accuracy</span>
+                                <strong>{fmtPct(selectedMobileRow.accuracy_pct)}</strong>
+                              </div>
+                              <div className="mobile-standings-stat">
+                                <span>Streak</span>
+                                <strong>{selectedMobileRow.current_streak}</strong>
+                              </div>
+                              <div className="mobile-standings-stat">
+                                <span>Avg odds</span>
+                                <strong>{fmtPts(selectedMobileRow.avg_winning_odds)}</strong>
+                              </div>
+                            </div>
+                          </>
+                        );
+                      })()}
+                    </section>
+                  </div>
+                )}
+              </>
             ) : (
               <UiTableScroll>
                 <table

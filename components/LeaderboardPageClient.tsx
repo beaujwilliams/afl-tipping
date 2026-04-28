@@ -1502,8 +1502,28 @@ export default function LeaderboardPageClient({
   }, [scopeRankMetaByUserId, scopedRows]);
 
   const rankColWidth = isMobile ? 58 : 72;
-  const tipsterColWidth = isMobile ? 156 : 212;
-  const tableMinWidth = isMobile ? 880 : 1040;
+  const tipsterColWidth = isMobile ? 156 : 260;
+  const leaderboardColumnWidths = {
+    totalPoints: isMobile ? 88 : 104,
+    behind: isMobile ? 78 : 88,
+    movement: isMobile ? 70 : 82,
+    accuracy: isMobile ? 84 : 96,
+    streak: isMobile ? 64 : 76,
+    avgOdds: isMobile ? 82 : 92,
+    correct: isMobile ? 72 : 82,
+    roundScore: isMobile ? 98 : 118,
+  };
+  const tableMinWidth =
+    rankColWidth +
+    tipsterColWidth +
+    leaderboardColumnWidths.totalPoints +
+    leaderboardColumnWidths.behind +
+    leaderboardColumnWidths.movement +
+    leaderboardColumnWidths.accuracy +
+    leaderboardColumnWidths.streak +
+    leaderboardColumnWidths.avgOdds +
+    leaderboardColumnWidths.correct +
+    leaderboardColumnWidths.roundScore;
   const leaderboardTableFontSize = isMobile ? 13 : 14;
   const championHighlightSet = useMemo(
     () => new Set(championHighlightUserIds),
@@ -1521,9 +1541,11 @@ export default function LeaderboardPageClient({
       width: col === 1 ? rankColWidth : tipsterColWidth,
       minWidth: col === 1 ? rankColWidth : tipsterColWidth,
       maxWidth: col === 1 ? rankColWidth : tipsterColWidth,
+      boxSizing: "border-box" as const,
       backgroundClip: "padding-box",
       overflow: "hidden",
       borderRight: "1px solid var(--border)",
+      boxShadow: col === 2 ? "1px 0 0 var(--border)" : undefined,
     };
   }
 
@@ -1753,9 +1775,10 @@ export default function LeaderboardPageClient({
             ? {
                 width,
                 minWidth: width,
-              maxWidth: width,
-            }
-          : {}),
+                maxWidth: width,
+                boxSizing: "border-box",
+              }
+            : {}),
           verticalAlign: "middle",
         }}
       >
@@ -2732,24 +2755,38 @@ export default function LeaderboardPageClient({
                 <table
                   className={`ui-table leaderboard-table ${isMobile ? "ui-table--compact" : ""}`}
                   style={{
+                    width: tableMinWidth,
                     minWidth: tableMinWidth,
                     fontSize: leaderboardTableFontSize,
                     borderCollapse: "separate",
                     borderSpacing: 0,
+                    tableLayout: "fixed",
                   }}
                 >
+                  <colgroup>
+                    <col style={{ width: rankColWidth }} />
+                    <col style={{ width: tipsterColWidth }} />
+                    <col style={{ width: leaderboardColumnWidths.totalPoints }} />
+                    <col style={{ width: leaderboardColumnWidths.behind }} />
+                    <col style={{ width: leaderboardColumnWidths.movement }} />
+                    <col style={{ width: leaderboardColumnWidths.accuracy }} />
+                    <col style={{ width: leaderboardColumnWidths.streak }} />
+                    <col style={{ width: leaderboardColumnWidths.avgOdds }} />
+                    <col style={{ width: leaderboardColumnWidths.correct }} />
+                    <col style={{ width: leaderboardColumnWidths.roundScore }} />
+                  </colgroup>
                   <thead>
                     <tr className="ui-table-head-row">
-                      {sortableHeader("Rank", "rank", 1)}
-                      {sortableHeader("Name", "display_name", 2)}
-                      {sortableHeader("Total Pts", "total_points", undefined, 92)}
-                      {sortableHeader("Behind", "behind_leader", undefined, 84)}
-                      {sortableHeader("Move", "movement", undefined, 74)}
-                      {sortableHeader("Accuracy", "accuracy_pct", undefined, 90)}
-                      {sortableHeader("Streak", "current_streak", undefined, 68)}
-                      {sortableHeader("Avg Odds", "avg_winning_odds", undefined, 88)}
-                      {sortableHeader("Correct", "correct_tips", undefined, 72)}
-                      {sortableHeader("Current Round", "round_score", undefined, 112)}
+                      {sortableHeader("Rank", "rank", 1, rankColWidth)}
+                      {sortableHeader("Name", "display_name", 2, tipsterColWidth)}
+                      {sortableHeader("Total Pts", "total_points", undefined, leaderboardColumnWidths.totalPoints)}
+                      {sortableHeader("Behind", "behind_leader", undefined, leaderboardColumnWidths.behind)}
+                      {sortableHeader("Move", "movement", undefined, leaderboardColumnWidths.movement)}
+                      {sortableHeader("Accuracy", "accuracy_pct", undefined, leaderboardColumnWidths.accuracy)}
+                      {sortableHeader("Streak", "current_streak", undefined, leaderboardColumnWidths.streak)}
+                      {sortableHeader("Avg Odds", "avg_winning_odds", undefined, leaderboardColumnWidths.avgOdds)}
+                      {sortableHeader("Correct", "correct_tips", undefined, leaderboardColumnWidths.correct)}
+                      {sortableHeader("Current Round", "round_score", undefined, leaderboardColumnWidths.roundScore)}
                     </tr>
                   </thead>
                   <tbody>
@@ -2808,16 +2845,27 @@ export default function LeaderboardPageClient({
                               />
                             </span>
                           </UiTableCell>
-                          <UiTableCell style={{ fontWeight: 800, width: 92, minWidth: 92 }}>
+                          <UiTableCell
+                            style={{
+                              fontWeight: 800,
+                              width: leaderboardColumnWidths.totalPoints,
+                              minWidth: leaderboardColumnWidths.totalPoints,
+                            }}
+                          >
                             {fmtPts(r.total_points)}
                           </UiTableCell>
-                          <UiTableCell style={{ width: 84, minWidth: 84 }}>
+                          <UiTableCell
+                            style={{
+                              width: leaderboardColumnWidths.behind,
+                              minWidth: leaderboardColumnWidths.behind,
+                            }}
+                          >
                             {scopedBehind <= 0 ? "-" : fmtPts(scopedBehind)}
                           </UiTableCell>
                           <UiTableCell
                             style={{
-                              width: 74,
-                              minWidth: 74,
+                              width: leaderboardColumnWidths.movement,
+                              minWidth: leaderboardColumnWidths.movement,
                               color: movementColor(r.movement),
                               fontWeight: 800,
                             }}
@@ -2825,19 +2873,45 @@ export default function LeaderboardPageClient({
                           >
                             {movementText(r.movement)}
                           </UiTableCell>
-                          <UiTableCell style={{ width: 90, minWidth: 90 }}>
+                          <UiTableCell
+                            style={{
+                              width: leaderboardColumnWidths.accuracy,
+                              minWidth: leaderboardColumnWidths.accuracy,
+                            }}
+                          >
                             {fmtPct(r.accuracy_pct)}
                           </UiTableCell>
-                          <UiTableCell style={{ width: 68, minWidth: 68 }}>
+                          <UiTableCell
+                            style={{
+                              width: leaderboardColumnWidths.streak,
+                              minWidth: leaderboardColumnWidths.streak,
+                            }}
+                          >
                             {r.current_streak}
                           </UiTableCell>
-                          <UiTableCell style={{ width: 88, minWidth: 88 }}>
+                          <UiTableCell
+                            style={{
+                              width: leaderboardColumnWidths.avgOdds,
+                              minWidth: leaderboardColumnWidths.avgOdds,
+                            }}
+                          >
                             {fmtPts(r.avg_winning_odds)}
                           </UiTableCell>
-                          <UiTableCell style={{ width: 72, minWidth: 72 }}>
+                          <UiTableCell
+                            style={{
+                              width: leaderboardColumnWidths.correct,
+                              minWidth: leaderboardColumnWidths.correct,
+                            }}
+                          >
                             {r.correct_tips}
                           </UiTableCell>
-                          <UiTableCell style={{ fontWeight: 700, width: 112, minWidth: 112 }}>
+                          <UiTableCell
+                            style={{
+                              fontWeight: 700,
+                              width: leaderboardColumnWidths.roundScore,
+                              minWidth: leaderboardColumnWidths.roundScore,
+                            }}
+                          >
                             {fmtPts(r.round_score)}
                           </UiTableCell>
                         </tr>

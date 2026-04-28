@@ -1511,11 +1511,13 @@ export default function LeaderboardPageClient({
   );
 
   function stickyColumnStyle(col: 1 | 2, isHeader: boolean) {
+    const stickyBackground = isHeader ? "var(--card-soft)" : "var(--card)";
+
     return {
       position: "sticky" as const,
       left: col === 1 ? 0 : rankColWidth,
       zIndex: isHeader ? (col === 1 ? 20 : 19) : col === 1 ? 10 : 9,
-      background: "var(--card)",
+      background: stickyBackground,
       width: col === 1 ? rankColWidth : tipsterColWidth,
       minWidth: col === 1 ? rankColWidth : tipsterColWidth,
       maxWidth: col === 1 ? rankColWidth : tipsterColWidth,
@@ -1523,7 +1525,7 @@ export default function LeaderboardPageClient({
       overflow: "hidden",
       boxShadow:
         col === 2
-          ? "3px 0 0 var(--card), 4px 0 0 var(--border)"
+          ? `3px 0 0 ${stickyBackground}, 4px 0 0 var(--border)`
           : "1px 0 0 var(--border)",
     };
   }
@@ -1744,6 +1746,8 @@ export default function LeaderboardPageClient({
   }
 
   function sortableHeader(label: string, key: SortKey, stickyCol?: 1 | 2, width?: number) {
+    const isStickyHeader = Boolean(stickyCol);
+
     return (
       <UiTableHeadCell
         style={{
@@ -1770,10 +1774,10 @@ export default function LeaderboardPageClient({
             font: "inherit",
             fontWeight: activeSortBy === key ? 800 : 600,
             display: "flex",
-            width: "100%",
+            width: isStickyHeader ? "auto" : "100%",
             alignItems: "center",
-            justifyContent: "space-between",
-            gap: 8,
+            justifyContent: isStickyHeader ? "flex-start" : "space-between",
+            gap: 6,
             padding: 0,
             whiteSpace: "nowrap",
             lineHeight: 1.15,

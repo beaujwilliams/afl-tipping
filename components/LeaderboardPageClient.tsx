@@ -2435,6 +2435,72 @@ export default function LeaderboardPageClient({
                   ? "Select a group to view its leaderboard."
                   : "No leaderboard data yet."}
               </div>
+            ) : isMobile ? (
+              <div className="mobile-standings-list">
+                {sortedRows.map((r) => {
+                  const scopedRank = scopeRankMetaByUserId.get(r.user_id)?.rank ?? r.rank;
+                  const scopedBehind =
+                    scopeRankMetaByUserId.get(r.user_id)?.behind ?? r.behind_leader;
+                  const isChampion = championHighlightSet.has(r.user_id);
+                  return (
+                    <details key={r.user_id} className="mobile-standings-card">
+                      <summary className="mobile-standings-summary">
+                        <span className="mobile-standings-rank">#{scopedRank}</span>
+                        <span className="mobile-standings-person">
+                          <span className="mobile-standings-name-line">
+                            <UnpaidTag paymentStatus={r.payment_status ?? null} compact />
+                            <span
+                              className="mobile-standings-name"
+                              style={{ color: isChampion ? "var(--champion-gold)" : undefined }}
+                            >
+                              {r.display_name}
+                            </span>
+                            <ChampionSeasonLabels
+                              seasons={championSeasonsByUserId[r.user_id]}
+                              fontSize={11}
+                            />
+                          </span>
+                          <span className="mobile-standings-meta">
+                            {r.correct_tips} correct • {fmtPct(r.accuracy_pct)}
+                          </span>
+                        </span>
+                        <span className="mobile-standings-primary">
+                          <strong>{fmtPts(r.total_points)}</strong>
+                          <span>Total pts</span>
+                        </span>
+                      </summary>
+                      <div className="mobile-standings-extra">
+                        <div className="mobile-standings-stat">
+                          <span>Behind</span>
+                          <strong>{scopedBehind <= 0 ? "-" : fmtPts(scopedBehind)}</strong>
+                        </div>
+                        <div className="mobile-standings-stat">
+                          <span>Move</span>
+                          <strong style={{ color: movementColor(r.movement) }}>
+                            {movementText(r.movement)}
+                          </strong>
+                        </div>
+                        <div className="mobile-standings-stat">
+                          <span>Current round</span>
+                          <strong>{fmtPts(r.round_score)}</strong>
+                        </div>
+                        <div className="mobile-standings-stat">
+                          <span>Avg odds</span>
+                          <strong>{fmtPts(r.avg_winning_odds)}</strong>
+                        </div>
+                        <div className="mobile-standings-stat">
+                          <span>Streak</span>
+                          <strong>{r.current_streak}</strong>
+                        </div>
+                        <div className="mobile-standings-stat">
+                          <span>Accuracy</span>
+                          <strong>{fmtPct(r.accuracy_pct)}</strong>
+                        </div>
+                      </div>
+                    </details>
+                  );
+                })}
+              </div>
             ) : (
               <UiTableScroll>
                 <table

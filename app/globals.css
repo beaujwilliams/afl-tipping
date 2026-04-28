@@ -606,6 +606,148 @@ button {
   line-height: 1.25;
 }
 
+.mobile-standings-list {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.mobile-standings-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  overflow: hidden;
+}
+
+.mobile-standings-summary {
+  list-style: none;
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 10px;
+  min-height: 66px;
+}
+
+.mobile-standings-summary::-webkit-details-marker {
+  display: none;
+}
+
+.mobile-standings-rank {
+  font-size: 15px;
+  font-weight: 950;
+  letter-spacing: -0.02em;
+}
+
+.mobile-standings-person {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.mobile-standings-name-line {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.mobile-standings-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+.mobile-standings-meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.mobile-standings-primary {
+  display: grid;
+  gap: 2px;
+  justify-items: end;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.mobile-standings-primary strong {
+  font-size: 17px;
+  line-height: 1;
+}
+
+.mobile-standings-primary span {
+  font-size: 10px;
+  color: var(--muted);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.mobile-standings-extra {
+  border-top: 1px solid var(--border);
+  background: var(--card-soft);
+  padding: 10px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mobile-standings-stat {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  padding: 8px;
+  display: grid;
+  gap: 3px;
+}
+
+.mobile-standings-stat span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.mobile-standings-stat strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+
+.mobile-standings-card[open] .mobile-standings-summary {
+  background: var(--card-soft);
+}
+
+@media (max-width: 390px) {
+  .mobile-standings-summary {
+    grid-template-columns: 38px minmax(0, 1fr) auto;
+    padding: 9px;
+  }
+
+  .mobile-standings-rank,
+  .mobile-standings-name {
+    font-size: 14px;
+  }
+
+  .mobile-standings-primary strong {
+    font-size: 16px;
+  }
+}
+
 .ui-stat-presets {
   display: flex;
   align-items: center;

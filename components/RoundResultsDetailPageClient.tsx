@@ -860,6 +860,58 @@ export default function RoundResultsDetailPageClient({
             </div>
             {players.length === 0 ? (
               <div style={{ padding: "0 12px 12px", opacity: 0.72, fontSize: 12 }}>No tips found for this round.</div>
+            ) : isMobile ? (
+              <div className="mobile-standings-list">
+                {sortedPlayers.map((p) => {
+                  const isChampion = championHighlightSet.has(p.user_id);
+                  return (
+                    <details key={p.user_id} className="mobile-standings-card">
+                      <summary className="mobile-standings-summary">
+                        <span className="mobile-standings-rank">
+                          #{roundRankByUserId[p.user_id] ?? "-"}
+                        </span>
+                        <span className="mobile-standings-person">
+                          <span className="mobile-standings-name-line">
+                            <UnpaidTag paymentStatus={p.payment_status ?? null} compact />
+                            <span
+                              className="mobile-standings-name"
+                              style={{ color: isChampion ? "var(--champion-gold)" : undefined }}
+                            >
+                              {p.display_name}
+                            </span>
+                            <ChampionSeasonLabels seasons={championSeasonsByUserId[p.user_id]} />
+                          </span>
+                          <span className="mobile-standings-meta">
+                            {p.correct_tips} correct • {fmtPct(p.accuracy_pct)}
+                          </span>
+                        </span>
+                        <span className="mobile-standings-primary">
+                          <strong>{fmtPts(p.round_score)}</strong>
+                          <span>Round score</span>
+                        </span>
+                      </summary>
+                      <div className="mobile-standings-extra">
+                        <div className="mobile-standings-stat">
+                          <span>Potential</span>
+                          <strong>{fmtPts(p.potential_score)}</strong>
+                        </div>
+                        <div className="mobile-standings-stat">
+                          <span>Diff</span>
+                          <strong>{fmtPts(p.difference_score)}</strong>
+                        </div>
+                        <div className="mobile-standings-stat">
+                          <span>Avg odds</span>
+                          <strong>{fmtPts(p.avg_correct_odds)}</strong>
+                        </div>
+                        <div className="mobile-standings-stat">
+                          <span>Accuracy</span>
+                          <strong>{fmtPct(p.accuracy_pct)}</strong>
+                        </div>
+                      </div>
+                    </details>
+                  );
+                })}
+              </div>
             ) : (
               <UiTableScroll>
                 <table className={`ui-table ${isMobile ? "ui-table--compact" : ""}`} style={{ minWidth: tableMinWidth }}>

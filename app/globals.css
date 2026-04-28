@@ -240,6 +240,10 @@ button {
   letter-spacing: -0.03em;
 }
 
+.leaderboard-title {
+  font-weight: 700;
+}
+
 .ui-title--section {
   font-size: var(--text-lg);
   line-height: 1.2;
@@ -620,7 +624,7 @@ button {
   background: var(--card-soft);
   color: var(--muted);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .mobile-standings-toolbar button {
@@ -632,7 +636,7 @@ button {
   cursor: pointer;
   padding: 5px 9px;
   font-size: 11px;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .mobile-standings-list {
@@ -677,7 +681,7 @@ button {
 
 .mobile-standings-rank {
   font-size: 14px;
-  font-weight: 950;
+  font-weight: 600;
   letter-spacing: -0.02em;
 }
 
@@ -700,7 +704,7 @@ button {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 14px;
-  font-weight: 900;
+  font-weight: 600;
   line-height: 1.1;
 }
 
@@ -718,7 +722,7 @@ button {
   border-radius: 999px;
   padding: 3px 7px;
   font-size: 10px;
-  font-weight: 950;
+  font-weight: 600;
   line-height: 1;
   white-space: nowrap;
 }
@@ -750,13 +754,14 @@ button {
 
 .mobile-standings-primary strong {
   font-size: 16px;
+  font-weight: 700;
   line-height: 1;
 }
 
 .mobile-standings-primary span {
   font-size: 9px;
   color: var(--muted);
-  font-weight: 800;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -794,7 +799,7 @@ button {
 .mobile-standings-sheet-kicker {
   color: var(--muted);
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -805,6 +810,7 @@ button {
   align-items: center;
   gap: 6px;
   font-size: 24px;
+  font-weight: 600;
   line-height: 1.05;
 }
 
@@ -817,7 +823,7 @@ button {
   cursor: pointer;
   padding: 7px 10px;
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .mobile-standings-sheet-hero {
@@ -838,13 +844,14 @@ button {
 .mobile-standings-sheet-hero span {
   color: var(--muted);
   font-size: 10px;
-  font-weight: 900;
+  font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
 .mobile-standings-sheet-hero strong {
   font-size: 24px;
+  font-weight: 700;
   line-height: 1;
 }
 
@@ -867,7 +874,7 @@ button {
 .mobile-standings-stat span {
   color: var(--muted);
   font-size: 10px;
-  font-weight: 850;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -878,6 +885,7 @@ button {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 14px;
+  font-weight: 600;
 }
 
 @media (max-width: 390px) {
@@ -906,6 +914,14 @@ button {
 
   .mobile-standings-sheet h2 {
     font-size: 21px;
+  }
+}
+
+@media (max-width: 640px) {
+  .leaderboard-title {
+    font-size: clamp(2.25rem, 12vw, 3.25rem);
+    font-weight: 600;
+    letter-spacing: -0.045em;
   }
 }
 

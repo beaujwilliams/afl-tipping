@@ -1424,9 +1424,9 @@ export default function LeaderboardPageClient({
     );
   }, [scopeRankMetaByUserId, scopedRows]);
 
-  const rankColWidth = isMobile ? 56 : 68;
-  const tipsterColWidth = isMobile ? 148 : 188;
-  const tableMinWidth = isMobile ? 860 : 1000;
+  const rankColWidth = isMobile ? 58 : 72;
+  const tipsterColWidth = isMobile ? 156 : 212;
+  const tableMinWidth = isMobile ? 880 : 1040;
   const leaderboardTableFontSize = isMobile ? 13 : 14;
   const championHighlightSet = useMemo(
     () => new Set(championHighlightUserIds),
@@ -1675,9 +1675,10 @@ export default function LeaderboardPageClient({
             ? {
                 width,
                 minWidth: width,
-                maxWidth: width,
-              }
-            : {}),
+              maxWidth: width,
+            }
+          : {}),
+          verticalAlign: "middle",
         }}
       >
         <button
@@ -1691,15 +1692,19 @@ export default function LeaderboardPageClient({
             cursor: "pointer",
             font: "inherit",
             fontWeight: activeSortBy === key ? 800 : 600,
-            display: "inline-flex",
+            display: "flex",
+            width: "100%",
             alignItems: "center",
-            gap: 6,
+            justifyContent: "space-between",
+            gap: 8,
             padding: 0,
             whiteSpace: "nowrap",
+            lineHeight: 1.15,
+            textAlign: "left",
           }}
           title={`Sort by ${label}`}
         >
-          <span>{label}</span>
+          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>
           <span style={{ opacity: sortBy === key ? 1 : 0.45, fontSize: 11, letterSpacing: -0.3 }}>
             {sortMarker(key)}
           </span>
@@ -1847,7 +1852,7 @@ export default function LeaderboardPageClient({
   return (
     <main className="ui-page ui-page--wide">
       <div className="ui-page-header">
-        <h1 className="ui-title">Leaderboard {season}</h1>
+        <h1 className="ui-title leaderboard-title">Leaderboard {season}</h1>
         <div
           role="group"
           aria-label="Leaderboard mode"
@@ -2695,9 +2700,11 @@ export default function LeaderboardPageClient({
                           >
                             <span
                               style={{
-                                display: "flex",
-                                alignItems: "center",
+                                display: "inline-flex",
+                                alignItems: "baseline",
                                 gap: 6,
+                                flexWrap: "wrap",
+                                rowGap: 2,
                                 minWidth: 0,
                               }}
                             >
@@ -2715,7 +2722,7 @@ export default function LeaderboardPageClient({
                               </span>
                               <ChampionSeasonLabels
                                 seasons={championSeasonsByUserId[r.user_id]}
-                                fontSize={11}
+                                fontSize={10}
                               />
                             </span>
                           </UiTableCell>

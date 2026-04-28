@@ -2275,6 +2275,7 @@ button {
 }
 
 .round-tip-option-selected-label {
+  display: none;
   justify-self: start;
   border-radius: 999px;
   padding: 3px 8px;
@@ -2377,6 +2378,8 @@ button {
   }
 
   .round-tip-option-selected-label {
+    display: inline-flex;
+    align-items: center;
     font-size: 9px;
     padding: 2px 7px;
   }

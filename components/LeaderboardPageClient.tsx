@@ -299,6 +299,7 @@ function TrendChart(props: {
 }) {
   const { rounds, selectedSeries, totalParticipants, metric, colorByUserId, rangeControls } = props;
   const [activeTrendUserId, setActiveTrendUserId] = useState<string | null>(null);
+  const [isChartExpanded, setIsChartExpanded] = useState(false);
   const seriesWithPoints = selectedSeries.filter((series) => series.points.length > 0);
   const resolvedActiveTrendUserId = seriesWithPoints.some((series) => series.user_id === activeTrendUserId)
     ? activeTrendUserId
@@ -310,6 +311,25 @@ function TrendChart(props: {
   const toggleTrendSelection = (userId: string) => {
     setActiveTrendUserId((current) => (current === userId ? null : userId));
   };
+
+  useEffect(() => {
+    if (!isChartExpanded) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsChartExpanded(false);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [isChartExpanded]);
 
   if (rounds.length === 0) {
     return (
@@ -335,12 +355,6 @@ function TrendChart(props: {
     );
   }
 
-  const width = 980;
-  const height = 360;
-  const margin = { top: 20, right: 20, bottom: 40, left: 42 };
-  const innerWidth = width - margin.left - margin.right;
-  const innerHeight = height - margin.top - margin.bottom;
-
   const maxRankInSeries = Math.max(
     1,
     ...seriesWithPoints.flatMap((series) => series.points.map((point) => point.rank))
@@ -352,20 +366,14 @@ function TrendChart(props: {
   );
   const pointTicksData = buildNiceNumberTicks(maxPointsInSeries);
 
+  const chartWidth = 980;
+  const previewChartHeight = 360;
+  const expandedChartHeight = 620;
   const minRound = rounds[0];
   const maxRound = rounds[rounds.length - 1];
   const roundRange = Math.max(1, maxRound - minRound);
   const rankRange = Math.max(1, rankMax - 1);
   const pointsRange = Math.max(1, pointTicksData.axisMax);
-
-  const x = (roundNumber: number) =>
-    margin.left + ((roundNumber - minRound) / roundRange) * innerWidth;
-  const y = (value: number) => {
-    if (isRankMode) {
-      return margin.top + ((value - 1) / rankRange) * innerHeight;
-    }
-    return margin.top + (1 - value / pointsRange) * innerHeight;
-  };
 
   const maxRoundTicks = 9;
   const roundTickStep = Math.max(1, Math.ceil(rounds.length / maxRoundTicks));
@@ -383,33 +391,37 @@ function TrendChart(props: {
   const yTicks = Array.from(yTicksSet).sort((a, b) => a - b);
   const chartAriaLabel = isRankMode ? "Leaderboard position trend" : "Leaderboard points trend";
 
-  return (
-    <div style={{ display: "grid", gap: 10 }}>
-      <div className="ui-caption">
-        {isRankMode
-          ? "Round-by-round ladder position (1 = top)."
-          : "Round-by-round total points."}
-      </div>
-      <div
-        style={{
-          border: "1px solid var(--border)",
-          borderRadius: 12,
-          padding: 8,
-          position: "relative",
-        }}
-      >
+  function renderChartFrame(variant: "preview" | "expanded") {
+    const height = variant === "expanded" ? expandedChartHeight : previewChartHeight;
+    const margin = variant === "expanded"
+      ? { top: 30, right: 26, bottom: 52, left: 52 }
+      : { top: 20, right: 20, bottom: 40, left: 42 };
+    const innerWidth = chartWidth - margin.left - margin.right;
+    const innerHeight = height - margin.top - margin.bottom;
+
+    const x = (roundNumber: number) =>
+      margin.left + ((roundNumber - minRound) / roundRange) * innerWidth;
+    const y = (value: number) => {
+      if (isRankMode) {
+        return margin.top + ((value - 1) / rankRange) * innerHeight;
+      }
+      return margin.top + (1 - value / pointsRange) * innerHeight;
+    };
+
+    return (
+      <div className={`leaderboard-trend-chart-frame leaderboard-trend-chart-frame--${variant}`}>
         <svg
-          viewBox={`0 0 ${width} ${height}`}
+          viewBox={`0 0 ${chartWidth} ${height}`}
           width="100%"
           aria-label={chartAriaLabel}
         >
-          <rect x={0} y={0} width={width} height={height} fill="var(--card)" />
+          <rect x={0} y={0} width={chartWidth} height={height} fill="var(--card)" />
 
           {yTicks.map((tick) => (
-            <g key={`y-${tick}`}>
+            <g key={`y-${variant}-${tick}`}>
               <line
                 x1={margin.left}
-                x2={width - margin.right}
+                x2={chartWidth - margin.right}
                 y1={y(tick)}
                 y2={y(tick)}
                 stroke="var(--border)"
@@ -419,7 +431,7 @@ function TrendChart(props: {
                 x={margin.left - 8}
                 y={y(tick) + 4}
                 textAnchor="end"
-                fontSize={11}
+                fontSize={variant === "expanded" ? 13 : 11}
                 fill="var(--muted)"
               >
                 {isRankMode ? `#${tick}` : fmtPts(tick)}
@@ -428,7 +440,7 @@ function TrendChart(props: {
           ))}
 
           {xTicks.map((tick) => (
-            <g key={`x-${tick}`}>
+            <g key={`x-${variant}-${tick}`}>
               <line
                 x1={x(tick)}
                 x2={x(tick)}
@@ -439,9 +451,9 @@ function TrendChart(props: {
               />
               <text
                 x={x(tick)}
-                y={height - margin.bottom + 18}
+                y={height - margin.bottom + 22}
                 textAnchor="middle"
-                fontSize={11}
+                fontSize={variant === "expanded" ? 13 : 11}
                 fill="var(--muted)"
               >
                 R{tick}
@@ -467,15 +479,14 @@ function TrendChart(props: {
             const isActive =
               resolvedActiveTrendUserId === null || resolvedActiveTrendUserId === series.user_id;
             const stroke = isActive ? trendColorForUser(colorByUserId, series.user_id) : "var(--muted)";
-            const lastPoint = orderedPoints[orderedPoints.length - 1];
             return (
-              <g key={series.user_id}>
+              <g key={`${variant}-${series.user_id}`}>
                 <path
                   d={pathData}
                   fill="none"
                   stroke={stroke}
                   strokeOpacity={isActive ? 1 : 0.38}
-                  strokeWidth={isActive ? 2.8 : 2.1}
+                  strokeWidth={isActive ? (variant === "expanded" ? 3.6 : 2.8) : 2.1}
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 />
@@ -483,7 +494,7 @@ function TrendChart(props: {
                   d={pathData}
                   fill="none"
                   stroke="transparent"
-                  strokeWidth={20}
+                  strokeWidth={variant === "expanded" ? 30 : 20}
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   pointerEvents="stroke"
@@ -499,20 +510,84 @@ function TrendChart(props: {
                   role="button"
                   aria-label={`Highlight ${series.display_name} trend`}
                 />
-                <circle
-                  cx={x(lastPoint.round_number)}
-                  cy={y(isRankMode ? lastPoint.rank : lastPoint.total_points)}
-                  r={4}
-                  fill={stroke}
-                  opacity={isActive ? 1 : 0.45}
-                  stroke="var(--card)"
-                  strokeWidth={1.5}
-                />
+                {orderedPoints.map((point) => (
+                  <circle
+                    key={`${variant}-${series.user_id}-${point.round_number}`}
+                    cx={x(point.round_number)}
+                    cy={y(isRankMode ? point.rank : point.total_points)}
+                    r={variant === "expanded" ? 4.8 : 3.5}
+                    fill={stroke}
+                    opacity={isActive ? 1 : 0.45}
+                    stroke="var(--card)"
+                    strokeWidth={1.5}
+                  />
+                ))}
               </g>
             );
           })}
         </svg>
       </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 10 }}>
+      <div className="leaderboard-trend-chart-top">
+        <div className="ui-caption">
+          {isRankMode
+            ? "Round-by-round ladder position (1 = top)."
+            : "Round-by-round total points."}
+        </div>
+        <button
+          type="button"
+          className="leaderboard-trend-expand-btn"
+          onClick={() => setIsChartExpanded(true)}
+        >
+          Expand chart
+        </button>
+      </div>
+
+      {renderChartFrame("preview")}
+
+      {isChartExpanded && (
+        <div
+          className="leaderboard-trend-modal-backdrop"
+          role="presentation"
+          onClick={() => setIsChartExpanded(false)}
+        >
+          <section
+            className="leaderboard-trend-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Expanded position trend chart"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="leaderboard-trend-modal-header">
+              <div>
+                <div className="leaderboard-trend-modal-kicker">Expanded chart</div>
+                <h3>{isRankMode ? "Ladder position" : "Total points"}</h3>
+              </div>
+              <button
+                type="button"
+                className="leaderboard-trend-modal-close"
+                onClick={() => setIsChartExpanded(false)}
+              >
+                Close
+              </button>
+            </div>
+
+            {rangeControls && (
+              <div className="leaderboard-trend-modal-controls">
+                {rangeControls}
+              </div>
+            )}
+
+            <div className="leaderboard-trend-modal-chart-scroll">
+              {renderChartFrame("expanded")}
+            </div>
+          </section>
+        </div>
+      )}
 
       {rangeControls ? <div>{rangeControls}</div> : null}
 

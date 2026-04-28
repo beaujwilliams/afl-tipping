@@ -829,6 +829,128 @@ button {
   color: var(--muted);
 }
 
+.leaderboard-trend-chart-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.leaderboard-trend-expand-btn {
+  display: none;
+  appearance: none;
+  border: 1px solid var(--foreground);
+  border-radius: 999px;
+  background: var(--foreground);
+  color: var(--background);
+  cursor: pointer;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.leaderboard-trend-chart-frame {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 8px;
+  position: relative;
+  background: var(--card);
+}
+
+.leaderboard-trend-chart-frame svg {
+  display: block;
+}
+
+.leaderboard-trend-chart-frame--expanded {
+  min-width: 900px;
+  padding: 10px;
+}
+
+.leaderboard-trend-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.48);
+}
+
+.leaderboard-trend-modal {
+  width: min(1120px, 100%);
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.32);
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.leaderboard-trend-modal-header {
+  position: sticky;
+  top: -14px;
+  z-index: 2;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0 10px;
+  background: color-mix(in srgb, var(--card) 96%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.leaderboard-trend-modal-kicker {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.leaderboard-trend-modal h3 {
+  margin: 2px 0 0;
+  font-size: 26px;
+  line-height: 1.05;
+}
+
+.leaderboard-trend-modal-close {
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card-soft);
+  color: var(--foreground);
+  cursor: pointer;
+  padding: 8px 11px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.leaderboard-trend-modal-controls {
+  position: sticky;
+  top: 48px;
+  z-index: 2;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--card) 96%, transparent);
+  padding: 8px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.leaderboard-trend-modal-chart-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 2px;
+  -webkit-overflow-scrolling: touch;
+}
+
 .leaderboard-trend-selected-rail {
   display: flex;
   flex-wrap: wrap;
@@ -968,6 +1090,52 @@ button {
   .leaderboard-trend-range-summary {
     margin-top: -4px !important;
     font-size: 12px;
+  }
+
+  .leaderboard-trend-expand-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .leaderboard-trend-modal-backdrop {
+    align-items: stretch;
+    padding: 0;
+  }
+
+  .leaderboard-trend-modal {
+    width: 100%;
+    max-height: 100dvh;
+    min-height: 100dvh;
+    border-radius: 0;
+    border-inline: 0;
+    padding:
+      calc(12px + env(safe-area-inset-top))
+      12px
+      calc(14px + env(safe-area-inset-bottom));
+  }
+
+  .leaderboard-trend-modal-header {
+    top: calc(-12px - env(safe-area-inset-top));
+    margin-inline: -12px;
+    padding: 12px 12px 10px;
+  }
+
+  .leaderboard-trend-modal h3 {
+    font-size: 24px;
+  }
+
+  .leaderboard-trend-modal-controls {
+    top: 58px;
+  }
+
+  .leaderboard-trend-modal-chart-scroll {
+    margin-inline: -12px;
+    padding-inline: 12px;
+  }
+
+  .leaderboard-trend-chart-frame--expanded {
+    min-width: 860px;
   }
 
   .leaderboard-trend-selected-rail {

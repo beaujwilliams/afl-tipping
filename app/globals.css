@@ -579,6 +579,15 @@ button {
   font-size: var(--text-sm);
 }
 
+.leaderboard-table th,
+.leaderboard-table td {
+  background-clip: padding-box;
+}
+
+.leaderboard-table tbody tr:first-child td {
+  border-top: 0 !important;
+}
+
 .ui-table th,
 .ui-table td,
 .ui-table-shell th,

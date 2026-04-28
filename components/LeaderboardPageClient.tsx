@@ -1523,10 +1523,7 @@ export default function LeaderboardPageClient({
       maxWidth: col === 1 ? rankColWidth : tipsterColWidth,
       backgroundClip: "padding-box",
       overflow: "hidden",
-      boxShadow:
-        col === 2
-          ? `3px 0 0 ${stickyBackground}, 4px 0 0 var(--border)`
-          : "1px 0 0 var(--border)",
+      borderRight: "1px solid var(--border)",
     };
   }
 
@@ -2733,8 +2730,13 @@ export default function LeaderboardPageClient({
             ) : (
               <UiTableScroll>
                 <table
-                  className={`ui-table ${isMobile ? "ui-table--compact" : ""}`}
-                  style={{ minWidth: tableMinWidth, fontSize: leaderboardTableFontSize }}
+                  className={`ui-table leaderboard-table ${isMobile ? "ui-table--compact" : ""}`}
+                  style={{
+                    minWidth: tableMinWidth,
+                    fontSize: leaderboardTableFontSize,
+                    borderCollapse: "separate",
+                    borderSpacing: 0,
+                  }}
                 >
                   <thead>
                     <tr className="ui-table-head-row">

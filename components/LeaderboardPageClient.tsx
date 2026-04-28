@@ -607,7 +607,7 @@ function TrendChart(props: {
         </div>
       )}
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+      <div className="leaderboard-trend-selected-rail" aria-label="Selected trend tipsters">
         {seriesWithPoints.map((series) => {
           const latest = series.points[series.points.length - 1];
           const isActive =
@@ -650,7 +650,9 @@ function TrendChart(props: {
                   background: trendColorForUser(colorByUserId, series.user_id),
                 }}
               />
-              <span>{series.display_name}</span>
+              <span className="leaderboard-trend-selected-name" title={series.display_name}>
+                {series.display_name}
+              </span>
               <span className="ui-caption" style={{ fontSize: 12 }}>
                 {isRankMode ? `#${latest?.rank ?? "-"}` : `${fmtPts(latest?.total_points ?? 0)} pts`}
               </span>

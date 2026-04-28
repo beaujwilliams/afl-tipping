@@ -198,12 +198,8 @@ export default function AdminPaymentsPage() {
   const [statusFilter, setStatusFilter] = useState<PaymentStatus | "all">("unmatched");
   const [onboardingHint, setOnboardingHint] = useState<string>("");
   const [form, setForm] = useState({
+    member_user_id: "",
     amount_dollars: "30.00",
-    payment_method: "bank_transfer" as PaymentMethod,
-    payer_name: "",
-    payer_email: "",
-    reference_text: "",
-    notes: "",
     paid_at_local: toLocalDateTimeInput(new Date().toISOString()),
   });
 
@@ -261,6 +257,24 @@ export default function AdminPaymentsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [season]);
 
+  useEffect(() => {
+    if (memberOptions.length === 0) return;
+    setForm((prev) => {
+      if (
+        prev.member_user_id &&
+        memberOptions.some((member) => member.user_id === prev.member_user_id)
+      ) {
+        return prev;
+      }
+      const pendingFirst = memberOptions.find((member) => member.payment_status === "pending");
+      const fallback = pendingFirst ?? memberOptions[0];
+      return {
+        ...prev,
+        member_user_id: fallback.user_id,
+      };
+    });
+  }, [memberOptions]);
+
   const visibleRows = useMemo(() => {
     const needle = search.trim().toLowerCase();
     return rows.filter((row) => {
@@ -287,6 +301,16 @@ export default function AdminPaymentsPage() {
 
   async function createPayment() {
     if (!sessionToken) return;
+    const memberUserId = String(form.member_user_id ?? "").trim();
+    if (!memberUserId) {
+      toast.error("Choose the member who paid.");
+      return;
+    }
+    const selectedMember = memberOptions.find((member) => member.user_id === memberUserId);
+    if (!selectedMember) {
+      toast.error("Selected member is no longer available. Refresh and try again.");
+      return;
+    }
     const amount = Number(form.amount_dollars);
     if (!Number.isFinite(amount) || amount <= 0) {
       toast.error("Enter a valid payment amount greater than 0.");
@@ -309,11 +333,11 @@ export default function AdminPaymentsPage() {
         body: JSON.stringify({
           season,
           amount_dollars: amount,
-          payment_method: form.payment_method,
-          payer_name: form.payer_name,
-          payer_email: form.payer_email,
-          reference_text: form.reference_text,
-          notes: form.notes,
+          payment_method: "bank_transfer",
+          payer_name: selectedMember.display_name ?? null,
+          payer_email: selectedMember.email ?? null,
+          reference_text: null,
+          notes: null,
           paid_at_utc: paidAtUtc,
         }),
       });
@@ -322,18 +346,40 @@ export default function AdminPaymentsPage() {
         const detail = json?.details ? `: ${json.details}` : "";
         throw new Error((json?.error ?? "Failed to record payment") + detail);
       }
-      toast.success("Payment recorded.");
+
+      const createdId = String(json.row?.id ?? "").trim();
+      if (!createdId) {
+        throw new Error("Payment was recorded but no row id was returned.");
+      }
+
+      const matchRes = await fetch(`/api/admin/payments/${encodeURIComponent(createdId)}`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${sessionToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "match",
+          user_id: memberUserId,
+        }),
+      });
+      const matchJson = (await matchRes.json().catch(() => null)) as PaymentPatchResponse | null;
+      if (!matchRes.ok || !matchJson?.ok) {
+        const detail = matchJson?.details ? `: ${matchJson.details}` : "";
+        throw new Error(
+          `Payment recorded but auto-match failed${detail}. You can finish matching from the queue below.`
+        );
+      }
+
+      toast.success(`Payment recorded for ${memberLabel(selectedMember)}.`);
       setForm((prev) => ({
         ...prev,
-        payer_name: "",
-        payer_email: "",
-        reference_text: "",
-        notes: "",
         amount_dollars: (buyInCents / 100).toFixed(2),
       }));
       await load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to record payment");
+      await load();
     } finally {
       setCreating(false);
     }
@@ -481,12 +527,28 @@ export default function AdminPaymentsPage() {
       <UiCard soft style={{ marginTop: 12 }}>
         <div className="ui-title--section">Record payment</div>
         <div className="ui-caption ui-mt-1">
-          Add the payment details. The app will suggest a member match.
+          Record only who paid, how much, and when.
         </div>
         <div
           className="ui-grid ui-mt-3"
           style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}
         >
+          <label className="ui-stack">
+            <span className="ui-caption">Who paid</span>
+            <select
+              value={form.member_user_id}
+              onChange={(e) => setForm((prev) => ({ ...prev, member_user_id: e.target.value }))}
+              className="ui-input"
+            >
+              <option value="">Choose member…</option>
+              {sortedMemberOptions.map((member) => (
+                <option key={member.user_id} value={member.user_id}>
+                  {memberLabel(member)}
+                  {member.email ? ` · ${member.email}` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="ui-stack">
             <span className="ui-caption">Amount (AUD)</span>
             <input
@@ -499,67 +561,12 @@ export default function AdminPaymentsPage() {
             />
           </label>
           <label className="ui-stack">
-            <span className="ui-caption">Method</span>
-            <select
-              value={form.payment_method}
-              onChange={(e) =>
-                setForm((prev) => ({ ...prev, payment_method: e.target.value as PaymentMethod }))
-              }
-              className="ui-input"
-            >
-              <option value="bank_transfer">Bank transfer</option>
-              <option value="payid">PayID</option>
-              <option value="cash">Cash</option>
-              <option value="other">Other</option>
-            </select>
-          </label>
-          <label className="ui-stack">
             <span className="ui-caption">Paid at</span>
             <input
               type="datetime-local"
               value={form.paid_at_local}
               onChange={(e) => setForm((prev) => ({ ...prev, paid_at_local: e.target.value }))}
               className="ui-input"
-            />
-          </label>
-          <label className="ui-stack">
-            <span className="ui-caption">Payer name</span>
-            <input
-              type="text"
-              value={form.payer_name}
-              onChange={(e) => setForm((prev) => ({ ...prev, payer_name: e.target.value }))}
-              className="ui-input"
-              placeholder="Name shown by the bank"
-            />
-          </label>
-          <label className="ui-stack">
-            <span className="ui-caption">Payer email</span>
-            <input
-              type="email"
-              value={form.payer_email}
-              onChange={(e) => setForm((prev) => ({ ...prev, payer_email: e.target.value }))}
-              className="ui-input"
-              placeholder="If they emailed proof"
-            />
-          </label>
-          <label className="ui-stack" style={{ gridColumn: "1 / -1" }}>
-            <span className="ui-caption">Reference text</span>
-            <input
-              type="text"
-              value={form.reference_text}
-              onChange={(e) => setForm((prev) => ({ ...prev, reference_text: e.target.value }))}
-              className="ui-input"
-              placeholder="Bank reference / PayID description"
-            />
-          </label>
-          <label className="ui-stack" style={{ gridColumn: "1 / -1" }}>
-            <span className="ui-caption">Notes</span>
-            <textarea
-              value={form.notes}
-              onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
-              className="ui-input"
-              rows={3}
-              placeholder="Optional admin context"
             />
           </label>
         </div>

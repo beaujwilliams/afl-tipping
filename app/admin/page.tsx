@@ -139,21 +139,21 @@ function describeRunningAction(value: string | null) {
 function anomalyBadgeStyle(severity: "critical" | "warning" | "info"): CSSProperties {
   if (severity === "critical") {
     return {
-      background: "rgba(239, 68, 68, 0.14)",
-      color: "rgb(153, 27, 27)",
+      background: "var(--tone-danger-bg)",
+      color: "var(--tone-danger-text)",
       border: "1px solid rgba(239, 68, 68, 0.25)",
     };
   }
   if (severity === "warning") {
     return {
-      background: "rgba(245, 158, 11, 0.14)",
-      color: "rgb(146, 64, 14)",
+      background: "var(--tone-warning-bg)",
+      color: "var(--tone-warning-text)",
       border: "1px solid rgba(245, 158, 11, 0.25)",
     };
   }
   return {
-    background: "rgba(59, 130, 246, 0.12)",
-    color: "rgb(30, 64, 175)",
+    background: "var(--tone-info-bg)",
+    color: "var(--tone-info-text)",
     border: "1px solid rgba(59, 130, 246, 0.22)",
   };
 }
@@ -535,8 +535,8 @@ export default function AdminPage() {
                           : "info"
                     )
                   : {
-                      background: "rgba(16, 185, 129, 0.14)",
-                      color: "rgb(6, 95, 70)",
+                      background: "var(--tone-success-bg)",
+                      color: "var(--tone-success-text)",
                       border: "1px solid rgba(16, 185, 129, 0.22)",
                     }
               }
@@ -546,7 +546,7 @@ export default function AdminPage() {
           </div>
 
           {anomalyMsg ? (
-            <div className="ui-admin-summary" style={{ color: "rgb(153, 27, 27)" }}>
+            <div className="ui-admin-summary" style={{ color: "var(--tone-danger-text)" }}>
               {anomalyMsg}
             </div>
           ) : anomalyTotal === 0 && !anomalyLoading ? (
@@ -589,7 +589,7 @@ export default function AdminPage() {
           {anomalySourceWarnings.length > 0 && (
             <div className="ui-admin-stack" style={{ marginTop: 4 }}>
               {anomalySourceWarnings.map((warning) => (
-                <div key={warning} className="ui-admin-summary ui-admin-summary--tight" style={{ color: "rgb(146, 64, 14)" }}>
+                <div key={warning} className="ui-admin-summary ui-admin-summary--tight" style={{ color: "var(--tone-warning-text)" }}>
                   {warning}
                 </div>
               ))}
@@ -699,10 +699,10 @@ export default function AdminPage() {
                   style={{
                     background:
                       healthData?.healthy === false
-                        ? "rgba(239, 68, 68, 0.14)"
-                        : "rgba(16, 185, 129, 0.14)",
+                        ? "var(--tone-danger-bg)"
+                        : "var(--tone-success-bg)",
                     color:
-                      healthData?.healthy === false ? "rgb(153, 27, 27)" : "rgb(6, 95, 70)",
+                      healthData?.healthy === false ? "var(--tone-danger-text)" : "var(--tone-success-text)",
                     border: "1px solid rgba(0,0,0,0.08)",
                   }}
                 >
@@ -723,7 +723,7 @@ export default function AdminPage() {
               {healthWarning && (
                 <div
                   className="ui-admin-summary ui-admin-summary--tight"
-                  style={{ color: "rgb(146, 64, 14)" }}
+                  style={{ color: "var(--tone-warning-text)" }}
                 >
                   {healthWarning}
                 </div>

@@ -2338,19 +2338,19 @@ export default function LeaderboardPageClient({
                             background: "var(--card)",
                           },
                           success: {
-                            color: "rgb(21,128,61)",
+                            color: "var(--tone-success-text)",
                             borderColor: "rgba(34,197,94,0.4)",
-                            background: "rgba(22,163,74,0.08)",
+                            background: "var(--tone-success-bg)",
                           },
                           danger: {
-                            color: "rgb(185,28,28)",
+                            color: "var(--tone-danger-text)",
                             borderColor: "rgba(239,68,68,0.4)",
-                            background: "rgba(220,38,38,0.08)",
+                            background: "var(--tone-danger-bg)",
                           },
                           info: {
-                            color: "rgb(29,78,216)",
+                            color: "var(--tone-info-text)",
                             borderColor: "rgba(59,130,246,0.4)",
-                            background: "rgba(37,99,235,0.08)",
+                            background: "var(--tone-info-bg)",
                           },
                         };
                         const badgeStyle = badgeStyles[member.statusTone];

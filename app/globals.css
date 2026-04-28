@@ -14,6 +14,18 @@
   --card: #ffffff;
   --card-soft: rgba(0, 0, 0, 0.03);
   --champion-gold: #b8871b;
+  --control-bg: #ffffff;
+  --control-border: rgba(0, 0, 0, 0.18);
+  --control-focus: rgba(37, 99, 235, 0.34);
+  --tone-success-text: rgb(6, 95, 70);
+  --tone-success-bg: rgba(34, 197, 94, 0.14);
+  --tone-danger-text: rgb(153, 27, 27);
+  --tone-danger-bg: rgba(239, 68, 68, 0.14);
+  --tone-warning-text: rgb(146, 64, 14);
+  --tone-warning-bg: rgba(245, 158, 11, 0.16);
+  --tone-info-text: rgb(30, 64, 175);
+  --tone-info-bg: rgba(59, 130, 246, 0.14);
+  --tone-purple-text: rgb(91, 33, 182);
 
   --radius-sm: 10px;
   --radius-md: 12px;
@@ -41,6 +53,18 @@
     --card: #111111;
     --card-soft: rgba(255, 255, 255, 0.06);
     --champion-gold: #f0c455;
+    --control-bg: #151515;
+    --control-border: rgba(255, 255, 255, 0.28);
+    --control-focus: rgba(147, 197, 253, 0.52);
+    --tone-success-text: rgb(74, 222, 128);
+    --tone-success-bg: rgba(34, 197, 94, 0.16);
+    --tone-danger-text: rgb(248, 113, 113);
+    --tone-danger-bg: rgba(239, 68, 68, 0.16);
+    --tone-warning-text: rgb(251, 191, 36);
+    --tone-warning-bg: rgba(245, 158, 11, 0.18);
+    --tone-info-text: rgb(147, 197, 253);
+    --tone-info-bg: rgba(59, 130, 246, 0.18);
+    --tone-purple-text: rgb(196, 181, 253);
   }
 }
 
@@ -85,6 +109,10 @@ a {
   html {
     color-scheme: dark;
   }
+
+  select {
+    color-scheme: dark;
+  }
 }
 
 /* ===============================
@@ -94,13 +122,67 @@ a {
 input,
 textarea,
 select {
-  background: var(--card);
+  background-color: var(--control-bg);
   color: var(--foreground);
-  border: 1px solid var(--border);
+  border: 1px solid var(--control-border);
+  caret-color: var(--foreground);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: color-mix(in srgb, var(--muted) 78%, transparent);
+  opacity: 1;
+}
+
+select {
+  color-scheme: light;
+}
+
+select:not([multiple]) {
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: var(--control-bg) !important;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%) !important;
+  background-position:
+    calc(100% - 18px) calc(50% - 3px),
+    calc(100% - 13px) calc(50% - 3px) !important;
+  background-repeat: no-repeat !important;
+  background-size: 5px 5px, 5px 5px !important;
+  padding-right: 34px !important;
+}
+
+select[multiple] {
+  background-image: none !important;
+  padding-right: 11px !important;
+}
+
+option,
+optgroup {
+  background-color: var(--card);
+  color: var(--foreground);
+}
+
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+button:focus-visible,
+.ui-btn:focus-visible {
+  outline: 3px solid var(--control-focus);
+  outline-offset: 2px;
+}
+
+input:disabled,
+textarea:disabled,
+select:disabled {
+  opacity: 0.68;
+  cursor: not-allowed;
 }
 
 button {
   color: inherit;
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* ===============================
@@ -334,29 +416,29 @@ button {
 }
 
 .ui-tone-success {
-  background: rgba(34, 197, 94, 0.08);
+  background: var(--tone-success-bg);
   border-color: rgba(34, 197, 94, 0.26);
 }
 
 .ui-tone-warning {
-  background: rgba(245, 158, 11, 0.1);
+  background: var(--tone-warning-bg);
   border-color: rgba(245, 158, 11, 0.28);
 }
 
 .ui-tone-info {
-  background: rgba(59, 130, 246, 0.1);
+  background: var(--tone-info-bg);
   border-color: rgba(59, 130, 246, 0.28);
 }
 
 .ui-tone-danger {
-  background: rgba(220, 38, 38, 0.09);
+  background: var(--tone-danger-bg);
   border-color: rgba(220, 38, 38, 0.35);
 }
 
 .ui-btn {
   appearance: none;
-  border: 1px solid var(--border);
-  background: var(--card);
+  border: 1px solid var(--control-border);
+  background: var(--control-bg);
   color: var(--foreground);
   border-radius: var(--radius-sm);
   padding: 8px 10px;
@@ -377,7 +459,7 @@ button {
 }
 
 .ui-btn:disabled {
-  opacity: 0.58;
+  opacity: 0.62;
   cursor: not-allowed;
 }
 
@@ -387,15 +469,21 @@ button {
 }
 
 .ui-btn--active-success {
-  background: rgba(34, 197, 94, 0.17);
+  background: var(--tone-success-bg);
+  color: var(--tone-success-text);
+  border-color: rgba(34, 197, 94, 0.35);
 }
 
 .ui-btn--active-danger {
-  background: rgba(239, 68, 68, 0.17);
+  background: var(--tone-danger-bg);
+  color: var(--tone-danger-text);
+  border-color: rgba(239, 68, 68, 0.35);
 }
 
 .ui-btn--danger-soft {
-  background: rgba(239, 68, 68, 0.14);
+  background: var(--tone-danger-bg);
+  color: var(--tone-danger-text);
+  border-color: rgba(239, 68, 68, 0.35);
 }
 
 .ui-btn--active-neutral {
@@ -408,8 +496,8 @@ button {
   min-width: 180px;
   padding: 9px 11px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: var(--card);
+  border: 1px solid var(--control-border);
+  background: var(--control-bg);
   color: var(--foreground);
 }
 
@@ -428,38 +516,38 @@ button {
 }
 
 .ui-badge--open {
-  background: rgba(34, 197, 94, 0.14);
-  color: rgb(22, 163, 74);
+  background: var(--tone-success-bg);
+  color: var(--tone-success-text);
   border-color: rgba(34, 197, 94, 0.35);
 }
 
 .ui-badge--locked {
-  background: rgba(239, 68, 68, 0.14);
-  color: rgb(220, 38, 38);
+  background: var(--tone-danger-bg);
+  color: var(--tone-danger-text);
   border-color: rgba(239, 68, 68, 0.35);
 }
 
 .ui-badge--success {
-  background: rgba(34, 197, 94, 0.14);
-  color: rgb(22, 163, 74);
+  background: var(--tone-success-bg);
+  color: var(--tone-success-text);
   border-color: rgba(34, 197, 94, 0.35);
 }
 
 .ui-badge--warning {
-  background: rgba(245, 158, 11, 0.16);
-  color: rgb(180, 83, 9);
+  background: var(--tone-warning-bg);
+  color: var(--tone-warning-text);
   border-color: rgba(245, 158, 11, 0.4);
 }
 
 .ui-badge--info {
-  background: rgba(59, 130, 246, 0.14);
-  color: rgb(37, 99, 235);
+  background: var(--tone-info-bg);
+  color: var(--tone-info-text);
   border-color: rgba(59, 130, 246, 0.36);
 }
 
 .ui-badge--danger {
-  background: rgba(239, 68, 68, 0.14);
-  color: rgb(220, 38, 38);
+  background: var(--tone-danger-bg);
+  color: var(--tone-danger-text);
   border-color: rgba(239, 68, 68, 0.35);
 }
 
@@ -477,12 +565,35 @@ button {
 .ui-table {
   width: 100%;
   border-collapse: collapse;
+  background: var(--card);
+  color: var(--foreground);
 }
 
 .ui-table-head-row {
   background: var(--card-soft);
   text-align: left;
   font-size: var(--text-sm);
+}
+
+.ui-table th,
+.ui-table td,
+.ui-table-shell th,
+.ui-table-shell td {
+  border-color: var(--border) !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  .ui-table-shell {
+    background: var(--card);
+  }
+
+  .ui-card,
+  .ui-table-shell,
+  .ui-admin-tool--nested,
+  .ui-admin-automation-item,
+  .ui-admin-anomaly-item {
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset;
+  }
 }
 
 .ui-table--compact th,

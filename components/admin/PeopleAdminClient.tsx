@@ -783,8 +783,8 @@ export default function PeopleAdminClient({
                     padding: "10px 12px",
                     borderRadius: 10,
                     border: "1px solid var(--border)",
-                    background: enforceUnpaidTipLock ? "#fee2e2" : "#ecfdf5",
-                    color: enforceUnpaidTipLock ? "#991b1b" : "#065f46",
+                    background: enforceUnpaidTipLock ? "var(--tone-danger-bg)" : "var(--tone-success-bg)",
+                    color: enforceUnpaidTipLock ? "var(--tone-danger-text)" : "var(--tone-success-text)",
                     fontWeight: 900,
                     cursor: savingSettings ? "not-allowed" : "pointer",
                     opacity: savingSettings ? 0.7 : 1,
@@ -958,19 +958,19 @@ export default function PeopleAdminClient({
         </div>
         <div style={cardStyle}>
           <div style={{ fontSize: 12, opacity: 0.7 }}>Paid live ({fmtDollars(amounts.paid)})</div>
-          <div style={{ marginTop: 4, fontWeight: 900, fontSize: 24, color: "#065f46" }}>{counts.paid}</div>
+          <div style={{ marginTop: 4, fontWeight: 900, fontSize: 24, color: "var(--tone-success-text)" }}>{counts.paid}</div>
         </div>
         <div style={cardStyle}>
           <div style={{ fontSize: 12, opacity: 0.7 }}>Pending live ({fmtDollars(amounts.pending)})</div>
-          <div style={{ marginTop: 4, fontWeight: 900, fontSize: 24, color: "#991b1b" }}>{counts.pending}</div>
+          <div style={{ marginTop: 4, fontWeight: 900, fontSize: 24, color: "var(--tone-danger-text)" }}>{counts.pending}</div>
         </div>
         <div style={cardStyle}>
           <div style={{ fontSize: 12, opacity: 0.7 }}>Waived live ({fmtDollars(amounts.waived)})</div>
-          <div style={{ marginTop: 4, fontWeight: 900, fontSize: 24, color: "#5b21b6" }}>{counts.waived}</div>
+          <div style={{ marginTop: 4, fontWeight: 900, fontSize: 24, color: "var(--tone-purple-text)" }}>{counts.waived}</div>
         </div>
         <div style={cardStyle}>
           <div style={{ fontSize: 12, opacity: 0.7 }}>Test accounts</div>
-          <div style={{ marginTop: 4, fontWeight: 900, fontSize: 24, color: "#92400e" }}>{counts.testAccounts}</div>
+          <div style={{ marginTop: 4, fontWeight: 900, fontSize: 24, color: "var(--tone-warning-text)" }}>{counts.testAccounts}</div>
         </div>
       </div>
 

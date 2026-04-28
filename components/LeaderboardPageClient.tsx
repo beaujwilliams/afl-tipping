@@ -2461,12 +2461,12 @@ export default function LeaderboardPageClient({
                             />
                           </span>
                           <span className="mobile-standings-meta">
-                            {r.correct_tips} correct • {fmtPct(r.accuracy_pct)}
+                            {r.correct_tips} correct
                           </span>
                         </span>
                         <span className="mobile-standings-primary">
                           <strong>{fmtPts(r.total_points)}</strong>
-                          <span>Total pts</span>
+                          <span>Pts</span>
                         </span>
                       </summary>
                       <div className="mobile-standings-extra">

@@ -882,12 +882,12 @@ export default function RoundResultsDetailPageClient({
                             <ChampionSeasonLabels seasons={championSeasonsByUserId[p.user_id]} />
                           </span>
                           <span className="mobile-standings-meta">
-                            {p.correct_tips} correct • {fmtPct(p.accuracy_pct)}
+                            {p.correct_tips} correct
                           </span>
                         </span>
                         <span className="mobile-standings-primary">
                           <strong>{fmtPts(p.round_score)}</strong>
-                          <span>Round score</span>
+                          <span>Score</span>
                         </span>
                       </summary>
                       <div className="mobile-standings-extra">

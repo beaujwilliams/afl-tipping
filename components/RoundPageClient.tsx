@@ -108,24 +108,6 @@ function pickRandomTeamSecure(match: Pick<MatchRow, "home_team" | "away_team">) 
   return (bytes[0] & 1) === 0 ? match.home_team : match.away_team;
 }
 
-function tipOptionButtonStyle(isSelected: boolean, isDisabled: boolean) {
-  return {
-    flex: 1,
-    padding: "14px 18px",
-    borderRadius: 12,
-    border: isSelected ? "2px solid #16a34a" : "1px solid #cfcfcf",
-    background: isSelected ? "#eafcf1" : "#ffffff",
-    color: "#111",
-    fontWeight: isSelected ? 800 : 600,
-    cursor: isDisabled ? "not-allowed" : "pointer",
-    textAlign: "left" as const,
-    opacity: isDisabled ? 0.65 : 1,
-    boxShadow: isSelected ? "0 0 0 3px rgba(34, 197, 94, 0.40), 0 8px 18px rgba(22, 163, 74, 0.18)" : "none",
-    transform: isSelected ? "translateY(-1px)" : "none",
-    transition: "box-shadow 140ms ease, border-color 140ms ease, background-color 140ms ease, transform 140ms ease",
-  };
-}
-
 function RoundLoadingSkeleton() {
   return (
     <div className="ui-grid ui-mt-3" style={{ gap: 18 }}>
@@ -230,6 +212,7 @@ export default function RoundPageClient({
 
   const userId = initialData?.user_id ?? null;
   const compId = roundRow?.competition_id ?? initialData?.competition_id ?? null;
+  const matchCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   useEffect(() => {
     setRoundRow(initialData?.round_row ?? null);
@@ -281,6 +264,9 @@ export default function RoundPageClient({
     return matches.filter((m) => !!tipsByMatchId[m.id]).length;
   }, [matches, tipsByMatchId]);
   const remainingTipCount = Math.max(matches.length - tippedCount, 0);
+  const tippedProgressPct = matches.length
+    ? Math.round((tippedCount / matches.length) * 100)
+    : 0;
 
   const potentialScore = useMemo(() => {
     if (!matches.length) return 0;
@@ -605,6 +591,15 @@ export default function RoundPageClient({
     await runAutoPick({ targetMatches: matches, mode: "all" });
   }
 
+  const jumpToNextTip = useCallback(() => {
+    if (!matches.length) return;
+    const target = matches.find((m) => !tipsByMatchId[m.id]) ?? matches[0];
+    matchCardRefs.current[target.id]?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+  }, [matches, tipsByMatchId]);
+
   const oddsLockLabel = useCallback((snapshot: string | null) => {
     return snapshot
       ? `Scoring odds time: ${formatMelbourne(snapshot)} (Melbourne)`
@@ -742,7 +737,7 @@ export default function RoundPageClient({
   const showRoundSkeleton = !!msg && msg.startsWith("Loading") && !roundRow && matches.length === 0;
 
   return (
-    <main className="ui-page ui-page--content">
+    <main className="ui-page ui-page--content round-page">
       <h1 className="ui-title">
         {getRoundDisplayName(round)} • {season}
       </h1>
@@ -840,7 +835,7 @@ export default function RoundPageClient({
                 </span>
               </div>
               <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
-                Selected tips are highlighted in bold.
+                Selected tips are highlighted in green and marked selected.
               </div>
             </div>
 
@@ -959,10 +954,54 @@ export default function RoundPageClient({
         </div>
       )}
 
-      <div style={{ marginTop: 20 }}>
+      {!!matches.length && (
+        <div className="round-mobile-action-bar" role="region" aria-label="Round tip progress">
+          <div className="round-mobile-action-top">
+            <span
+              className={`round-mobile-status ${
+                isLocked
+                  ? "round-mobile-status--locked"
+                  : paymentLocked
+                  ? "round-mobile-status--danger"
+                  : "round-mobile-status--open"
+              }`}
+            >
+              {isLocked ? "Locked" : paymentLocked ? "Payment lock" : "Open"}
+            </span>
+            <span className="round-mobile-action-score">
+              Potential {potentialScore.toFixed(2)}
+            </span>
+          </div>
+          <div className="round-mobile-action-progress" aria-hidden="true">
+            <span style={{ width: `${tippedProgressPct}%` }} />
+          </div>
+          <div className="round-mobile-action-bottom">
+            <div>
+              <strong>
+                {tippedCount}/{matches.length} tipped
+              </strong>
+              <div>
+                {remainingTipCount > 0
+                  ? `${remainingTipCount} ${pluralize(remainingTipCount, "tip", "tips")} to go`
+                  : "All tips are in"}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="round-mobile-action-button"
+              onClick={jumpToNextTip}
+            >
+              {remainingTipCount > 0 ? "Next untipped" : "Review tips"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="round-match-list">
         {matches.map((g) => {
           const picked = tipsByMatchId[g.id] ?? null;
           const saving = savingMatchId === g.id;
+          const disableTipButtons = isLocked || saving || paymentLocked || autoPicking || clearingTips;
 
           const odds = oddsByMatchId[g.id];
           const homeOdds = odds ? odds.home_odds : null;
@@ -971,43 +1010,51 @@ export default function RoundPageClient({
           return (
             <div
               key={g.id}
-              className="ui-card"
-              style={{
-                marginBottom: 16,
-                opacity: isLocked ? 0.98 : 1,
+              ref={(node) => {
+                matchCardRefs.current[g.id] = node;
               }}
+              className="ui-card round-match-card"
+              style={{ opacity: isLocked ? 0.98 : 1 }}
             >
-              <div style={{ fontSize: 14, opacity: 0.8 }}>
+              <div className="round-match-meta">
                 {formatMelbourne(g.commence_time_utc)} • {normalizeVenue(g.venue)}
               </div>
 
-              <div style={{ display: "flex", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
+              <div className="round-tip-options">
                 <button
-                  disabled={isLocked || saving || paymentLocked || autoPicking || clearingTips}
+                  type="button"
+                  disabled={disableTipButtons}
                   onClick={() => saveTip(g.id, g.home_team)}
-                  style={tipOptionButtonStyle(
-                    picked === g.home_team,
-                    isLocked || saving || paymentLocked || autoPicking,
-                  )}
+                  aria-pressed={picked === g.home_team}
+                  className={`round-tip-option${
+                    picked === g.home_team ? " round-tip-option--selected" : ""
+                  }`}
                 >
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                    <span>{g.home_team}</span>
-                    <span style={{ opacity: 0.85 }}>{fmtOdds(homeOdds)}</span>
+                  <div className="round-tip-option-main">
+                    <span className="round-tip-option-team">{g.home_team}</span>
+                    <span className="round-tip-option-odds">{fmtOdds(homeOdds)}</span>
                   </div>
+                  {picked === g.home_team && (
+                    <span className="round-tip-option-selected-label">Selected</span>
+                  )}
                 </button>
 
                 <button
-                  disabled={isLocked || saving || paymentLocked || autoPicking || clearingTips}
+                  type="button"
+                  disabled={disableTipButtons}
                   onClick={() => saveTip(g.id, g.away_team)}
-                  style={tipOptionButtonStyle(
-                    picked === g.away_team,
-                    isLocked || saving || paymentLocked || autoPicking,
-                  )}
+                  aria-pressed={picked === g.away_team}
+                  className={`round-tip-option${
+                    picked === g.away_team ? " round-tip-option--selected" : ""
+                  }`}
                 >
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                    <span>{g.away_team}</span>
-                    <span style={{ opacity: 0.85 }}>{fmtOdds(awayOdds)}</span>
+                  <div className="round-tip-option-main">
+                    <span className="round-tip-option-team">{g.away_team}</span>
+                    <span className="round-tip-option-odds">{fmtOdds(awayOdds)}</span>
                   </div>
+                  {picked === g.away_team && (
+                    <span className="round-tip-option-selected-label">Selected</span>
+                  )}
                 </button>
               </div>
 

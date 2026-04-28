@@ -1429,6 +1429,118 @@ button {
    Round Auto Pick Actions
 ================================ */
 
+.round-page {
+  position: relative;
+}
+
+.round-match-list {
+  margin-top: 20px;
+  display: grid;
+  gap: 16px;
+}
+
+.round-match-card {
+  scroll-margin-top: 24px;
+}
+
+.round-match-meta {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.round-tip-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.round-tip-option {
+  appearance: none;
+  width: 100%;
+  min-width: 0;
+  min-height: 72px;
+  padding: 14px 18px;
+  border-radius: 14px;
+  border: 1px solid var(--control-border);
+  background: var(--control-bg);
+  color: var(--foreground);
+  cursor: pointer;
+  text-align: left;
+  display: grid;
+  gap: 8px;
+  align-content: center;
+  transition:
+    box-shadow 140ms ease,
+    border-color 140ms ease,
+    background-color 140ms ease,
+    transform 140ms ease;
+}
+
+.round-tip-option:hover:not(:disabled) {
+  background: var(--card-soft);
+  border-color: color-mix(in srgb, var(--foreground) 20%, var(--control-border));
+}
+
+.round-tip-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
+.round-tip-option--selected {
+  border: 2px solid var(--tone-success-text);
+  background: color-mix(in srgb, var(--tone-success-bg) 70%, var(--card));
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--tone-success-text) 18%, transparent),
+    0 8px 18px rgba(22, 163, 74, 0.14);
+  transform: translateY(-1px);
+}
+
+.round-tip-option-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.round-tip-option-team {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.round-tip-option-odds {
+  flex: 0 0 auto;
+  font-size: 15px;
+  font-weight: 900;
+  color: var(--muted);
+}
+
+.round-tip-option--selected .round-tip-option-odds {
+  color: var(--tone-success-text);
+}
+
+.round-tip-option-selected-label {
+  justify-self: start;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: var(--tone-success-bg);
+  color: var(--tone-success-text);
+  border: 1px solid rgba(34, 197, 94, 0.35);
+}
+
+.round-mobile-action-bar {
+  display: none;
+}
+
 .round-autopick-panel {
   display: grid;
   gap: 8px;
@@ -1479,6 +1591,145 @@ button {
 }
 
 @media (max-width: 720px) {
+  .round-page {
+    padding-bottom: calc(124px + env(safe-area-inset-bottom));
+  }
+
+  .round-match-list {
+    gap: 12px;
+  }
+
+  .round-match-card {
+    scroll-margin-top: 18px;
+  }
+
+  .round-match-meta {
+    font-size: 12px;
+  }
+
+  .round-tip-options {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .round-tip-option {
+    min-height: 58px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    gap: 6px;
+  }
+
+  .round-tip-option-team {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    font-size: 15px;
+  }
+
+  .round-tip-option-selected-label {
+    font-size: 9px;
+    padding: 2px 7px;
+  }
+
+  .round-mobile-action-bar {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    z-index: 70;
+    display: grid;
+    gap: 9px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    background: color-mix(in srgb, var(--card) 94%, transparent);
+    color: var(--foreground);
+    box-shadow: 0 16px 42px rgba(0, 0, 0, 0.24);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+
+  .round-mobile-action-top,
+  .round-mobile-action-bottom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .round-mobile-status {
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    padding: 5px 9px;
+    font-size: 11px;
+    line-height: 1;
+    font-weight: 950;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .round-mobile-status--open {
+    background: var(--tone-success-bg);
+    color: var(--tone-success-text);
+    border-color: rgba(34, 197, 94, 0.35);
+  }
+
+  .round-mobile-status--locked,
+  .round-mobile-status--danger {
+    background: var(--tone-danger-bg);
+    color: var(--tone-danger-text);
+    border-color: rgba(239, 68, 68, 0.35);
+  }
+
+  .round-mobile-action-score {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+
+  .round-mobile-action-progress {
+    height: 7px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: color-mix(in srgb, var(--muted) 18%, transparent);
+  }
+
+  .round-mobile-action-progress span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--tone-success-text), #84cc16);
+    transition: width 180ms ease;
+  }
+
+  .round-mobile-action-bottom {
+    align-items: flex-end;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .round-mobile-action-bottom strong {
+    display: block;
+    color: var(--foreground);
+    font-size: 15px;
+    line-height: 1.1;
+  }
+
+  .round-mobile-action-button {
+    appearance: none;
+    border: 1px solid var(--foreground);
+    border-radius: 14px;
+    min-height: 44px;
+    padding: 10px 14px;
+    background: var(--foreground);
+    color: var(--background);
+    font-size: 13px;
+    font-weight: 950;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
   .round-autopick-row .ui-btn {
     font-size: 14px;
     min-height: 40px;

@@ -739,6 +739,16 @@ export default function PeopleAdminClient({
     background: "var(--card-soft)",
   };
 
+  function draftForMember(member: Member): RowDraft {
+    return draftById[member.user_id] ?? {
+      display_name: member.display_name ?? "",
+      favorite_team: member.favorite_team ?? null,
+      role: normalizeRole(member.role),
+      payment_status: normalizePaymentStatus(member.payment_status),
+      is_test_account: !!member.is_test_account,
+    };
+  }
+
   return (
     <main className="ui-page ui-page--wide ui-admin-page">
       <div className="ui-page-header">
@@ -1006,233 +1016,369 @@ export default function PeopleAdminClient({
       {loading ? (
         <p style={{ marginTop: 16 }}>Loading…</p>
       ) : (
-        <UiTableShell style={{ marginTop: 14 }}>
-          {filteredMembers.length === 0 ? (
-            <div style={{ padding: 16, opacity: 0.75 }}>No matching members.</div>
-          ) : (
-            <UiTableScroll>
-              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1220 }}>
-                <thead>
-                  <tr style={{ background: "var(--card-soft)", textAlign: "left", fontSize: 12 }}>
-                    {sortableRosterHeader("Name", "name")}
-                    {sortableRosterHeader("Team", "team")}
-                    {sortableRosterHeader("Role", "role")}
-                    {sortableRosterHeader("Payment", "payment")}
-                    {sortableRosterHeader("Email", "email")}
-                    <UiTableHeadCell>Actions</UiTableHeadCell>
-                    {sortableRosterHeader("Joined", "joined")}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredMembers.map((m) => {
-                    const draft = draftById[m.user_id] ?? {
-                      display_name: m.display_name ?? "",
-                      favorite_team: m.favorite_team ?? null,
-                      role: normalizeRole(m.role),
-                      payment_status: normalizePaymentStatus(m.payment_status),
-                      is_test_account: !!m.is_test_account,
-                    };
+        <>
+          <UiTableShell className="people-roster-table-shell" style={{ marginTop: 14 }}>
+            {filteredMembers.length === 0 ? (
+              <div style={{ padding: 16, opacity: 0.75 }}>No matching members.</div>
+            ) : (
+              <UiTableScroll>
+                <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1220 }}>
+                  <thead>
+                    <tr style={{ background: "var(--card-soft)", textAlign: "left", fontSize: 12 }}>
+                      {sortableRosterHeader("Name", "name")}
+                      {sortableRosterHeader("Team", "team")}
+                      {sortableRosterHeader("Role", "role")}
+                      {sortableRosterHeader("Payment", "payment")}
+                      {sortableRosterHeader("Email", "email")}
+                      <UiTableHeadCell>Actions</UiTableHeadCell>
+                      {sortableRosterHeader("Joined", "joined")}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredMembers.map((m) => {
+                      const draft = draftForMember(m);
 
-                    const saving = savingMemberId === m.user_id;
-                    const removing = removingMemberId === m.user_id;
-                    const displayNameDirty = draft.display_name.trim() !== (m.display_name ?? "").trim();
+                      const saving = savingMemberId === m.user_id;
+                      const removing = removingMemberId === m.user_id;
+                      const displayNameDirty = draft.display_name.trim() !== (m.display_name ?? "").trim();
 
-                    return (
-                      <tr key={m.user_id}>
-                        <td style={{ padding: "8px 10px", borderTop: "1px solid var(--border)" }}>
+                      return (
+                        <tr key={m.user_id}>
+                          <td style={{ padding: "8px 10px", borderTop: "1px solid var(--border)" }}>
+                            <input
+                              value={draft.display_name}
+                              onChange={(e) => setDraftField(m.user_id, { display_name: e.target.value })}
+                              placeholder="Display name"
+                              style={{
+                                width: "100%",
+                                padding: "6px 8px",
+                                borderRadius: 8,
+                                border: "1px solid var(--border)",
+                                background: "var(--card)",
+                                color: "var(--foreground)",
+                                fontSize: 13,
+                              }}
+                            />
+                          </td>
+                          <td style={{ padding: "8px 10px", borderTop: "1px solid var(--border)" }}>
+                            <select
+                              disabled={saving || removing}
+                              value={draft.favorite_team ?? ""}
+                              onChange={(e) => {
+                                const favorite_team = e.target.value.trim() || null;
+                                setDraftField(m.user_id, { favorite_team });
+                                void saveMember(m.user_id, { favorite_team });
+                              }}
+                              style={{
+                                width: "100%",
+                                padding: "6px 8px",
+                                borderRadius: 8,
+                                border: "1px solid var(--border)",
+                                background: "var(--card)",
+                                color: "var(--foreground)",
+                                fontWeight: 600,
+                                fontSize: 13,
+                              }}
+                            >
+                              <option value="">—</option>
+                              {AFL_TEAMS.map((team) => (
+                                <option key={team} value={team}>
+                                  {team}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td style={{ padding: "8px 10px", borderTop: "1px solid var(--border)", fontSize: 13 }}>
+                            <select
+                              disabled={saving || removing}
+                              value={draft.role}
+                              onChange={(e) => {
+                                const role = e.target.value as MemberRole;
+                                setDraftField(m.user_id, { role });
+                                void saveMember(m.user_id, { role });
+                              }}
+                              style={{
+                                width: "100%",
+                                padding: "6px 8px",
+                                borderRadius: 8,
+                                border: "1px solid var(--border)",
+                                background: "var(--card)",
+                                color: "var(--foreground)",
+                                fontWeight: 700,
+                                fontSize: 13,
+                              }}
+                            >
+                              <option value="owner">owner</option>
+                              <option value="admin">admin</option>
+                              <option value="member">member</option>
+                            </select>
+                          </td>
+                          <td style={{ padding: "8px 10px", borderTop: "1px solid var(--border)" }}>
+                            <select
+                              disabled={saving || removing}
+                              value={draft.payment_status}
+                              onChange={(e) => {
+                                const payment_status = e.target.value as PaymentStatus;
+                                setDraftField(m.user_id, { payment_status });
+                                void saveMember(m.user_id, { payment_status });
+                              }}
+                              style={{
+                                width: "100%",
+                                padding: "6px 8px",
+                                borderRadius: 8,
+                                border: "1px solid var(--border)",
+                                background: "var(--card)",
+                                color: "var(--foreground)",
+                                fontWeight: 700,
+                                fontSize: 13,
+                              }}
+                            >
+                              <option value="paid">paid</option>
+                              <option value="pending">pending</option>
+                              <option value="waived">waived</option>
+                            </select>
+                          </td>
+                          <td
+                            style={{
+                              padding: "8px 10px",
+                              borderTop: "1px solid var(--border)",
+                              fontSize: 13,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {m.email ?? `${m.user_id.slice(0, 8)}…`}
+                          </td>
+                          <td style={{ padding: "8px 10px", borderTop: "1px solid var(--border)" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "nowrap" }}>
+                              <label
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 5,
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                  opacity: saving || removing ? 0.7 : 1,
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  aria-label="Test account"
+                                  title="Test account"
+                                  disabled={saving || removing}
+                                  checked={draft.is_test_account}
+                                  onChange={(e) => {
+                                    const is_test_account = e.target.checked;
+                                    setDraftField(m.user_id, { is_test_account });
+                                    void saveMember(m.user_id, { is_test_account });
+                                  }}
+                                  style={{
+                                    cursor: saving || removing ? "not-allowed" : "pointer",
+                                    width: 16,
+                                    height: 16,
+                                  }}
+                                />
+                                <span>Test</span>
+                              </label>
+                              {displayNameDirty && (
+                                <button
+                                  disabled={!displayNameDirty || saving || removing}
+                                  onClick={() => saveMember(m.user_id, { display_name: draft.display_name })}
+                                  style={{
+                                    padding: "6px 9px",
+                                    borderRadius: 8,
+                                    border: "1px solid var(--border)",
+                                    background: "var(--card)",
+                                    color: "var(--foreground)",
+                                    fontSize: 13,
+                                    fontWeight: 800,
+                                    whiteSpace: "nowrap",
+                                    cursor: !displayNameDirty || saving || removing ? "not-allowed" : "pointer",
+                                    opacity: !displayNameDirty || saving || removing ? 0.7 : 1,
+                                  }}
+                                >
+                                  {saving ? "Saving…" : "Save"}
+                                </button>
+                              )}
+                              <button
+                                disabled={saving || removing}
+                                onClick={() => removeMember(m.user_id)}
+                                style={{
+                                  padding: "6px 9px",
+                                  borderRadius: 8,
+                                  border: "1px solid rgba(236, 72, 153, 0.45)",
+                                  background: "var(--card)",
+                                  color: "var(--foreground)",
+                                  fontSize: 13,
+                                  fontWeight: 900,
+                                  whiteSpace: "nowrap",
+                                  cursor: saving || removing ? "not-allowed" : "pointer",
+                                  opacity: saving || removing ? 0.7 : 1,
+                                }}
+                              >
+                                {removing ? "Removing…" : "Remove"}
+                              </button>
+                            </div>
+                          </td>
+                          <td
+                            style={{
+                              padding: "8px 10px",
+                              borderTop: "1px solid var(--border)",
+                              fontSize: 13,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {fmtMelbourne(m.joined_at)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </UiTableScroll>
+            )}
+          </UiTableShell>
+
+          <div className="people-roster-mobile-list">
+            {filteredMembers.length === 0 ? (
+              <div className="ui-card people-roster-mobile-empty">No matching members.</div>
+            ) : (
+              filteredMembers.map((m) => {
+                const draft = draftForMember(m);
+                const saving = savingMemberId === m.user_id;
+                const removing = removingMemberId === m.user_id;
+                const displayNameDirty = draft.display_name.trim() !== (m.display_name ?? "").trim();
+
+                return (
+                  <div key={`mobile-${m.user_id}`} className="people-roster-card">
+                    <div className="people-roster-card__header">
+                      <div className="people-roster-card__identity">
+                        <label className="people-roster-field people-roster-field--name">
+                          <span>Display name</span>
                           <input
                             value={draft.display_name}
                             onChange={(e) => setDraftField(m.user_id, { display_name: e.target.value })}
                             placeholder="Display name"
-                            style={{
-                              width: "100%",
-                              padding: "6px 8px",
-                              borderRadius: 8,
-                              border: "1px solid var(--border)",
-                              background: "var(--card)",
-                              color: "var(--foreground)",
-                              fontSize: 13,
-                            }}
+                            className="ui-input people-roster-control"
                           />
-                        </td>
-                        <td style={{ padding: "8px 10px", borderTop: "1px solid var(--border)" }}>
-                          <select
-                            disabled={saving || removing}
-                            value={draft.favorite_team ?? ""}
-                            onChange={(e) => {
-                              const favorite_team = e.target.value.trim() || null;
-                              setDraftField(m.user_id, { favorite_team });
-                              void saveMember(m.user_id, { favorite_team });
-                            }}
-                            style={{
-                              width: "100%",
-                              padding: "6px 8px",
-                              borderRadius: 8,
-                              border: "1px solid var(--border)",
-                              background: "var(--card)",
-                              color: "var(--foreground)",
-                              fontWeight: 600,
-                              fontSize: 13,
-                            }}
-                          >
-                            <option value="">—</option>
-                            {AFL_TEAMS.map((team) => (
-                              <option key={team} value={team}>
-                                {team}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td style={{ padding: "8px 10px", borderTop: "1px solid var(--border)", fontSize: 13 }}>
-                          <select
-                            disabled={saving || removing}
-                            value={draft.role}
-                            onChange={(e) => {
-                              const role = e.target.value as MemberRole;
-                              setDraftField(m.user_id, { role });
-                              void saveMember(m.user_id, { role });
-                            }}
-                            style={{
-                              width: "100%",
-                              padding: "6px 8px",
-                              borderRadius: 8,
-                              border: "1px solid var(--border)",
-                              background: "var(--card)",
-                              color: "var(--foreground)",
-                              fontWeight: 700,
-                              fontSize: 13,
-                            }}
-                          >
-                            <option value="owner">owner</option>
-                            <option value="admin">admin</option>
-                            <option value="member">member</option>
-                          </select>
-                        </td>
-                        <td style={{ padding: "8px 10px", borderTop: "1px solid var(--border)" }}>
-                          <select
-                            disabled={saving || removing}
-                            value={draft.payment_status}
-                            onChange={(e) => {
-                              const payment_status = e.target.value as PaymentStatus;
-                              setDraftField(m.user_id, { payment_status });
-                              void saveMember(m.user_id, { payment_status });
-                            }}
-                            style={{
-                              width: "100%",
-                              padding: "6px 8px",
-                              borderRadius: 8,
-                              border: "1px solid var(--border)",
-                              background: "var(--card)",
-                              color: "var(--foreground)",
-                              fontWeight: 700,
-                              fontSize: 13,
-                            }}
-                          >
-                            <option value="paid">paid</option>
-                            <option value="pending">pending</option>
-                            <option value="waived">waived</option>
-                          </select>
-                        </td>
-                        <td
-                          style={{
-                            padding: "8px 10px",
-                            borderTop: "1px solid var(--border)",
-                            fontSize: 13,
-                            whiteSpace: "nowrap",
-                          }}
-                        >
+                        </label>
+                        <div className="people-roster-email">
                           {m.email ?? `${m.user_id.slice(0, 8)}…`}
-                        </td>
-                        <td style={{ padding: "8px 10px", borderTop: "1px solid var(--border)" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "nowrap" }}>
-                            <label
-                              style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: 5,
-                                fontSize: 11,
-                                fontWeight: 700,
-                                opacity: saving || removing ? 0.7 : 1,
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              <input
-                                type="checkbox"
-                                aria-label="Test account"
-                                title="Test account"
-                                disabled={saving || removing}
-                                checked={draft.is_test_account}
-                                onChange={(e) => {
-                                  const is_test_account = e.target.checked;
-                                  setDraftField(m.user_id, { is_test_account });
-                                  void saveMember(m.user_id, { is_test_account });
-                                }}
-                                style={{
-                                  cursor: saving || removing ? "not-allowed" : "pointer",
-                                  width: 16,
-                                  height: 16,
-                                }}
-                              />
-                              <span>Test</span>
-                            </label>
-                            {displayNameDirty && (
-                              <button
-                                disabled={!displayNameDirty || saving || removing}
-                                onClick={() => saveMember(m.user_id, { display_name: draft.display_name })}
-                                style={{
-                                  padding: "6px 9px",
-                                  borderRadius: 8,
-                                  border: "1px solid var(--border)",
-                                  background: "var(--card)",
-                                  color: "var(--foreground)",
-                                  fontSize: 13,
-                                  fontWeight: 800,
-                                  whiteSpace: "nowrap",
-                                  cursor: !displayNameDirty || saving || removing ? "not-allowed" : "pointer",
-                                  opacity: !displayNameDirty || saving || removing ? 0.7 : 1,
-                                }}
-                              >
-                                {saving ? "Saving…" : "Save"}
-                              </button>
-                            )}
-                            <button
-                              disabled={saving || removing}
-                              onClick={() => removeMember(m.user_id)}
-                              style={{
-                                padding: "6px 9px",
-                                borderRadius: 8,
-                                border: "1px solid rgba(236, 72, 153, 0.45)",
-                                background: "var(--card)",
-                                color: "var(--foreground)",
-                                fontSize: 13,
-                                fontWeight: 900,
-                                whiteSpace: "nowrap",
-                                cursor: saving || removing ? "not-allowed" : "pointer",
-                                opacity: saving || removing ? 0.7 : 1,
-                              }}
-                            >
-                              {removing ? "Removing…" : "Remove"}
-                            </button>
-                          </div>
-                        </td>
-                        <td
-                          style={{
-                            padding: "8px 10px",
-                            borderTop: "1px solid var(--border)",
-                            fontSize: 13,
-                            whiteSpace: "nowrap",
+                        </div>
+                      </div>
+                      <span className={`people-roster-payment people-roster-payment--${draft.payment_status}`}>
+                        {draft.payment_status}
+                      </span>
+                    </div>
+
+                    <div className="people-roster-card__grid">
+                      <label className="people-roster-field">
+                        <span>Team</span>
+                        <select
+                          disabled={saving || removing}
+                          value={draft.favorite_team ?? ""}
+                          onChange={(e) => {
+                            const favorite_team = e.target.value.trim() || null;
+                            setDraftField(m.user_id, { favorite_team });
+                            void saveMember(m.user_id, { favorite_team });
                           }}
+                          className="ui-input people-roster-control"
                         >
-                          {fmtMelbourne(m.joined_at)}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </UiTableScroll>
-          )}
-        </UiTableShell>
+                          <option value="">—</option>
+                          {AFL_TEAMS.map((team) => (
+                            <option key={team} value={team}>
+                              {team}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label className="people-roster-field">
+                        <span>Role</span>
+                        <select
+                          disabled={saving || removing}
+                          value={draft.role}
+                          onChange={(e) => {
+                            const role = e.target.value as MemberRole;
+                            setDraftField(m.user_id, { role });
+                            void saveMember(m.user_id, { role });
+                          }}
+                          className="ui-input people-roster-control"
+                        >
+                          <option value="owner">owner</option>
+                          <option value="admin">admin</option>
+                          <option value="member">member</option>
+                        </select>
+                      </label>
+
+                      <label className="people-roster-field">
+                        <span>Payment</span>
+                        <select
+                          disabled={saving || removing}
+                          value={draft.payment_status}
+                          onChange={(e) => {
+                            const payment_status = e.target.value as PaymentStatus;
+                            setDraftField(m.user_id, { payment_status });
+                            void saveMember(m.user_id, { payment_status });
+                          }}
+                          className="ui-input people-roster-control"
+                        >
+                          <option value="paid">paid</option>
+                          <option value="pending">pending</option>
+                          <option value="waived">waived</option>
+                        </select>
+                      </label>
+
+                      <div className="people-roster-field">
+                        <span>Joined</span>
+                        <strong>{fmtMelbourne(m.joined_at)}</strong>
+                      </div>
+                    </div>
+
+                    <div className="people-roster-card__actions">
+                      <label className="people-roster-test-toggle">
+                        <input
+                          type="checkbox"
+                          aria-label="Test account"
+                          title="Test account"
+                          disabled={saving || removing}
+                          checked={draft.is_test_account}
+                          onChange={(e) => {
+                            const is_test_account = e.target.checked;
+                            setDraftField(m.user_id, { is_test_account });
+                            void saveMember(m.user_id, { is_test_account });
+                          }}
+                        />
+                        <span>Test account</span>
+                      </label>
+
+                      <div className="people-roster-action-buttons">
+                        {displayNameDirty && (
+                          <button
+                            type="button"
+                            className="ui-btn"
+                            disabled={!displayNameDirty || saving || removing}
+                            onClick={() => saveMember(m.user_id, { display_name: draft.display_name })}
+                          >
+                            {saving ? "Saving…" : "Save name"}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="ui-btn people-roster-remove-btn"
+                          disabled={saving || removing}
+                          onClick={() => removeMember(m.user_id)}
+                        >
+                          {removing ? "Removing…" : "Remove"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </>
       )}
         </>
       )}

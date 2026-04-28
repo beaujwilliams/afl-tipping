@@ -814,6 +814,21 @@ button {
   line-height: 1.05;
 }
 
+.leaderboard-trend-title {
+  margin: 0;
+  font-size: 30px;
+  line-height: 1.1;
+}
+
+.leaderboard-trend-metric {
+  width: max-content;
+  max-width: 100%;
+}
+
+.leaderboard-trend-range-summary {
+  color: var(--muted);
+}
+
 .mobile-standings-sheet-close {
   appearance: none;
   border: 1px solid var(--border);
@@ -922,6 +937,20 @@ button {
     font-size: clamp(2.25rem, 12vw, 3.25rem);
     font-weight: 600;
     letter-spacing: -0.045em;
+  }
+
+  .leaderboard-trend-title {
+    font-size: 26px;
+    letter-spacing: -0.03em;
+  }
+
+  .leaderboard-trend-metric {
+    border-radius: 14px !important;
+  }
+
+  .leaderboard-trend-range-summary {
+    margin-top: -4px !important;
+    font-size: 12px;
   }
 }
 

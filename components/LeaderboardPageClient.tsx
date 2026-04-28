@@ -2778,7 +2778,7 @@ export default function LeaderboardPageClient({
                 }}
               >
                 <div style={{ display: "grid", gap: 4 }}>
-                  <h2 style={{ margin: 0, fontSize: 30, lineHeight: 1.1 }}>Position Trend</h2>
+                  <h2 className="leaderboard-trend-title">Position Trend</h2>
                   <p className="ui-caption" style={{ margin: 0 }}>
                     Compare leaderboard rank or total points across completed rounds. Select
                     multiple tipsters to track head-to-head movement.
@@ -2788,14 +2788,15 @@ export default function LeaderboardPageClient({
                   style={{
                     display: "flex",
                     flexDirection: "column",
-                    gap: 8,
-                    alignItems: isMobile ? "stretch" : "flex-end",
-                    justifySelf: isMobile ? "stretch" : "end",
+                    gap: 6,
+                    alignItems: isMobile ? "flex-start" : "flex-end",
+                    justifySelf: isMobile ? "start" : "end",
                   }}
                 >
                   <div
                     role="group"
                     aria-label="Trend metric"
+                    className="leaderboard-trend-metric"
                     style={{
                       display: "inline-flex",
                       border: "1px solid var(--border)",
@@ -2814,7 +2815,7 @@ export default function LeaderboardPageClient({
                           style={{
                             appearance: "none",
                             border: "none",
-                            padding: "6px 12px",
+                            padding: isMobile ? "6px 14px" : "6px 12px",
                             cursor: "pointer",
                             fontSize: 13,
                             fontWeight: 700,
@@ -2831,7 +2832,7 @@ export default function LeaderboardPageClient({
                 </div>
               </div>
               {trendRangeSummary && (
-                <p className="ui-caption" style={{ margin: 0 }}>
+                <p className="ui-caption leaderboard-trend-range-summary" style={{ margin: 0 }}>
                   {trendRangeSummary}
                 </p>
               )}

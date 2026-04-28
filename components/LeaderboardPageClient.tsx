@@ -2619,7 +2619,6 @@ export default function LeaderboardPageClient({
                         </span>
                         <span className="mobile-standings-primary">
                           <strong>{fmtPts(r.total_points)}</strong>
-                          <span>Pts</span>
                         </span>
                       </button>
                     );

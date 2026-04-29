@@ -122,6 +122,7 @@ type PlayerRoundStat = {
   round_score: number;
   accuracy_pct: number;
   avg_correct_odds: number;
+  avg_picked_odds: number;
   underdog_points: number;
 };
 
@@ -135,6 +136,12 @@ type RoundAggregateStat = {
   most_picked_team: string | null;
   most_picked_count: number;
   most_picked_pct: number;
+};
+
+type StoryCandidate = {
+  id: string;
+  priority: number;
+  line: string;
 };
 
 function round2(v: number) {
@@ -436,6 +443,37 @@ function rankPositionAsc(values: number[], target: number) {
 
 function rankPositionDesc(values: number[], target: number) {
   return 1 + values.filter((v) => Number(v) > Number(target) + 0.0001).length;
+}
+
+function pushStoryCandidate(
+  list: StoryCandidate[],
+  candidate: StoryCandidate | null | undefined
+) {
+  if (!candidate) return;
+  const line = String(candidate.line ?? "").trim();
+  if (!line) return;
+  list.push({ ...candidate, line });
+}
+
+function pickStoryCandidates(
+  candidates: StoryCandidate[],
+  limit: number,
+  excludeIds = new Set<string>()
+) {
+  return [...candidates]
+    .filter((x) => !excludeIds.has(x.id))
+    .sort((a, b) => Number(b.priority) - Number(a.priority))
+    .filter((x, index, all) => all.findIndex((y) => y.id === x.id || y.line === x.line) === index)
+    .slice(0, limit);
+}
+
+function pickStoryLines(candidates: StoryCandidate[], limit: number, excludeIds = new Set<string>()) {
+  return pickStoryCandidates(candidates, limit, excludeIds).map((x) => x.line);
+}
+
+function formatHookSuffix(lines: string[]) {
+  const first = lines.map((x) => String(x).trim()).find(Boolean);
+  return first ? ` (${first})` : "";
 }
 
 export async function GET(req: Request) {
@@ -849,7 +887,7 @@ export async function GET(req: Request) {
 
     const { data: profiles, error: pErr } = await supabase
       .from("profiles")
-      .select("id, display_name")
+      .select("id, display_name, favorite_team")
       .in("id", profileIds);
 
     if (pErr) {
@@ -860,9 +898,16 @@ export async function GET(req: Request) {
     }
 
     const nameByUserId: Record<string, string> = {};
-    ((profiles ?? []) as Array<{ id: string; display_name: string | null }>).forEach((p) => {
+    const favoriteTeamByUserId: Record<string, string> = {};
+    ((profiles ?? []) as Array<{
+      id: string;
+      display_name: string | null;
+      favorite_team?: string | null;
+    }>).forEach((p) => {
       const uid = String(p.id);
       nameByUserId[uid] = safeDisplayName(p.display_name, uid);
+      const favoriteTeam = String(p.favorite_team ?? "").trim();
+      if (favoriteTeam) favoriteTeamByUserId[uid] = favoriteTeam;
     });
 
     const roundResultsUrl = `${url.origin}/api/round-results?season=${encodeURIComponent(
@@ -1043,6 +1088,8 @@ export async function GET(req: Request) {
 
     const playerStats: PlayerRoundStat[] = rrPlayers.map((p) => {
       let correctOddsSum = 0;
+      let pickedOddsSum = 0;
+      let pickedOddsCount = 0;
       let underdogPoints = 0;
 
       for (const m of roundMatches) {
@@ -1051,6 +1098,18 @@ export async function GET(req: Request) {
         if (!winner) continue;
 
         const picked = p.picks?.[mid] ?? null;
+        if (picked) {
+          const odds = oddsByMatch[mid] ?? null;
+          if (odds) {
+            if (picked === m.home_team) {
+              pickedOddsSum += Number(odds.home);
+              pickedOddsCount += 1;
+            } else if (picked === m.away_team) {
+              pickedOddsSum += Number(odds.away);
+              pickedOddsCount += 1;
+            }
+          }
+        }
         if (!picked || picked !== winner) continue;
 
         const winnerOdds = winnerOddsByMatch[mid] ?? null;
@@ -1067,6 +1126,7 @@ export async function GET(req: Request) {
 
       const accuracy = p.total_tips > 0 ? (p.correct_tips / p.total_tips) * 100 : 0;
       const avgCorrectOdds = p.correct_tips > 0 ? correctOddsSum / p.correct_tips : 0;
+      const avgPickedOdds = pickedOddsCount > 0 ? pickedOddsSum / pickedOddsCount : 0;
 
       return {
         user_id: p.user_id,
@@ -1076,6 +1136,7 @@ export async function GET(req: Request) {
         round_score: Number(p.round_score ?? 0),
         accuracy_pct: accuracy,
         avg_correct_odds: avgCorrectOdds,
+        avg_picked_odds: avgPickedOdds,
         underdog_points: underdogPoints,
       };
     });
@@ -1508,11 +1569,311 @@ export async function GET(req: Request) {
       return events;
     });
 
-    const historicalContextCandidates: Array<{
-      id: string;
-      priority: number;
-      line: string;
+    const trendPointsByUserId = new Map(
+      rankTrends.map((series) => [
+        String(series.user_id),
+        [...(series.points ?? [])]
+          .filter((p) => Number(p.round_number) <= Number(roundNumber))
+          .sort((a, b) => Number(a.round_number) - Number(b.round_number)),
+      ])
+    );
+    const playerRoundHistoryByUserId = new Map<
+      string,
+      Array<{
+        round_number: number;
+        round_score: number;
+        correct_tips: number;
+        total_tips: number;
+      }>
+    >();
+    const allRoundScoreEvents: Array<{
+      user_id: string;
+      display_name: string;
+      round_number: number;
+      round_score: number;
     }> = [];
+
+    for (const result of historicalRoundResults) {
+      if (!result) continue;
+      const rn = Number(result.round_number);
+
+      for (const player of (result.data.players ?? []) as RoundResultsPlayer[]) {
+        const uid = String(player.user_id);
+        const history = playerRoundHistoryByUserId.get(uid) ?? [];
+        const historyPoint = {
+          round_number: rn,
+          round_score: Number(player.round_score ?? 0),
+          correct_tips: Number(player.correct_tips ?? 0),
+          total_tips: Number(player.total_tips ?? 0),
+        };
+        history.push(historyPoint);
+        playerRoundHistoryByUserId.set(uid, history);
+        allRoundScoreEvents.push({
+          user_id: uid,
+          display_name: String(player.display_name ?? ""),
+          round_number: rn,
+          round_score: Number(player.round_score ?? 0),
+        });
+      }
+    }
+
+    const historyBeforeCurrent = (userId: string) =>
+      (playerRoundHistoryByUserId.get(String(userId)) ?? []).filter(
+        (p) => Number(p.round_number) < Number(roundNumber)
+      );
+    const trendBeforeCurrent = (userId: string) =>
+      (trendPointsByUserId.get(String(userId)) ?? []).filter(
+        (p) => Number(p.round_number) < Number(roundNumber)
+      );
+    const previousRankPoint = (userId: string) => {
+      const previous = trendBeforeCurrent(userId);
+      return previous.length > 0 ? previous[previous.length - 1] : null;
+    };
+    const firstTimeAtRank = (userId: string, rank: number) => {
+      const current = lbByUserId.get(String(userId));
+      if (!current || Number(current.rank) > rank) return false;
+      return trendBeforeCurrent(userId).every((p) => Number(p.rank) > rank);
+    };
+    const returnedToRank = (userId: string, rank: number) => {
+      const current = lbByUserId.get(String(userId));
+      const previous = previousRankPoint(userId);
+      if (!current || !previous) return false;
+      if (Number(current.rank) > rank || Number(previous.rank) <= rank) return false;
+      return trendBeforeCurrent(userId).some((p) => Number(p.rank) <= rank);
+    };
+    const playerContextHooks = (player: PlayerRoundStat, limit = 2) => {
+      const userId = String(player.user_id);
+      const lbRow = lbByUserId.get(userId) ?? null;
+      const hooks: StoryCandidate[] = [];
+      const priorHistory = historyBeforeCurrent(userId);
+      const previousHigh = priorHistory.length
+        ? Math.max(...priorHistory.map((p) => Number(p.round_score)))
+        : null;
+      const previousLow = priorHistory.length
+        ? Math.min(...priorHistory.map((p) => Number(p.round_score)))
+        : null;
+      const scoreRank =
+        1 +
+        allRoundScoreEvents.filter(
+          (x) => Number(x.round_score) > Number(player.round_score) + 0.0001
+        ).length;
+
+      if (scoreRank <= 5) {
+        pushStoryCandidate(hooks, {
+          id: `${userId}-score-rank`,
+          priority: 92,
+          line: `${ordinal(scoreRank)} highest individual score this season`,
+        });
+      }
+      if (previousHigh !== null && Number(player.round_score) > Number(previousHigh) + 0.0001) {
+        pushStoryCandidate(hooks, {
+          id: `${userId}-personal-best`,
+          priority: 76,
+          line: "personal best round score",
+        });
+      }
+      if (previousLow !== null && Number(player.round_score) < Number(previousLow) - 0.0001) {
+        pushStoryCandidate(hooks, {
+          id: `${userId}-personal-low`,
+          priority: 72,
+          line: "lowest score of their season",
+        });
+      }
+      if (firstTimeAtRank(userId, 3)) {
+        pushStoryCandidate(hooks, {
+          id: `${userId}-first-podium`,
+          priority: 90,
+          line: "first time on the podium",
+        });
+      } else if (firstTimeAtRank(userId, 10)) {
+        pushStoryCandidate(hooks, {
+          id: `${userId}-first-top10`,
+          priority: 82,
+          line: "first time in the top 10",
+        });
+      } else if (returnedToRank(userId, 10)) {
+        pushStoryCandidate(hooks, {
+          id: `${userId}-back-top10`,
+          priority: 78,
+          line: "back into the top 10",
+        });
+      }
+      if (lbRow && Number(lbRow.rank) > 1 && Number(lbRow.behind_leader) <= 10) {
+        pushStoryCandidate(hooks, {
+          id: `${userId}-leader-gap`,
+          priority: 64,
+          line: `only ${fmt2(Number(lbRow.behind_leader))} behind the leader`,
+        });
+      }
+      const roundZero = (playerRoundHistoryByUserId.get(userId) ?? []).find(
+        (p) => Number(p.round_number) === 0
+      );
+      if (lbRow && Number(lbRow.rank) <= 10 && (!roundZero || Number(roundZero.total_tips) === 0)) {
+        pushStoryCandidate(hooks, {
+          id: `${userId}-missed-r0`,
+          priority: 62,
+          line: "inside the top 10 despite missing Round 0",
+        });
+      }
+
+      return pickStoryLines(hooks, limit);
+    };
+
+    const moverContextHooks = (row: LeaderboardRow, kind: "climber" | "faller") => {
+      const userId = String(row.user_id);
+      const player = playerStats.find((p) => String(p.user_id) === userId) ?? null;
+      const hooks: StoryCandidate[] = [];
+      const previous = previousRankPoint(userId);
+      const movementMagnitude = Math.abs(Number(row.movement));
+
+      if (kind === "faller" && previous && Number(previous.rank) <= 10 && Number(row.rank) > 10) {
+        pushStoryCandidate(hooks, {
+          id: `${userId}-out-top10`,
+          priority: 92,
+          line: "out of the top 10",
+        });
+      }
+      if (kind === "climber" && firstTimeAtRank(userId, 10)) {
+        pushStoryCandidate(hooks, {
+          id: `${userId}-into-top10`,
+          priority: 90,
+          line: "first top 10 appearance",
+        });
+      }
+      if (player && Number(player.total_tips) < fullRoundTips) {
+        pushStoryCandidate(hooks, {
+          id: `${userId}-missed-tips`,
+          priority: 88,
+          line: `only submitted ${player.total_tips}/${fullRoundTips} tips`,
+        });
+      }
+      if (player && kind === "faller" && Number(player.correct_tips) <= 2) {
+        pushStoryCandidate(hooks, {
+          id: `${userId}-low-correct`,
+          priority: 84,
+          line: `${player.correct_tips}/${fullRoundTips} correct`,
+        });
+      }
+      if (player && kind === "faller" && Number(player.round_score) < Number(roundAvg) - 2) {
+        pushStoryCandidate(hooks, {
+          id: `${userId}-below-average`,
+          priority: 74,
+          line: `${fmt2(Number(roundAvg) - Number(player.round_score))} below round average`,
+        });
+      }
+      if (movementMagnitude >= 10) {
+        pushStoryCandidate(hooks, {
+          id: `${userId}-big-move`,
+          priority: 82,
+          line: `${kind === "climber" ? "+" : "-"}${Math.trunc(
+            movementMagnitude
+          )} is one of the biggest moves this season`,
+        });
+      }
+      const recentTrend = (trendPointsByUserId.get(userId) ?? []).slice(-4);
+      if (kind === "faller" && recentTrend.length >= 3) {
+        const first = recentTrend[0];
+        const last = recentTrend[recentTrend.length - 1];
+        const slide = Number(last.rank) - Number(first.rank);
+        if (slide >= 6) {
+          pushStoryCandidate(hooks, {
+            id: `${userId}-slide`,
+            priority: 70,
+            line: `down ${slide} spots over recent rounds`,
+          });
+        }
+      }
+
+      return pickStoryLines(hooks, 1);
+    };
+
+    const previousTop3Rows =
+      previousRoundNumber === null
+        ? []
+        : rankTrends
+            .map((series) => {
+              const point = (series.points ?? []).find(
+                (p) => Number(p.round_number) === Number(previousRoundNumber)
+              );
+              if (!point) return null;
+              return {
+                user_id: String(series.user_id),
+                display_name: String(series.display_name ?? ""),
+                rank: Number(point.rank),
+              };
+            })
+            .filter(
+              (x): x is { user_id: string; display_name: string; rank: number } =>
+                !!x && Number.isFinite(Number(x.rank))
+            )
+            .sort((a, b) => Number(a.rank) - Number(b.rank))
+            .slice(0, 3);
+
+    const leaderboardStoryCandidates: StoryCandidate[] = [];
+    const currentLeader = top3Rows[0] ?? null;
+    const previousLeader = previousTop3Rows[0] ?? null;
+    if (currentLeader && previousLeader && String(currentLeader.user_id) !== String(previousLeader.user_id)) {
+      pushStoryCandidate(leaderboardStoryCandidates, {
+        id: "new-leader",
+        priority: 96,
+        line: `${atHandle(currentLeader.display_name)} has taken top spot from ${atHandle(
+          previousLeader.display_name
+        )}.`,
+      });
+    } else if (
+      currentLeader &&
+      (trendPointsByUserId.get(String(currentLeader.user_id)) ?? []).length >= 2 &&
+      (trendPointsByUserId.get(String(currentLeader.user_id)) ?? []).every(
+        (p) => Number(p.rank) === 1
+      )
+    ) {
+      pushStoryCandidate(leaderboardStoryCandidates, {
+        id: "leader-wire-to-wire",
+        priority: 72,
+        line: `${atHandle(currentLeader.display_name)} still has not left top spot this season.`,
+      });
+    }
+
+    const previousTop3Ids = new Set(previousTop3Rows.map((r) => String(r.user_id)));
+    const newPodiumRows = top3Rows.filter((r) => !previousTop3Ids.has(String(r.user_id)));
+    if (previousTop3Rows.length === 3 && newPodiumRows.length > 0) {
+      pushStoryCandidate(leaderboardStoryCandidates, {
+        id: "podium-change",
+        priority: 82,
+        line: `${humanList(newPodiumRows.map((r) => atHandle(r.display_name)))} ${
+          newPodiumRows.length === 1 ? "joins" : "join"
+        } the podium this week.`,
+      });
+    }
+
+    if (top3Rows.length > 1 && Number(top3Rows[1].behind_leader) <= 1) {
+      pushStoryCandidate(leaderboardStoryCandidates, {
+        id: "leader-gap-tight",
+        priority: 80,
+        line: `The top two are separated by just ${fmt2(Number(top3Rows[1].behind_leader))}.`,
+      });
+    }
+
+    if (top3Rows.length >= 3 && lbRows.length >= 4) {
+      const podiumGap = Number(lbRows[3].behind_leader) - Number(top3Rows[2].behind_leader);
+      if (podiumGap >= 5) {
+        pushStoryCandidate(leaderboardStoryCandidates, {
+          id: "podium-gap-large",
+          priority: 60,
+          line: `The podium is ${fmt2(podiumGap)} points clear of 4th.`,
+        });
+      } else if (podiumGap > 0 && podiumGap <= 1) {
+        pushStoryCandidate(leaderboardStoryCandidates, {
+          id: "podium-gap-tight",
+          priority: 66,
+          line: `There is only ${fmt2(podiumGap)} between 3rd and 4th.`,
+        });
+      }
+    }
+
+    const leaderboardStoryLines = pickStoryLines(leaderboardStoryCandidates, 2);
+
+    const historicalContextCandidates: StoryCandidate[] = [];
 
     if (seasonRoundStats.length >= 2) {
       const roundCount = seasonRoundStats.length;
@@ -1669,14 +2030,35 @@ export async function GET(req: Request) {
         seasonUpsetRows.filter(
           (x) => Number(x.winner_odds) > Number(biggestUpset.winnerOdds) + 0.0001
         ).length;
+      const tiedSeasonHighUpset = seasonUpsetRows.find(
+        (x) =>
+          String(x.match_id) !== String(biggestUpset.match.id) &&
+          Math.abs(Number(x.winner_odds) - Number(biggestUpset.winnerOdds)) < 0.0001
+      );
 
-      if (upsetRank === 1 && seasonSecondBiggestUpset) {
+      if (upsetRank === 1 && tiedSeasonHighUpset) {
+        historicalContextCandidates.push({
+          id: "upset-tied-1",
+          priority: 96,
+          line: `${biggestUpset.winner} at ${fmt2(
+            Number(biggestUpset.winnerOdds)
+          )} matches the biggest upset of 2026, alongside Round ${
+            tiedSeasonHighUpset.round_number
+          } - ${tiedSeasonHighUpset.home_team} vs ${tiedSeasonHighUpset.away_team} (${
+            tiedSeasonHighUpset.winner_team
+          } @ ${fmt2(Number(tiedSeasonHighUpset.winner_odds))}).`,
+        });
+      } else if (upsetRank === 1 && seasonSecondBiggestUpset) {
         historicalContextCandidates.push({
           id: "upset-new-1",
           priority: 96,
           line: `${biggestUpset.winner} at ${fmt2(
             Number(biggestUpset.winnerOdds)
-          )} is now the biggest upset of 2026, passing Round ${seasonSecondBiggestUpset.round_number} (${seasonSecondBiggestUpset.winner_team} @ ${fmt2(
+          )} is now the biggest upset of 2026, passing Round ${
+            seasonSecondBiggestUpset.round_number
+          } - ${seasonSecondBiggestUpset.home_team} vs ${
+            seasonSecondBiggestUpset.away_team
+          } (${seasonSecondBiggestUpset.winner_team} @ ${fmt2(
             Number(seasonSecondBiggestUpset.winner_odds)
           )}).`,
         });
@@ -1685,9 +2067,9 @@ export async function GET(req: Request) {
           (x) => Number(x.winner_odds) > Number(biggestUpset.winnerOdds) + 0.0001
         );
         const suffix = higherUpset
-          ? ` Only Round ${higherUpset.round_number} (${higherUpset.winner_team} @ ${fmt2(
-              Number(higherUpset.winner_odds)
-            )}) was bigger.`
+          ? ` Only Round ${higherUpset.round_number} - ${higherUpset.home_team} vs ${
+              higherUpset.away_team
+            } (${higherUpset.winner_team} @ ${fmt2(Number(higherUpset.winner_odds))}) was bigger.`
           : "";
         historicalContextCandidates.push({
           id: `upset-rank-${upsetRank}`,
@@ -1751,11 +2133,211 @@ export async function GET(req: Request) {
       }
     }
 
-    const historicalContextLines = historicalContextCandidates
-      .sort((a, b) => Number(b.priority) - Number(a.priority))
-      .filter((x, index, all) => all.findIndex((y) => y.id === x.id) === index)
-      .slice(0, 4)
-      .map((x) => x.line);
+    const difficultyContextIds = new Set([
+      "difficulty-hardest",
+      "difficulty-top2-hard",
+      "difficulty-easiest",
+      "avg-high-despite-hard",
+      "avg-highest",
+      "avg-second-highest",
+      "avg-lowest",
+    ]);
+    const difficultyContextCandidates = pickStoryCandidates(
+      historicalContextCandidates.filter((x) => difficultyContextIds.has(x.id)),
+      2
+    );
+    const difficultyContextLines = difficultyContextCandidates.map((x) => x.line);
+    const historicalContextLines = pickStoryLines(
+      historicalContextCandidates,
+      4,
+      difficultyContextIds
+    );
+
+    const pickedOddsValues = playerStats
+      .map((p) => Number(p.avg_picked_odds ?? 0))
+      .filter((x) => Number.isFinite(x) && x > 0);
+    const compAvgPickedOdds =
+      pickedOddsValues.length > 0
+        ? pickedOddsValues.reduce((sum, x) => sum + x, 0) / pickedOddsValues.length
+        : 0;
+    const upsetMerchantRows = playerStats
+      .map((p) => {
+        let upsetPoints = 0;
+        let upsetCount = 0;
+        let bestUpset:
+          | {
+              team: string;
+              odds: number;
+            }
+          | null = null;
+
+        for (const m of roundMatches) {
+          const mid = String(m.id);
+          const winner = String(m.winner_team ?? "").trim();
+          const picked = String(picksByUserMatch.get(String(p.user_id))?.get(mid) ?? "").trim();
+          if (!winner || picked !== winner) continue;
+
+          const winnerOdds = winnerOddsByMatch[mid] ?? null;
+          const loserOdds = loserOddsByMatch[mid] ?? null;
+          if (
+            winnerOdds === null ||
+            loserOdds === null ||
+            Number(winnerOdds) < 2.5 ||
+            Number(winnerOdds) <= Number(loserOdds)
+          ) {
+            continue;
+          }
+
+          upsetCount += 1;
+          upsetPoints += Number(winnerOdds);
+          if (!bestUpset || Number(winnerOdds) > Number(bestUpset.odds)) {
+            bestUpset = { team: winner, odds: Number(winnerOdds) };
+          }
+        }
+
+        return { player: p, upsetPoints, upsetCount, bestUpset };
+      })
+      .filter((x) => Number(x.upsetPoints) > 0)
+      .sort((a, b) => {
+        if (Number(b.upsetPoints) !== Number(a.upsetPoints)) {
+          return Number(b.upsetPoints) - Number(a.upsetPoints);
+        }
+        return Number(b.player.round_score) - Number(a.player.round_score);
+      });
+    const safeHandsCorrectThreshold = Math.ceil(fullRoundTips * 0.75);
+    const safeHandsRows = playerStats
+      .filter(
+        (p) =>
+          Number(p.total_tips) === Number(fullRoundTips) &&
+          Number(p.correct_tips) >= Number(safeHandsCorrectThreshold) &&
+          Number(p.avg_picked_odds) > 0 &&
+          Number(p.avg_picked_odds) < Number(compAvgPickedOdds)
+      )
+      .sort((a, b) => {
+        if (Number(b.correct_tips) !== Number(a.correct_tips)) {
+          return Number(b.correct_tips) - Number(a.correct_tips);
+        }
+        return Number(a.avg_picked_odds) - Number(b.avg_picked_odds);
+      });
+    const loyalFanRows = playerStats
+      .map((p) => {
+        const favoriteTeam = favoriteTeamByUserId[String(p.user_id)] ?? "";
+        if (!favoriteTeam) return null;
+
+        let games = 0;
+        let tipped = 0;
+        let correct = 0;
+
+        for (const result of historicalRoundResults) {
+          if (!result) continue;
+          const player = ((result.data.players ?? []) as RoundResultsPlayer[]).find(
+            (x) => String(x.user_id) === String(p.user_id)
+          );
+          if (!player) continue;
+
+          for (const m of (result.data.matches ?? []) as RoundResultsMatch[]) {
+            if (m.home_team !== favoriteTeam && m.away_team !== favoriteTeam) continue;
+            games += 1;
+            const picked = String(player.picks?.[String(m.id)] ?? "").trim();
+            if (picked === favoriteTeam) tipped += 1;
+            if (picked === favoriteTeam && String(m.winner_team ?? "") === favoriteTeam) {
+              correct += 1;
+            }
+          }
+        }
+
+        const tipRate = games > 0 ? tipped / games : 0;
+        if (games < 3 || (tipRate < 0.75 && correct < 3)) return null;
+        return { player: p, favoriteTeam, games, tipped, correct, tipRate };
+      })
+      .filter(
+        (
+          x
+        ): x is {
+          player: PlayerRoundStat;
+          favoriteTeam: string;
+          games: number;
+          tipped: number;
+          correct: number;
+          tipRate: number;
+        } => !!x
+      )
+      .sort((a, b) => {
+        if (Number(b.tipRate) !== Number(a.tipRate)) return Number(b.tipRate) - Number(a.tipRate);
+        return Number(b.correct) - Number(a.correct);
+      });
+    const comebackRows = topRises
+      .map((r) => {
+        const history = playerRoundHistoryByUserId.get(String(r.user_id)) ?? [];
+        const previous = history
+          .filter((p) => Number(p.round_number) < Number(roundNumber))
+          .sort((a, b) => Number(b.round_number) - Number(a.round_number))[0];
+        const previousRoundStat =
+          previous === undefined
+            ? null
+            : seasonRoundStats.find((x) => Number(x.round_number) === Number(previous.round_number)) ??
+              null;
+        const bouncedFromBadRound =
+          previous &&
+          previousRoundStat &&
+          Number(previous.round_score) < Number(previousRoundStat.average_score) - 1;
+
+        return {
+          row: r,
+          previous,
+          previousRoundStat,
+          bouncedFromBadRound,
+        };
+      })
+      .filter((x) => Number(x.row.movement) >= 6 || x.bouncedFromBadRound)
+      .sort((a, b) => Number(b.row.movement) - Number(a.row.movement));
+    const badgeCandidateLines: string[] = [];
+    const upsetMerchant = upsetMerchantRows[0] ?? null;
+    if (upsetMerchant?.bestUpset) {
+      badgeCandidateLines.push(
+        `Upset Merchant: ${atHandle(upsetMerchant.player.display_name)} (${fmt2(
+          Number(upsetMerchant.upsetPoints)
+        )} upset points, best hit ${upsetMerchant.bestUpset.team} @ ${fmt2(
+          Number(upsetMerchant.bestUpset.odds)
+        )})`
+      );
+    }
+    const safeHands = safeHandsRows[0] ?? null;
+    if (safeHands) {
+      badgeCandidateLines.push(
+        `Safe Hands: ${atHandle(safeHands.display_name)} (${safeHands.correct_tips}/${fullRoundTips}, avg tipped odds ${fmt2(
+          Number(safeHands.avg_picked_odds)
+        )} vs comp ${fmt2(compAvgPickedOdds)})`
+      );
+    }
+    if (perfectRoundPlayers.length > 0) {
+      badgeCandidateLines.push(
+        `Perfect Round: ${humanList(
+          perfectRoundPlayers.map((p) => atHandle(p.display_name))
+        )} (${fullRoundTips}/${fullRoundTips})`
+      );
+    }
+    const loyalFan = loyalFanRows[0] ?? null;
+    if (loyalFan) {
+      badgeCandidateLines.push(
+        `Loyal Fan: ${atHandle(loyalFan.player.display_name)} (${loyalFan.favoriteTeam}, tipped them ${loyalFan.tipped}/${loyalFan.games} times, ${loyalFan.correct} correct)`
+      );
+    }
+    const comeback = comebackRows[0] ?? null;
+    if (comeback) {
+      const previousNote =
+        comeback.previous && comeback.previousRoundStat
+          ? ` after ${fmt2(Number(comeback.previous.round_score))} last round`
+          : "";
+      badgeCandidateLines.push(
+        `Comeback King: ${atHandle(comeback.row.display_name)} (${fmtSigned(
+          Number(comeback.row.movement)
+        )}${previousNote})`
+      );
+    }
+    const unsupportedBadgeLines = [
+      "Heartbreak Specialist: needs match margin data before we can award this properly.",
+    ];
 
     const sillyHeading = pickByRound(roundNumber, [
       "Some more silly data.",
@@ -1767,6 +2349,7 @@ export async function GET(req: Request) {
     if (roundWinners.length === 1) {
       const winner = roundWinners[0];
       const winnerLb = lbByUserId.get(String(winner.user_id)) ?? null;
+      const winnerContext = formatHookSuffix(playerContextHooks(winner, 1));
       const winnerMove =
         winnerLb && Number(winnerLb.movement) !== 0
           ? ` This shifts ${atHandle(winner.display_name)} ${fmtSigned(
@@ -1776,7 +2359,7 @@ export async function GET(req: Request) {
       textLines.push(
         `Round ${roundNumber} is complete, with ${atHandle(
           winner.display_name
-        )} top-scoring on ${fmt2(maxRoundScore)} points.${winnerMove}`
+        )} top-scoring on ${fmt2(maxRoundScore)} points${winnerContext}.${winnerMove}`
       );
     } else {
       textLines.push(
@@ -1798,10 +2381,11 @@ export async function GET(req: Request) {
       const movementSuffix =
         lbRow && Number(lbRow.movement) !== 0 ? ` (${fmtSigned(Number(lbRow.movement))})` : "";
       const rankSuffix = lbRow ? ` now ${ordinal(Number(lbRow.rank))} overall` : "";
+      const contextSuffix = formatHookSuffix(playerContextHooks(scorer, 1));
       textLines.push(
         `${idx + 1}. ${atHandle(scorer.display_name)} - ${fmt2(
           Number(scorer.round_score)
-        )}${movementSuffix}${rankSuffix}`
+        )}${movementSuffix}${rankSuffix}${contextSuffix}`
       );
     }
     if (tiedAtFifth.length > 0 && topRoundScorers.length >= 5) {
@@ -1813,13 +2397,14 @@ export async function GET(req: Request) {
     }
 
     if (extraClimber) {
+      const extraClimberContext = formatHookSuffix(moverContextHooks(extraClimber, "climber"));
       textLines.push("");
       textLines.push(
         `Outside the top scorers, biggest mover was ${atHandle(
           extraClimber.display_name
         )} (${fmtSigned(Number(extraClimber.movement))}) and into ${ordinal(
           Number(extraClimber.rank)
-        )}.`
+        )} overall${extraClimberContext}.`
       );
     }
 
@@ -1838,6 +2423,7 @@ export async function GET(req: Request) {
         `3. ${atHandle(top3Rows[2].display_name)} (-${fmt2(Number(top3Rows[2].behind_leader))})`
       );
     }
+    leaderboardStoryLines.forEach((line) => textLines.push(line));
 
     textLines.push("");
     textLines.push(
@@ -1856,19 +2442,30 @@ export async function GET(req: Request) {
     } else {
       textLines.push("No previous completed round baseline was available for comparison.");
     }
+    difficultyContextLines.forEach((line) => textLines.push(line));
 
     textLines.push("");
     textLines.push("Biggest climbers:");
-    topN(topRises, 5).forEach((r, idx) =>
-      textLines.push(`${idx + 1}. ${atHandle(r.display_name)} (${fmtSigned(Number(r.movement))})`)
-    );
+    topN(topRises, 5).forEach((r, idx) => {
+      const contextSuffix = formatHookSuffix(moverContextHooks(r, "climber"));
+      textLines.push(
+        `${idx + 1}. ${atHandle(r.display_name)} (${fmtSigned(
+          Number(r.movement)
+        )})${contextSuffix}`
+      );
+    });
     if (topRises.length === 0) textLines.push("1. n/a");
 
     textLines.push("");
     textLines.push("Biggest fallers:");
-    topN(topDrops, 5).forEach((r, idx) =>
-      textLines.push(`${idx + 1}. ${atHandle(r.display_name)} (${fmtSigned(Number(r.movement))})`)
-    );
+    topN(topDrops, 5).forEach((r, idx) => {
+      const contextSuffix = formatHookSuffix(moverContextHooks(r, "faller"));
+      textLines.push(
+        `${idx + 1}. ${atHandle(r.display_name)} (${fmtSigned(
+          Number(r.movement)
+        )})${contextSuffix}`
+      );
+    });
     if (topDrops.length === 0) textLines.push("1. n/a");
 
     textLines.push("");
@@ -1895,59 +2492,97 @@ export async function GET(req: Request) {
 
     textLines.push("");
     textLines.push(sillyHeading);
-    textLines.push(
-      `* ${pickByRound(roundNumber, [
+    const sillyStatCandidates: StoryCandidate[] = [];
+    pushStoryCandidate(sillyStatCandidates, {
+      id: "majority-picks",
+      priority:
+        majorityPickWins === 0 || majorityPickWins === rrMatches.length || majorityPickWins <= 3 ? 74 : 52,
+      line: `${pickByRound(roundNumber, [
         "Majority pick won",
         "The majority side won",
         "Consensus pick won",
-      ])} ${majorityPickWins} of ${rrMatches.length} games.`
-    );
+      ])} ${majorityPickWins} of ${rrMatches.length} games.`,
+    });
     if (minorityBackedWinners.length > 0) {
-      textLines.push(
-        `* Only ${minorityBackedWinners.length} winner${
-          minorityBackedWinners.length === 1 ? "" : "s"
-        } were backed by fewer than half the comp: ${humanList(
+      pushStoryCandidate(sillyStatCandidates, {
+        id: "minority-winners",
+        priority: minorityBackedWinners.length >= 3 ? 88 : 68,
+        line: `${
+          minorityBackedWinners.length === 1
+            ? "Only 1 winner was"
+            : `${minorityBackedWinners.length} winners were`
+        } backed by fewer than half the comp: ${humanList(
           minorityBackedWinners.map((x) => `${x.winner} (${fmt1(x.winnerPct)}%)`)
-        )}.`
-      );
+        )}.`,
+      });
     } else {
-      textLines.push("* Every winner was backed by at least half the comp.");
+      pushStoryCandidate(sillyStatCandidates, {
+        id: "no-minority-winners",
+        priority: 42,
+        line: "Every winner was backed by at least half the comp.",
+      });
     }
-    textLines.push(
-      perfectRoundPlayers.length > 0
-        ? `* Perfect round check: ${humanList(
-            perfectRoundPlayers.map((p) => atHandle(p.display_name))
-          )} hit ${fullRoundTips}/${fullRoundTips}.`
-        : `* Perfect round check: no one went ${fullRoundTips}/${fullRoundTips}.`
-    );
-    textLines.push(
-      zeroAfterTippingAllPlayers.length > 0
-        ? `* Zero-score-after-tipping check: ${humanList(
-            zeroAfterTippingAllPlayers.map((p) => atHandle(p.display_name))
-          )} scored 0 after tipping all ${fullRoundTips}.`
-        : `* Zero-score-after-tipping check: no one scored 0 after tipping all ${fullRoundTips} games.`
-    );
-    historicalContextLines.forEach((line) => textLines.push(`* ${line}`));
-    if (historicalContextLines.length === 0) {
-      if (seasonBiggestUpset) {
-        textLines.push(
-          `* Season-high upset remains ${seasonBiggestUpset.winner_team} @ ${fmt2(
-            Number(seasonBiggestUpset.winner_odds)
-          )} (Round ${seasonBiggestUpset.round_number}).`
-        );
-      } else {
-        textLines.push("* Season context is still building as more rounds complete.");
-      }
+    if (perfectRoundPlayers.length > 0) {
+      pushStoryCandidate(sillyStatCandidates, {
+        id: "perfect-round",
+        priority: 96,
+        line: `${humanList(
+          perfectRoundPlayers.map((p) => atHandle(p.display_name))
+        )} hit ${fullRoundTips}/${fullRoundTips}.`,
+      });
     }
-    textLines.push(
-      `* ${fivePlusWinners} tippers hit 5+ winners; ${sixPlusWinners} hit 6+.`
+    if (zeroAfterTippingAllPlayers.length > 0) {
+      pushStoryCandidate(sillyStatCandidates, {
+        id: "zero-after-tipping",
+        priority: 90,
+        line: `${humanList(
+          zeroAfterTippingAllPlayers.map((p) => atHandle(p.display_name))
+        )} scored 0 after tipping all ${fullRoundTips} games.`,
+      });
+    }
+    historicalContextLines.forEach((line, idx) =>
+      pushStoryCandidate(sillyStatCandidates, {
+        id: `historical-context-${idx}`,
+        priority: 86 - idx,
+        line,
+      })
     );
+    if (historicalContextLines.length === 0 && seasonBiggestUpset) {
+      pushStoryCandidate(sillyStatCandidates, {
+        id: "season-high-upset",
+        priority: 50,
+        line: `Season-high upset remains ${seasonBiggestUpset.winner_team} @ ${fmt2(
+          Number(seasonBiggestUpset.winner_odds)
+        )} (Round ${seasonBiggestUpset.round_number}).`,
+      });
+    }
+    if (fivePlusWinners > 0) {
+      pushStoryCandidate(sillyStatCandidates, {
+        id: "five-plus-winners",
+        priority: sixPlusWinners > 0 ? 48 : 38,
+        line: `${fivePlusWinners} tippers hit 5+ winners; ${sixPlusWinners} hit 6+.`,
+      });
+    }
+
+    const sillyStatLines = pickStoryLines(sillyStatCandidates, 5);
+    if (sillyStatLines.length > 0) {
+      sillyStatLines.forEach((line) => textLines.push(`* ${line}`));
+    } else {
+      textLines.push("* Season context is still building as more rounds complete.");
+    }
+
+    if (badgeCandidateLines.length > 0) {
+      textLines.push("");
+      textLines.push("Badge watch:");
+      badgeCandidateLines.forEach((line) => textLines.push(`* ${line}`));
+    }
 
     if (topSeasonUpsets.length > 0) {
-      textLines.push("* Top 5 biggest upsets so far:");
+      textLines.push("");
+      textLines.push("Top 5 biggest upsets so far:");
       topSeasonUpsets.forEach((x, idx) =>
         textLines.push(
-          `  ${idx + 1}. Round ${x.round_number} - ${x.home_team} vs ${x.away_team} (${x.winner_team} @ ${fmt2(
+          `${idx + 1}. Round ${x.round_number} - ${x.home_team} vs ${x.away_team} (${x.winner_team} @ ${fmt2(
             Number(x.winner_odds)
           )})`
         )
@@ -1984,7 +2619,17 @@ export async function GET(req: Request) {
 
     const text = textLines.join("\n");
     const narrativeText = text;
-    const rawStatsText = "";
+    const rawStatsText = JSON.stringify(
+      {
+        badge_candidates: badgeCandidateLines,
+        badge_notes: unsupportedBadgeLines,
+        difficulty_context: difficultyContextLines,
+        leaderboard_story: leaderboardStoryLines,
+        silly_stats: sillyStatLines,
+      },
+      null,
+      2
+    );
     const html = `<div style=\"font-family:Arial,Helvetica,sans-serif;line-height:1.5;color:#111;white-space:pre-wrap\">${text
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
@@ -2001,6 +2646,7 @@ export async function GET(req: Request) {
         player_count: playerStats.length,
         match_count: rrMatches.length,
         round_difficulty_pct: round2(roundDifficultyPct),
+        badge_candidates: badgeCandidateLines,
       },
       headline_bits: headlineBits,
     };

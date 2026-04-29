@@ -57,13 +57,19 @@ export default function NextSeasonInterestForm({ season }: NextSeasonInterestFor
     }
 
     setBusy(true);
+    const normalizedName = fullName.trim();
+    if (!normalizedName) {
+      setBusy(false);
+      toast.error("Please enter your name.");
+      return;
+    }
 
     const response = await fetch("/api/next-season-interest", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         email,
-        full_name: fullName,
+        full_name: normalizedName,
         website,
       }),
     });
@@ -104,7 +110,7 @@ export default function NextSeasonInterestForm({ season }: NextSeasonInterestFor
 
       <label>
         <div className="ui-caption" style={{ marginBottom: 6 }}>
-          Name (optional)
+          Name
         </div>
         <input
           className="ui-input"

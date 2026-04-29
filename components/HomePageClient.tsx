@@ -37,6 +37,14 @@ export type HomeTodayPickRow = {
   winner_team: string | null;
 };
 
+export type HomeFirstMatchRow = {
+  round_id: string;
+  match_id: string;
+  commence_time_utc: string;
+  home_team: string;
+  away_team: string;
+};
+
 type DashboardReminder = {
   id: string;
   title: string;
@@ -50,6 +58,7 @@ type HomePageClientProps = {
   rounds: HomeRoundStatusRow[];
   me: HomeLeaderboardRow | null;
   todayPicks?: HomeTodayPickRow[];
+  firstMatches?: HomeFirstMatchRow[];
   initialMessage?: string | null;
 };
 
@@ -158,6 +167,7 @@ export default function HomePageClient({
   rounds,
   me,
   todayPicks = [],
+  firstMatches = [],
   initialMessage,
 }: HomePageClientProps) {
   const msg = initialMessage ?? "";
@@ -243,6 +253,34 @@ export default function HomePageClient({
   const showUpToDateTile = !!(currentRound && !locked && tipsLeft === 0);
   const liveModeNextLockRound = nextOpenRound ?? primaryTipRound;
   const liveModeNextLockLine = fmtMelbourneLockLine(liveModeNextLockRound?.lock_time_utc ?? null);
+
+  const firstMatchByRoundId = useMemo(() => {
+    return new Map(firstMatches.map((match) => [String(match.round_id), match]));
+  }, [firstMatches]);
+
+  const primaryFirstMatch = primaryTipRound
+    ? firstMatchByRoundId.get(String(primaryTipRound.round_id))
+    : null;
+
+  const primaryStatusValue =
+    primaryTipRound && primaryRoundLocked
+      ? "Locked"
+      : primaryTipRound && primaryTipsLeft > 0
+      ? "Needs tips"
+      : primaryTipRound
+      ? "All set"
+      : "No round";
+
+  const primaryStatusDetail =
+    primaryTipRound && primaryRoundLocked
+      ? `Tips are closed for ${getRoundDisplayName(primaryTipRound.round_number)}.`
+      : primaryTipRound && primaryTipsLeft > 0
+      ? `${primaryTipsLeft} ${pluralize(primaryTipsLeft, "tip", "tips")} left for ${getRoundDisplayName(
+          primaryTipRound.round_number
+        )}.`
+      : primaryTipRound
+      ? "You're up to date on your tips."
+      : "Nothing due right now.";
 
   const reminders = useMemo(() => {
     const items: DashboardReminder[] = [];
@@ -407,34 +445,43 @@ export default function HomePageClient({
               ) : (
                 <>
                   <UiCard className="dashboard-mini-card">
-                    <div className="ui-kicker">Next lock</div>
-                    <div className="ui-value">
-                      {primaryRoundLocked ? "Closed" : primaryRoundCountdown ?? "-"}
-                    </div>
+                    <div className="ui-kicker">Your tips</div>
+                    <div className="ui-value">{primaryTipsEntered}/{primaryTipsPossible || 0}</div>
                     <div className="ui-meta">
-                      {primaryTipRound ? fmtMelbourneShort(primaryTipRound.lock_time_utc) : "No round"}
+                      {primaryTipRound
+                        ? primaryTipsLeft === 0
+                          ? "0 left to tip"
+                          : `${primaryTipsLeft} ${pluralize(primaryTipsLeft, "tip", "tips")} left to tip`
+                        : "Nothing due"}
                     </div>
                   </UiCard>
                   <UiCard className="dashboard-mini-card">
-                    <div className="ui-kicker">Unfinished round</div>
-                    <div className="ui-value">None</div>
-                    <div className="ui-meta">No live round right now</div>
+                    <div className="ui-kicker">First match</div>
+                    <div className="dashboard-match-value">
+                      {primaryFirstMatch
+                        ? `${primaryFirstMatch.home_team} vs ${primaryFirstMatch.away_team}`
+                        : "Not scheduled"}
+                    </div>
+                    <div className="ui-meta">
+                      {primaryFirstMatch
+                        ? fmtMelbourneLockLine(primaryFirstMatch.commence_time_utc)
+                        : "Fixture not loaded yet"}
+                    </div>
                   </UiCard>
                   {showUpToDateTile ? (
                     <UiCard tone="success" className="dashboard-mini-card">
-                      <div className="ui-kicker">Up to date</div>
-                      <div className="ui-value">All set</div>
-                      <div className="ui-meta">You&apos;re all up to date on your tips.</div>
+                      <div className="ui-kicker">Status</div>
+                      <div className="ui-value">{primaryStatusValue}</div>
+                      <div className="ui-meta">{primaryStatusDetail}</div>
                     </UiCard>
                   ) : (
-                    <UiCard className="dashboard-mini-card">
-                      <div className="ui-kicker">Round progress</div>
-                      <div className="ui-value">{primaryTipsEntered}/{primaryTipsPossible || 0}</div>
-                      <div className="ui-meta">
-                        {primaryTipRound
-                          ? `${primaryTipsLeft} ${pluralize(primaryTipsLeft, "tip", "tips")} left for ${getRoundDisplayName(primaryTipRound.round_number)}`
-                          : "Nothing due"}
-                      </div>
+                    <UiCard
+                      tone={primaryTipRound && !primaryRoundLocked && primaryTipsLeft > 0 ? "warning" : "default"}
+                      className="dashboard-mini-card"
+                    >
+                      <div className="ui-kicker">Status</div>
+                      <div className="ui-value">{primaryStatusValue}</div>
+                      <div className="ui-meta">{primaryStatusDetail}</div>
                     </UiCard>
                   )}
                 </>

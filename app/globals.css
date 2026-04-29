@@ -2013,6 +2013,14 @@ button {
   padding: 12px;
 }
 
+.dashboard-match-value {
+  margin-top: 6px;
+  font-size: clamp(1.15rem, 2vw, 1.55rem);
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  font-weight: 900;
+}
+
 .dashboard-today-picks {
   margin-top: 14px;
   padding: 12px;

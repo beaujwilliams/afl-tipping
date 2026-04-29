@@ -16,6 +16,14 @@ type HomeTodayPickRow = {
   winner_team: string | null;
 };
 
+type HomeFirstMatchRow = {
+  round_id: string;
+  match_id: string;
+  commence_time_utc: string;
+  home_team: string;
+  away_team: string;
+};
+
 function fallbackWelcomeName(user: {
   email?: string | null;
   user_metadata?: Record<string, unknown> | null;
@@ -57,6 +65,7 @@ export default async function HomePage() {
   let rounds = [] as Awaited<ReturnType<typeof getRoundTipStatusResponse>>["rounds"];
   let me = null as Awaited<ReturnType<typeof getLeaderboardSnapshot>>["rows"][number] | null;
   let todayPicks: HomeTodayPickRow[] = [];
+  let firstMatches: HomeFirstMatchRow[] = [];
 
   try {
     const competitionId = await resolveCompetitionIdForSeason({
@@ -114,6 +123,22 @@ export default async function HomePage() {
           .order("commence_time_utc", { ascending: true });
 
         if (!matchError) {
+          const firstMatchByRoundId = new Map<string, HomeFirstMatchRow>();
+
+          (matchRows ?? []).forEach((match) => {
+            const roundId = String(match.round_id ?? "");
+            if (!roundId || firstMatchByRoundId.has(roundId)) return;
+            firstMatchByRoundId.set(roundId, {
+              round_id: roundId,
+              match_id: String(match.id),
+              commence_time_utc: String(match.commence_time_utc ?? ""),
+              home_team: String(match.home_team ?? ""),
+              away_team: String(match.away_team ?? ""),
+            });
+          });
+
+          firstMatches = Array.from(firstMatchByRoundId.values());
+
           const todayKey = melbourneDayKey(new Date());
           const todaysMatches = (matchRows ?? []).filter((match) => {
             return melbourneDayKey(String(match.commence_time_utc ?? "")) === todayKey;
@@ -163,6 +188,7 @@ export default async function HomePage() {
       rounds={rounds}
       me={me}
       todayPicks={todayPicks}
+      firstMatches={firstMatches}
       initialMessage={initialMessage}
     />
   );

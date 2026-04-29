@@ -226,6 +226,8 @@ export default function HomePageClient({
   const tipsEntered = currentRound?.my_tips ?? 0;
   const tipsLeft = Math.max(tipsPossible - tipsEntered, 0);
   const lockedRoundStillLive = !!liveRound;
+  const actionStatusLabel = liveRound ? "In progress" : locked ? "Locked" : "Open";
+  const actionStatusTone = liveRound ? "info" : locked ? "locked" : "open";
   const liveRoundProgressPct =
     liveRound && liveRound.total_matches > 0
       ? Math.max(
@@ -338,23 +340,6 @@ export default function HomePageClient({
     [reminders]
   );
 
-  const dashboardNotice = useMemo(() => {
-    if (liveRound && lockedRoundStillLive) {
-      return {
-        tone: "info" as const,
-        title: "Round update",
-        lines: [
-          `${getRoundDisplayName(liveRound.round_number)} is locked.`,
-          nextOpenRound
-            ? `${getRoundDisplayName(nextOpenRound.round_number)} tips are due by ${fmtMelbourneShort(nextOpenRound.lock_time_utc)}.`
-            : "The next round tips are now due.",
-        ],
-      };
-    }
-
-    return null;
-  }, [liveRound, lockedRoundStillLive, nextOpenRound]);
-
   const sortedTodayPicks = useMemo(() => {
     return [...todayPicks].sort((a, b) => {
       return new Date(a.commence_time_utc).getTime() - new Date(b.commence_time_utc).getTime();
@@ -381,9 +366,7 @@ export default function HomePageClient({
           <UiCard soft className="dashboard-hero">
             <div className="ui-row-between">
               <div className="ui-kicker">Action center</div>
-              <UiBadge tone="open">
-                {liveRound ? "In progress" : "Open"}
-              </UiBadge>
+              <UiBadge tone={actionStatusTone}>{actionStatusLabel}</UiBadge>
             </div>
 
             <div className="dashboard-hero-title">
@@ -591,19 +574,6 @@ export default function HomePageClient({
             </UiCard>
           )}
         </div>
-      )}
-
-      {!msg && dashboardNotice && (
-        <UiCard tone={dashboardNotice.tone} className="ui-mt-3">
-          <div className="ui-kicker">{dashboardNotice.title}</div>
-          <div className="ui-stack ui-mt-2">
-            {dashboardNotice.lines.map((line) => (
-              <div key={line} className="ui-caption">
-                {line}
-              </div>
-            ))}
-          </div>
-        </UiCard>
       )}
 
       {!msg && (

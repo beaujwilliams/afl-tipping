@@ -4,6 +4,7 @@ import {
   requireAdminOrCron,
 } from "@/lib/admin-auth";
 import { refreshLeaderboardSnapshot } from "@/lib/leaderboard-snapshot";
+import { invalidateStatsSeasonBaseCache } from "@/lib/stats-data";
 
 export async function GET(req: Request) {
   try {
@@ -17,6 +18,7 @@ export async function GET(req: Request) {
       season,
       competitionId: gate.mode === "bearer" ? gate.competitionId : undefined,
     });
+    invalidateStatsSeasonBaseCache();
 
     const payload = {
       ok: true,

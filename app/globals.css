@@ -619,6 +619,26 @@ button {
   line-height: 1.25;
 }
 
+.ui-sort-arrow {
+  display: inline-block;
+  width: 0;
+  height: 0;
+  flex: 0 0 auto;
+  opacity: 0.85;
+}
+
+.ui-sort-arrow--asc {
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-bottom: 6px solid currentColor;
+}
+
+.ui-sort-arrow--desc {
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 6px solid currentColor;
+}
+
 .leaderboard-mobile-shell {
   overflow: hidden;
 }
@@ -668,7 +688,7 @@ button {
   list-style: none;
   cursor: pointer;
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr) minmax(62px, auto);
+  grid-template-columns: 38px minmax(0, 1fr) minmax(62px, auto) minmax(56px, auto);
   gap: 8px;
   align-items: center;
   min-height: 54px;
@@ -1094,7 +1114,7 @@ button {
 
 @media (max-width: 390px) {
   .mobile-standings-summary {
-    grid-template-columns: 34px minmax(0, 1fr) minmax(56px, auto);
+    grid-template-columns: 34px minmax(0, 1fr) minmax(54px, auto) minmax(48px, auto);
     padding: 9px 8px;
   }
 

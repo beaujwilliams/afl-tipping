@@ -30,6 +30,7 @@ export type RoundResultsComparablePlayer = {
   display_name: string;
   round_score: number;
   correct_tips: number;
+  potential_score: number;
 };
 
 export type RoundResultsSnapshotPlayer = {
@@ -89,6 +90,7 @@ export function roundResultsPlayerComparator(
 ) {
   if (b.round_score !== a.round_score) return b.round_score - a.round_score;
   if (b.correct_tips !== a.correct_tips) return b.correct_tips - a.correct_tips;
+  if (b.potential_score !== a.potential_score) return b.potential_score - a.potential_score;
   return a.display_name.localeCompare(b.display_name, "en", { sensitivity: "base" });
 }
 

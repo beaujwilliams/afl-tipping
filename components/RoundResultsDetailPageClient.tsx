@@ -48,9 +48,7 @@ type RoundSortKey =
   | "round_score"
   | "correct_tips"
   | "accuracy_pct"
-  | "avg_correct_odds"
-  | "potential_score"
-  | "difference_score";
+  | "potential_score";
 
 type SortDirection = "asc" | "desc";
 type MyTipStatus = "correct" | "incorrect" | "pending" | "missed";
@@ -79,9 +77,7 @@ const DEFAULT_SORT_DIR: Record<RoundSortKey, SortDirection> = {
   round_score: "desc",
   correct_tips: "desc",
   accuracy_pct: "desc",
-  avg_correct_odds: "desc",
   potential_score: "desc",
-  difference_score: "desc",
 };
 
 const VENUE_MAP: Record<string, string> = {
@@ -205,15 +201,15 @@ function RoundResultsLoadingSkeleton({ isMobile }: { isMobile: boolean }) {
 
       <UiTableShell>
         <UiTableScroll>
-          <table className={`ui-table ${isMobile ? "ui-table--compact" : ""}`} style={{ minWidth: isMobile ? 760 : 920 }}>
+          <table className={`ui-table ${isMobile ? "ui-table--compact" : ""}`} style={{ minWidth: isMobile ? 680 : 760 }}>
             <thead>
               <tr className="ui-table-head-row">
                 <UiTableHeadCell>Rank</UiTableHeadCell>
-                <UiTableHeadCell>Name</UiTableHeadCell>
-                <UiTableHeadCell>Score</UiTableHeadCell>
+                <UiTableHeadCell>Tipster</UiTableHeadCell>
+                <UiTableHeadCell>Round score</UiTableHeadCell>
                 <UiTableHeadCell>Correct</UiTableHeadCell>
                 <UiTableHeadCell>Accuracy</UiTableHeadCell>
-                <UiTableHeadCell>Avg Odds</UiTableHeadCell>
+                <UiTableHeadCell>Potential</UiTableHeadCell>
               </tr>
             </thead>
             <tbody>
@@ -395,7 +391,7 @@ export default function RoundResultsDetailPageClient({
   );
   const rankColWidth = isMobile ? 56 : 68;
   const tipsterColWidth = isMobile ? 148 : 188;
-  const tableMinWidth = isMobile ? 760 : 900;
+  const tableMinWidth = isMobile ? 680 : 760;
 
   function stickyColumnStyle(col: 1 | 2, isHeader: boolean) {
     return {
@@ -607,6 +603,7 @@ export default function RoundResultsDetailPageClient({
     const ranked = [...players].sort((a, b) => {
       if (b.round_score !== a.round_score) return b.round_score - a.round_score;
       if (b.correct_tips !== a.correct_tips) return b.correct_tips - a.correct_tips;
+      if (b.potential_score !== a.potential_score) return b.potential_score - a.potential_score;
       return a.display_name.localeCompare(b.display_name, "en", { sensitivity: "base" });
     });
     const out: Record<string, number> = {};
@@ -635,12 +632,8 @@ export default function RoundResultsDetailPageClient({
         primaryCmp = a.correct_tips - b.correct_tips;
       } else if (activeSortBy === "accuracy_pct") {
         primaryCmp = a.accuracy_pct - b.accuracy_pct;
-      } else if (activeSortBy === "potential_score") {
-        primaryCmp = a.potential_score - b.potential_score;
-      } else if (activeSortBy === "difference_score") {
-        primaryCmp = a.difference_score - b.difference_score;
       } else {
-        primaryCmp = a.avg_correct_odds - b.avg_correct_odds;
+        primaryCmp = a.potential_score - b.potential_score;
       }
 
       if (primaryCmp !== 0) {
@@ -668,7 +661,12 @@ export default function RoundResultsDetailPageClient({
 
   function sortMarker(key: RoundSortKey) {
     if (activeSortBy !== key) return null;
-    return activeSortDirection === "asc" ? "Asc" : "Desc";
+    return (
+      <span
+        className={`ui-sort-arrow ui-sort-arrow--${activeSortDirection}`}
+        aria-hidden="true"
+      />
+    );
   }
 
   return (
@@ -881,31 +879,28 @@ export default function RoundResultsDetailPageClient({
                             </span>
                             <ChampionSeasonLabels seasons={championSeasonsByUserId[p.user_id]} />
                           </span>
-                          <span className="mobile-standings-meta">
-                            {p.correct_tips} correct
-                          </span>
                         </span>
                         <span className="mobile-standings-primary">
                           <strong>{fmtPts(p.round_score)}</strong>
                           <span>Score</span>
                         </span>
+                        <span className="mobile-standings-primary">
+                          <strong>{p.correct_tips}</strong>
+                          <span>Correct</span>
+                        </span>
                       </summary>
                       <div className="mobile-standings-extra">
                         <div className="mobile-standings-stat">
-                          <span>Potential</span>
-                          <strong>{fmtPts(p.potential_score)}</strong>
+                          <span>Accuracy</span>
+                          <strong>{fmtPct(p.accuracy_pct)}</strong>
                         </div>
                         <div className="mobile-standings-stat">
-                          <span>Diff</span>
-                          <strong>{fmtPts(p.difference_score)}</strong>
-                        </div>
-                        <div className="mobile-standings-stat">
-                          <span>Avg odds</span>
+                          <span>Avg winning odds</span>
                           <strong>{fmtPts(p.avg_correct_odds)}</strong>
                         </div>
                         <div className="mobile-standings-stat">
-                          <span>Accuracy</span>
-                          <strong>{fmtPct(p.accuracy_pct)}</strong>
+                          <span>Potential</span>
+                          <strong>{fmtPts(p.potential_score)}</strong>
                         </div>
                       </div>
                     </details>
@@ -919,13 +914,11 @@ export default function RoundResultsDetailPageClient({
                     <tr className="ui-table-head-row">
                       {([
                         ["Rank", "rank", 1, undefined],
-                        ["Name", "display_name", 2, undefined],
-                        [`R${round}`, "round_score", undefined, 84],
+                        ["Tipster", "display_name", 2, undefined],
+                        ["Round score", "round_score", undefined, 112],
                         ["Correct", "correct_tips", undefined, 72],
                         ["Accuracy", "accuracy_pct", undefined, 88],
-                        ["Avg Odds", "avg_correct_odds", undefined, 88],
                         ["Potential", "potential_score", undefined, 94],
-                        ["Diff", "difference_score", undefined, 78],
                       ] as Array<[string, RoundSortKey, 1 | 2 | undefined, number | undefined]>).map(
                         ([label, key, stickyCol, width]) => (
                           <UiTableHeadCell
@@ -961,11 +954,7 @@ export default function RoundResultsDetailPageClient({
                               }}
                             >
                               <span>{label}</span>
-                              {sortMarker(key) && (
-                                <span style={{ opacity: 0.75, fontSize: 11 }}>
-                                  {sortMarker(key)}
-                                </span>
-                              )}
+                              {sortMarker(key)}
                             </button>
                           </UiTableHeadCell>
                         )
@@ -1011,7 +1000,7 @@ export default function RoundResultsDetailPageClient({
                               <ChampionSeasonLabels seasons={championSeasonsByUserId[p.user_id]} />
                             </span>
                           </UiTableCell>
-                          <UiTableCell style={{ fontWeight: 800, width: 84, minWidth: 84 }}>
+                          <UiTableCell style={{ fontWeight: 800, width: 112, minWidth: 112 }}>
                             {fmtPts(p.round_score)}
                           </UiTableCell>
                           <UiTableCell style={{ width: 72, minWidth: 72 }}>
@@ -1020,14 +1009,8 @@ export default function RoundResultsDetailPageClient({
                           <UiTableCell style={{ width: 88, minWidth: 88 }}>
                             {fmtPct(p.accuracy_pct)}
                           </UiTableCell>
-                          <UiTableCell style={{ width: 88, minWidth: 88 }}>
-                            {fmtPts(p.avg_correct_odds)}
-                          </UiTableCell>
                           <UiTableCell style={{ width: 94, minWidth: 94 }}>
                             {fmtPts(p.potential_score)}
-                          </UiTableCell>
-                          <UiTableCell style={{ width: 78, minWidth: 78 }}>
-                            {fmtPts(p.difference_score)}
                           </UiTableCell>
                         </tr>
                       );

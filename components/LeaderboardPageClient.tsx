@@ -1730,8 +1730,13 @@ export default function LeaderboardPageClient({
   }
 
   function sortMarker(key: SortKey) {
-    if (activeSortBy !== key) return "";
-    return activeSortDirection === "asc" ? "Asc" : "Desc";
+    if (activeSortBy !== key) return null;
+    return (
+      <span
+        className={`ui-sort-arrow ui-sort-arrow--${activeSortDirection}`}
+        aria-hidden="true"
+      />
+    );
   }
 
   function toggleTrendUser(userId: string) {
@@ -1806,9 +1811,7 @@ export default function LeaderboardPageClient({
           title={`Sort by ${label}`}
         >
           <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>
-          <span style={{ opacity: sortBy === key ? 1 : 0.45, fontSize: 11, letterSpacing: -0.3 }}>
-            {sortMarker(key)}
-          </span>
+          {sortMarker(key)}
         </button>
       </UiTableHeadCell>
     );

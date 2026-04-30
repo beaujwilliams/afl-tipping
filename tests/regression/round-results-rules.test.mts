@@ -66,18 +66,19 @@ const ODDS_BY_MATCH = {
   m3: { home_odds: 1.4, away_odds: 2.9 },
 } as const;
 
-test("round results comparator keeps score -> correct tips -> name ordering", () => {
+test("round results comparator keeps score -> correct tips -> potential -> name ordering", () => {
   const rows = [
-    { display_name: "Zulu", round_score: 10, correct_tips: 4 },
-    { display_name: "Alpha", round_score: 10, correct_tips: 4 },
-    { display_name: "Bravo", round_score: 10, correct_tips: 5 },
-    { display_name: "Charlie", round_score: 9.5, correct_tips: 6 },
+    { display_name: "Zulu", round_score: 10, correct_tips: 4, potential_score: 12 },
+    { display_name: "Alpha", round_score: 10, correct_tips: 4, potential_score: 12 },
+    { display_name: "Bravo", round_score: 10, correct_tips: 5, potential_score: 11 },
+    { display_name: "Delta", round_score: 10, correct_tips: 4, potential_score: 13 },
+    { display_name: "Charlie", round_score: 9.5, correct_tips: 6, potential_score: 14 },
   ];
 
   const sorted = [...rows].sort(roundResultsPlayerComparator);
   assert.deepEqual(
     sorted.map((row) => row.display_name),
-    ["Bravo", "Alpha", "Zulu", "Charlie"]
+    ["Bravo", "Delta", "Alpha", "Zulu", "Charlie"]
   );
 });
 

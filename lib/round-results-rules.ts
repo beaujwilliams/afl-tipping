@@ -1,3 +1,5 @@
+import { isMatchCompleted } from "./match-status.ts";
+
 export type RoundResultsRuleMatch = {
   id: string;
   home_team: string;
@@ -125,7 +127,7 @@ export function buildRoundResultsSnapshot(params: {
   );
 
   const completedGamesInRound = params.matches.reduce((acc, match) => {
-    return acc + (String(match.winner_team ?? "").trim() ? 1 : 0);
+    return acc + (isMatchCompleted(match) ? 1 : 0);
   }, 0);
 
   const teamCountByMatch: Record<string, Record<string, number>> = {};

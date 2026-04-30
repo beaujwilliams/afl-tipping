@@ -188,7 +188,7 @@ export async function GET(req: Request) {
       roundIds.length > 0
         ? supabase
             .from("matches")
-            .select("id, round_id, commence_time_utc, winner_team")
+            .select("id, round_id, commence_time_utc, winner_team, status")
             .in("round_id", roundIds)
         : Promise.resolve({ data: [], error: null }),
       supabase
@@ -498,7 +498,7 @@ export async function GET(req: Request) {
           severity: "warning",
           category: "results",
           title: `Results may be stale for Round ${round.round_number}`,
-          detail: `${round.missing_winner_count} of ${round.total_matches} matches are still missing winners long after the round should have finished.`,
+          detail: `${round.missing_winner_count} of ${round.total_matches} matches are still missing final results long after the round should have finished.`,
           href: `/admin/scoring-sync?season=${encodeURIComponent(String(season))}`,
           cta: "Open scoring log",
         });

@@ -14,6 +14,7 @@ type HomeTodayPickRow = {
   away_team: string;
   picked_team: string | null;
   winner_team: string | null;
+  status: string | null;
 };
 
 type HomeFirstMatchRow = {
@@ -118,7 +119,7 @@ export default async function HomePage() {
       if (roundIds.length > 0) {
         const { data: matchRows, error: matchError } = await supabase
           .from("matches")
-          .select("id, round_id, commence_time_utc, home_team, away_team, winner_team")
+          .select("id, round_id, commence_time_utc, home_team, away_team, winner_team, status")
           .in("round_id", roundIds)
           .order("commence_time_utc", { ascending: true });
 
@@ -172,6 +173,7 @@ export default async function HomePage() {
               away_team: String(match.away_team ?? ""),
               picked_team: picked || null,
               winner_team: String(match.winner_team ?? "").trim() || null,
+              status: String(match.status ?? "").trim() || null,
             };
           });
         }

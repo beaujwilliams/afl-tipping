@@ -7,6 +7,7 @@ import {
   type LeaderboardRow,
   type LeaderboardTrendSeries,
 } from "@/lib/leaderboard-snapshot";
+import { isMatchCompleted } from "@/lib/match-status";
 import { createServiceClient } from "@/lib/supabase-server";
 import {
   buildStatsPayloadFromBase,
@@ -34,6 +35,7 @@ type MatchRow = {
   home_team: string;
   away_team: string;
   winner_team: string | null;
+  status: string | null;
   commence_time_utc: string | null;
 };
 
@@ -171,7 +173,7 @@ const loadCachedStatsSeasonBase = unstable_cache(
 
     const { data: matches, error: matchesErr } = await supabase
       .from("matches")
-      .select("id, round_id, home_team, away_team, winner_team, commence_time_utc")
+      .select("id, round_id, home_team, away_team, winner_team, status, commence_time_utc")
       .in("round_id", roundIds)
       .order("commence_time_utc", { ascending: true });
 
@@ -194,9 +196,8 @@ const loadCachedStatsSeasonBase = unstable_cache(
       const round = roundById.get(String(match.round_id));
       if (!round) continue;
 
-      const winner = String(match.winner_team ?? "").trim();
       const snapshot = String(round.odds_snapshot_for_time_utc ?? "").trim();
-      if (!winner || !snapshot) continue;
+      if (!isMatchCompleted(match) || !snapshot) continue;
 
       const matchId = String(match.id);
       candidateMatchIds.push(matchId);
@@ -237,7 +238,7 @@ const loadCachedStatsSeasonBase = unstable_cache(
     for (const match of matchRows) {
       const matchId = String(match.id);
       const winnerTeamNormalized = normalizeStatsTeamName(match.winner_team);
-      if (!winnerTeamNormalized) continue;
+      if (!isMatchCompleted(match)) continue;
 
       const odds = oddsByMatchId.get(matchId);
       if (!odds) continue;

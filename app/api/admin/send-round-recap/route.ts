@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase-server";
 import { getDefaultCompetitionId, requireAdminOrCron } from "@/lib/admin-auth";
+import { isMatchCompleted } from "@/lib/match-status";
 
 const DEFAULT_SEASON = 2026;
 const DEFAULT_HOURS_AFTER_FIRST = 48;
@@ -20,6 +21,7 @@ type MatchRow = {
   home_team: string;
   away_team: string;
   winner_team: string | null;
+  status: string | null;
 };
 
 type TipRow = {
@@ -210,7 +212,7 @@ function computeTargetRounds(params: {
     const dueIso = new Date(dueMs).toISOString();
 
     const matchCount = list.length;
-    const finishedCount = list.filter((m) => String(m.winner_team ?? "").trim().length > 0).length;
+    const finishedCount = list.filter((m) => isMatchCompleted(m)).length;
 
     const eligibleNow = params.nowMs >= dueMs && matchCount > 0 && finishedCount === matchCount;
 
@@ -634,7 +636,7 @@ export async function GET(req: Request) {
 
     const { data: matches, error: mErr } = await supabase
       .from("matches")
-      .select("id, round_id, commence_time_utc, home_team, away_team, winner_team")
+      .select("id, round_id, commence_time_utc, home_team, away_team, winner_team, status")
       .in("round_id", roundIds)
       .order("commence_time_utc", { ascending: true });
 

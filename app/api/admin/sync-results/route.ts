@@ -6,6 +6,7 @@ import {
 } from "@/lib/admin-auth";
 import { createServiceClient } from "@/lib/supabase-server";
 import { invalidateLeaderboardSnapshotCache } from "@/lib/leaderboard-snapshot";
+import { isFinalMatchStatus, isMatchCompleted } from "@/lib/match-status";
 import { invalidateRoundTipStatusCache } from "@/lib/round-tip-status-data";
 import { invalidateStatsSeasonBaseCache } from "@/lib/stats-data";
 
@@ -28,6 +29,7 @@ type MatchLookupRow = {
   round_id: string;
   squiggle_game_id: number | null;
   winner_team: string | null;
+  status: string | null;
 };
 
 type RoundRow = {
@@ -48,7 +50,11 @@ function pickGameId(g: SquiggleGame) {
 
 function pickWinner(g: SquiggleGame) {
   const winner = g?.winner ?? g?.winnerteam ?? null;
-  if (winner) return String(winner);
+  if (winner) {
+    const normalizedWinner = String(winner).trim();
+    const lower = normalizedWinner.toLowerCase();
+    if (lower !== "draw" && lower !== "tie") return normalizedWinner;
+  }
 
   const hs = Number(g?.hscore ?? NaN);
   const as = Number(g?.ascore ?? NaN);
@@ -57,6 +63,21 @@ function pickWinner(g: SquiggleGame) {
     if (as > hs) return String(g?.ateam ?? "");
   }
   return null;
+}
+
+function pickGameOutcome(g: SquiggleGame) {
+  const winner = pickWinner(g);
+  if (winner) {
+    return { final: true, winnerTeam: winner };
+  }
+
+  const hs = Number(g?.hscore ?? NaN);
+  const as = Number(g?.ascore ?? NaN);
+  if (Number.isFinite(hs) && Number.isFinite(as) && hs === as) {
+    return { final: true, winnerTeam: null };
+  }
+
+  return { final: false, winnerTeam: null };
 }
 
 function sleep(ms: number) {
@@ -222,7 +243,7 @@ export async function GET(req: Request) {
     const matchesQuery = await withSupabaseRetry(() =>
       supabase
         .from("matches")
-        .select("id, round_id, squiggle_game_id, winner_team")
+        .select("id, round_id, squiggle_game_id, winner_team, status")
         .in("round_id", roundIds)
     );
 
@@ -247,7 +268,7 @@ export async function GET(req: Request) {
         const lockMs = round.lock_time_utc ? new Date(round.lock_time_utc).getTime() : NaN;
         if (!Number.isFinite(lockMs) || lockMs > nowMs) return false;
         const roundMatches = matchesByRoundId.get(String(round.id)) ?? [];
-        return roundMatches.some((m) => !String(m.winner_team ?? "").trim());
+        return roundMatches.some((m) => !isMatchCompleted(m));
       })
       .map((round) => String(round.id));
 
@@ -297,7 +318,6 @@ export async function GET(req: Request) {
 
     const gamesUrl = `https://api.squiggle.com.au/?q=games;year=${season};complete=100;format=json`;
 
-    // ✅ headers reduce “warning/error object” responses
     const resp = await fetch(gamesUrl, {
       cache: "no-store",
       headers: {
@@ -330,7 +350,6 @@ export async function GET(req: Request) {
     const firstGameKeys = first && typeof first === "object" ? Object.keys(first) : [];
     const firstGameIdGuess = first ? pickGameId(first) : null;
 
-    // ✅ If Squiggle returned an error/warning row in games[], surface it clearly
     if (first && (first.error || first.warning) && finalGamesFound === 1 && !firstGameIdGuess) {
       return respond(502, {
         ok: false,
@@ -351,7 +370,6 @@ export async function GET(req: Request) {
     }
 
     for (const g of finals) {
-      // skip “api payload rows” defensively
       if (g && (g.error || g.warning) && !pickGameId(g)) {
         skipped.skippedApiErrorRow++;
         continue;
@@ -363,8 +381,8 @@ export async function GET(req: Request) {
         continue;
       }
 
-      const winner = pickWinner(g);
-      if (!winner) {
+      const outcome = pickGameOutcome(g);
+      if (!outcome.final) {
         skipped.skippedNoWinner++;
         continue;
       }
@@ -377,7 +395,9 @@ export async function GET(req: Request) {
 
       consideredFinal++;
 
-      if (String(match.winner_team ?? "") === winner) {
+      const existingWinner = String(match.winner_team ?? "").trim() || null;
+      const existingFinal = isFinalMatchStatus(match.status);
+      if (existingWinner === outcome.winnerTeam && existingFinal) {
         skipped.alreadySet++;
         continue;
       }
@@ -385,7 +405,7 @@ export async function GET(req: Request) {
       const { error: updErr } = await withSupabaseRetry(() =>
         supabase
           .from("matches")
-          .update({ winner_team: winner, status: "final" })
+          .update({ winner_team: outcome.winnerTeam, status: "final" })
           .eq("id", match.id)
       );
 

@@ -1,3 +1,5 @@
+import { isMatchCompleted } from "./match-status.ts";
+
 export type AdminAnomalySeverity = "critical" | "warning" | "info";
 
 export type AdminAnomaly = {
@@ -29,6 +31,7 @@ export type AnomalyMatchRow = {
   round_id: string;
   commence_time_utc: string | null;
   winner_team: string | null;
+  status?: string | null;
 };
 
 const SNAPSHOT_HOURS_BEFORE_LOCK = 36;
@@ -126,16 +129,14 @@ export function findStaleResultRounds(params: {
       const staleAfterMs = latestCommenceMs + RESULTS_STALE_AFTER_HOURS * 60 * 60 * 1000;
       if (nowMs < staleAfterMs) return null;
 
-      const missingWinnerCount = roundMatches.filter(
-        (match) => String(match.winner_team ?? "").trim().length === 0
-      ).length;
-      if (missingWinnerCount <= 0) return null;
+      const incompleteResultCount = roundMatches.filter((match) => !isMatchCompleted(match)).length;
+      if (incompleteResultCount <= 0) return null;
 
       return {
         round_id: round.id,
         round_number: Number(round.round_number ?? 0),
         total_matches: roundMatches.length,
-        missing_winner_count: missingWinnerCount,
+        missing_winner_count: incompleteResultCount,
       };
     })
     .filter(
@@ -173,9 +174,7 @@ export function findRoundsWithDueRecaps(params: {
       const roundMatches = matchesByRoundId.get(String(round.id)) ?? [];
       if (!roundMatches.length || recapSet.has(Number(round.round_number))) return null;
 
-      const allFinished = roundMatches.every(
-        (match) => String(match.winner_team ?? "").trim().length > 0
-      );
+      const allFinished = roundMatches.every((match) => isMatchCompleted(match));
       if (!allFinished) return null;
 
       const commenceTimes = roundMatches

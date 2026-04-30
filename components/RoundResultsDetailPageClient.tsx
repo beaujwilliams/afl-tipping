@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ChampionSeasonLabels } from "@/components/ChampionSeasonLabels";
 import { UnpaidTag } from "@/components/UnpaidTag";
 import { normalizeChampionSeasonsByUserId } from "@/lib/champion-metadata";
+import { isDrawnMatch, isMatchCompleted } from "@/lib/match-status";
 import { getRoundDisplayName } from "@/lib/round-label";
 import { waitForSession } from "@/lib/session-client";
 import type {
@@ -412,7 +413,7 @@ export default function RoundResultsDetailPageClient({
   }
 
   const finishedMatches = useMemo(() => {
-    return matches.filter((m) => !!String(m.winner_team ?? "").trim()).length;
+    return matches.filter((m) => isMatchCompleted(m)).length;
   }, [matches]);
 
   const submittedTipsters = useMemo(() => {
@@ -447,9 +448,10 @@ export default function RoundResultsDetailPageClient({
             : null
         : null;
       const winner = String(m.winner_team ?? "").trim();
+      const completed = isMatchCompleted(m);
       let status: MyTipStatus = "pending";
 
-      if (winner) {
+      if (completed) {
         if (!picked) status = "missed";
         else status = picked === winner ? "correct" : "incorrect";
       }
@@ -1027,7 +1029,12 @@ export default function RoundResultsDetailPageClient({
           <div className="ui-grid ui-mt-4">
             {matches.map((m) => {
               const winner = String(m.winner_team ?? "").trim();
-              const finished = !!winner;
+              const finished = isMatchCompleted(m);
+              const resultLabel = winner
+                ? `Winner: ${winner}`
+                : isDrawnMatch(m)
+                  ? "Result: Draw"
+                  : "Pending";
               const picksForMatch = pickListsByMatchId[m.id] ?? { home: [], away: [] };
               const homeOddsLabel = fmtOdds(m.home_odds);
               const awayOddsLabel = fmtOdds(m.away_odds);
@@ -1053,7 +1060,7 @@ export default function RoundResultsDetailPageClient({
                         alignSelf: "flex-start",
                       }}
                     >
-                      {finished ? `Winner: ${winner}` : "Pending"}
+                      {finished ? resultLabel : "Pending"}
                     </div>
                   </div>
 

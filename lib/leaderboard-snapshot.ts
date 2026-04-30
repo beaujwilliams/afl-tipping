@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isMatchCompleted } from "@/lib/match-status";
 import { createServiceClient } from "@/lib/supabase-server";
 import { resolveReigningChampion } from "@/lib/reigning-champion";
 import {
@@ -20,6 +21,7 @@ type MatchRow = {
   home_team: string;
   away_team: string;
   winner_team: string | null;
+  status: string | null;
 };
 
 type OddsRow = {
@@ -320,7 +322,7 @@ export async function computeLeaderboardSnapshot(params: {
 
   const { data: matches, error: mErr } = await supabase
     .from("matches")
-    .select("id, round_id, commence_time_utc, home_team, away_team, winner_team")
+    .select("id, round_id, commence_time_utc, home_team, away_team, winner_team, status")
     .in("round_id", roundIds)
     .order("commence_time_utc", { ascending: true });
 
@@ -337,9 +339,8 @@ export async function computeLeaderboardSnapshot(params: {
     const round = roundById.get(String(m.round_id));
     if (!round) continue;
 
-    const winner = String(m.winner_team ?? "").trim();
     const snapshot = String(round.odds_snapshot_for_time_utc ?? "").trim();
-    if (!winner || !snapshot) continue;
+    if (!isMatchCompleted(m) || !snapshot) continue;
 
     const matchId = String(m.id);
     candidateMatchIds.push(matchId);
@@ -385,9 +386,8 @@ export async function computeLeaderboardSnapshot(params: {
     const round = roundById.get(String(m.round_id));
     if (!round) continue;
 
-    const winner = String(m.winner_team ?? "").trim();
     const snapshot = String(round.odds_snapshot_for_time_utc ?? "").trim();
-    if (!winner || !snapshot) continue;
+    if (!isMatchCompleted(m) || !snapshot) continue;
 
     const odds = oddsByMatchId.get(String(m.id));
     if (!odds) {
@@ -401,7 +401,7 @@ export async function computeLeaderboardSnapshot(params: {
       commence_time_utc: String(m.commence_time_utc ?? ""),
       home_team: String(m.home_team ?? ""),
       away_team: String(m.away_team ?? ""),
-      winner_team: winner,
+      winner_team: String(m.winner_team ?? "").trim(),
       home_odds: Number(odds.home_odds ?? 0),
       away_odds: Number(odds.away_odds ?? 0),
     });

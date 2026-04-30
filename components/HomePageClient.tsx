@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useChatActivity } from "@/components/ChatActivityProvider";
 import { UiBadge, UiButtonLink, UiCard, UiCardGrid, UiSectionHeader } from "@/components/ui";
+import { isMatchCompleted } from "@/lib/match-status";
 import { getRoundDisplayName } from "@/lib/round-label";
 
 const CURRENT_SEASON = 2026;
@@ -35,6 +36,7 @@ export type HomeTodayPickRow = {
   away_team: string;
   picked_team: string | null;
   winner_team: string | null;
+  status: string | null;
 };
 
 export type HomeFirstMatchRow = {
@@ -484,7 +486,7 @@ export default function HomePageClient({
                   {sortedTodayPicks.map((pick) => {
                     const pickedTeam = String(pick.picked_team ?? "").trim();
                     const winnerTeam = String(pick.winner_team ?? "").trim();
-                    const hasWinner = winnerTeam.length > 0;
+                    const completed = isMatchCompleted(pick);
                     const opponent =
                       pickedTeam === pick.home_team
                         ? pick.away_team
@@ -495,7 +497,7 @@ export default function HomePageClient({
                     let tone: "warning" | "info" | "success" | "danger" = "warning";
                     let statusLabel = "Not tipped";
                     if (pickedTeam) {
-                      if (!hasWinner) {
+                      if (!completed) {
                         tone = "info";
                         statusLabel = "Pending";
                       } else if (pickedTeam === winnerTeam) {

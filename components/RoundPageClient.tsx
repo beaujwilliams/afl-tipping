@@ -13,6 +13,7 @@ import {
   buildRoundPageOddsMap,
   normalizeRoundPagePaymentStatus,
 } from "@/lib/round-page-rules";
+import { isMatchCompleted } from "@/lib/match-status";
 import { getRoundDisplayName } from "@/lib/round-label";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { UiSkeleton } from "@/components/ui";
@@ -852,10 +853,11 @@ export default function RoundPageClient({
             {matches.map((m) => {
               const picked = tipsByMatchId[m.id] ?? null;
               const winner = String(m.winner_team ?? "").trim();
+              const completed = isMatchCompleted(m);
               const resultLabel =
-                picked && winner ? (picked === winner ? "Correct" : "Incorrect") : null;
+                picked && completed ? (picked === winner ? "Correct" : "Incorrect") : null;
               const resultClassName =
-                picked && winner
+                picked && completed
                   ? picked === winner
                     ? "ui-badge ui-badge--success"
                     : "ui-badge ui-badge--danger"

@@ -210,7 +210,7 @@ export default function AdminPage() {
             >
               Sync Results (Squiggle)
               <div style={smallStyle}>
-                Updates winner_team for finished matches.
+                Updates final result status for finished matches.
               </div>
             </button>
 

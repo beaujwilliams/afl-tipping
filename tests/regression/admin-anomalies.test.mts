@@ -76,6 +76,28 @@ test("anomaly rules flag stale results only after the post-match grace window", 
 
   assert.equal(stale.length, 1);
   assert.equal(stale[0]?.missing_winner_count, 1);
+
+  const drawnFinal = findStaleResultRounds({
+    nowMs: new Date("2026-04-10T17:00:00Z").getTime(),
+    rounds: [
+      {
+        id: "round-1",
+        round_number: 5,
+        lock_time_utc: "2026-04-09T09:30:00Z",
+        odds_snapshot_for_time_utc: "2026-04-08T21:30:00Z",
+      },
+    ],
+    matches: [
+      {
+        id: "match-1",
+        round_id: "round-1",
+        commence_time_utc: "2026-04-10T08:00:00Z",
+        winner_team: null,
+        status: "final",
+      },
+    ],
+  });
+  assert.equal(drawnFinal.length, 0);
 });
 
 test("anomaly rules flag recap-due rounds only after all results are complete and the due window opens", () => {
@@ -100,7 +122,8 @@ test("anomaly rules flag recap-due rounds only after all results are complete an
         id: "match-2",
         round_id: "round-1",
         commence_time_utc: "2026-04-12T04:00:00Z",
-        winner_team: "Richmond",
+        winner_team: null,
+        status: "final",
       },
     ],
     recapRoundNumbers: [],

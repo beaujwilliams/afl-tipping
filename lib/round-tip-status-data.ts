@@ -1,4 +1,5 @@
 import { createServiceClient } from "@/lib/supabase-server";
+import { isMatchCompleted } from "@/lib/match-status";
 import { resolveReigningChampion } from "@/lib/reigning-champion";
 import { buildRoundTipStatusPlayerLists } from "@/lib/round-tip-status-rules";
 
@@ -23,6 +24,7 @@ type MatchRow = {
   id: string;
   round_id: string;
   winner_team: string | null;
+  status: string | null;
 };
 
 type TipRow = {
@@ -353,7 +355,7 @@ async function computeRoundTipStatusAggregate(params: {
   if (roundIds.length) {
     const { data: matches, error: mErr } = await supabase
       .from("matches")
-      .select("id, round_id, winner_team")
+      .select("id, round_id, winner_team, status")
       .in("round_id", roundIds);
 
     if (mErr) {
@@ -367,7 +369,7 @@ async function computeRoundTipStatusAggregate(params: {
       matchToRound.set(mid, rid);
       matchIdsByRound.set(rid, [...(matchIdsByRound.get(rid) ?? []), mid]);
       totalMatchesByRound.set(rid, (totalMatchesByRound.get(rid) ?? 0) + 1);
-      if (String(m.winner_team ?? "").trim()) {
+      if (isMatchCompleted(m)) {
         completedMatchesByRound.set(rid, (completedMatchesByRound.get(rid) ?? 0) + 1);
       }
     });

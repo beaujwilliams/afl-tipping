@@ -195,7 +195,7 @@ test("round results snapshot keeps average correct odds based on winning picks o
 
 test("round results snapshot keeps accuracy at 0 when no matches are finished", () => {
   const snapshot = buildRoundResultsSnapshot({
-    matches: MATCHES.map((match) => ({ ...match, winner_team: null })),
+    matches: MATCHES.map((match) => ({ ...match, winner_team: null, status: "scheduled" })),
     tips: [...TIPS],
     eligiblePlayers: [...ELIGIBLE_PLAYERS],
     oddsByMatchId: { ...ODDS_BY_MATCH },
@@ -205,6 +205,43 @@ test("round results snapshot keeps accuracy at 0 when no matches are finished", 
     assert.equal(player.accuracy_pct, 0);
     assert.equal(player.round_score, 0);
   });
+});
+
+test("round results snapshot treats final draws as completed zero-point games", () => {
+  const snapshot = buildRoundResultsSnapshot({
+    matches: [
+      {
+        id: "draw-1",
+        home_team: "Hawthorn",
+        away_team: "Collingwood",
+        winner_team: null,
+        commence_time_utc: "2026-04-30T09:30:00.000Z",
+        venue: "MCG",
+        status: "final",
+      },
+    ],
+    tips: [
+      { user_id: "u-a", match_id: "draw-1", picked_team: "Hawthorn" },
+      { user_id: "u-b", match_id: "draw-1", picked_team: "Collingwood" },
+    ],
+    eligiblePlayers: [...ELIGIBLE_PLAYERS],
+    oddsByMatchId: {
+      "draw-1": { home_odds: 1.72, away_odds: 2.16 },
+    },
+  });
+
+  assert.equal(snapshot.matches[0]?.winner_team, null);
+  assert.equal(snapshot.matches[0]?.status, "final");
+
+  const alice = snapshot.players.find((player) => player.user_id === "u-a");
+  const bob = snapshot.players.find((player) => player.user_id === "u-b");
+
+  assert.equal(alice?.round_score, 0);
+  assert.equal(alice?.correct_tips, 0);
+  assert.equal(alice?.accuracy_pct, 0);
+  assert.equal(bob?.round_score, 0);
+  assert.equal(bob?.correct_tips, 0);
+  assert.equal(bob?.accuracy_pct, 0);
 });
 
 test("odds selection keeps the first row per match so later rows cannot override it", () => {

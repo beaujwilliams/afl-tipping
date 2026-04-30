@@ -654,6 +654,47 @@ button {
   padding: 0;
 }
 
+.mobile-standings-card {
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+  color: var(--foreground);
+}
+
+.mobile-standings-card:last-child {
+  border-bottom: 0;
+}
+
+.mobile-standings-summary {
+  list-style: none;
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) minmax(62px, auto);
+  gap: 8px;
+  align-items: center;
+  min-height: 54px;
+  padding: 9px 10px;
+}
+
+.mobile-standings-summary::-webkit-details-marker {
+  display: none;
+}
+
+.mobile-standings-summary::marker {
+  content: "";
+}
+
+.mobile-standings-card[open] .mobile-standings-summary {
+  border-bottom: 1px solid var(--border);
+}
+
+.mobile-standings-extra {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 8px 10px 10px;
+  background: var(--card-soft);
+}
+
 .mobile-standings-row {
   appearance: none;
   border: 0;
@@ -1052,6 +1093,11 @@ button {
 }
 
 @media (max-width: 390px) {
+  .mobile-standings-summary {
+    grid-template-columns: 34px minmax(0, 1fr) minmax(56px, auto);
+    padding: 9px 8px;
+  }
+
   .mobile-standings-row {
     grid-template-columns: 34px minmax(0, 1fr) auto minmax(54px, auto);
     padding: 8px;

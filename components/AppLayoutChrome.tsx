@@ -121,7 +121,6 @@ function DropdownTrigger({
     >
       {label}
       {typeof unread === "number" && unread > 0 && <CountBadge value={unread} />}
-      <span style={{ opacity: 0.7 }}>{open ? "↑" : "↓"}</span>
     </button>
   );
 }

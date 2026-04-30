@@ -697,8 +697,8 @@ export default function PeopleAdminClient({
   }
 
   function rosterSortMarker(key: RosterSortKey) {
-    if (rosterSortBy !== key) return "↑↓";
-    return rosterSortDirection === "asc" ? "↑" : "↓";
+    if (rosterSortBy !== key) return "";
+    return rosterSortDirection === "asc" ? "Asc" : "Desc";
   }
 
   function sortableRosterHeader(label: string, key: RosterSortKey) {

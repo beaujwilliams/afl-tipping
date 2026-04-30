@@ -238,6 +238,8 @@ export default function HomePageClient({
           )
         )
       : 0;
+  const liveRoundHasScoredMatches = Number(liveRound?.completed_matches ?? 0) > 0;
+  const liveRoundScore = liveRoundHasScoredMatches ? Number(me?.round_score ?? 0) : 0;
 
   const primaryTipRound = useMemo(() => {
     if (currentRound && !locked) return currentRound;
@@ -406,9 +408,11 @@ export default function HomePageClient({
                   </UiCard>
                   <UiCard className="dashboard-mini-card">
                     <div className="ui-kicker">Your round score</div>
-                    <div className="ui-value">{me ? fmtPts(me.round_score) : "-"}</div>
+                    <div className="ui-value">{me ? fmtPts(liveRoundScore) : "-"}</div>
                     <div className="ui-meta">
-                      Live {getRoundDisplayName(liveRound.round_number)} points so far
+                      {liveRoundHasScoredMatches
+                        ? `Live ${getRoundDisplayName(liveRound.round_number)} points so far`
+                        : "Waiting for first result"}
                     </div>
                   </UiCard>
                   <UiCard className="dashboard-mini-card">

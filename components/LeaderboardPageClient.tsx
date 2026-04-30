@@ -143,8 +143,8 @@ function fmtPct(n: number) {
 }
 
 function movementText(movement: number) {
-  if (movement > 0) return `▲ ${movement}`;
-  if (movement < 0) return `▼ ${Math.abs(movement)}`;
+  if (movement > 0) return `Up ${movement}`;
+  if (movement < 0) return `Down ${Math.abs(movement)}`;
   return "-";
 }
 
@@ -167,8 +167,8 @@ function fmtInviteTimestamp(iso: string | null | undefined) {
 }
 
 function movementBadgeText(movement: number) {
-  if (movement > 0) return `▲ ${movement}`;
-  if (movement < 0) return `▼ ${Math.abs(movement)}`;
+  if (movement > 0) return `Up ${movement}`;
+  if (movement < 0) return `Down ${Math.abs(movement)}`;
   return "Even";
 }
 
@@ -1730,8 +1730,8 @@ export default function LeaderboardPageClient({
   }
 
   function sortMarker(key: SortKey) {
-    if (activeSortBy !== key) return "↑↓";
-    return activeSortDirection === "asc" ? "↑" : "↓";
+    if (activeSortBy !== key) return "";
+    return activeSortDirection === "asc" ? "Asc" : "Desc";
   }
 
   function toggleTrendUser(userId: string) {

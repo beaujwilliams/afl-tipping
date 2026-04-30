@@ -810,7 +810,7 @@ export default function ChatPage() {
 
     const desc = [...list];
 
-    // new message detection (for "New messages ↑" button)
+    // new message detection for the floating unread button
     const prevKnown = knownIdsRef.current;
     let newlySeen = 0;
     for (const m of desc) {
@@ -1929,7 +1929,7 @@ export default function ChatPage() {
                 }}
                 type="button"
               >
-                New messages ({newCount}) ↑
+                New messages ({newCount})
               </button>
             </div>
           )}

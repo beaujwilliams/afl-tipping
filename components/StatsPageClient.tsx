@@ -162,8 +162,8 @@ export default function StatsPageClient(props: {
   }
 
   function teamSortMarker(key: TeamSortKey) {
-    if (teamSortBy !== key) return "↑↓";
-    return teamSortDirection === "asc" ? "↑" : "↓";
+    if (teamSortBy !== key) return "";
+    return teamSortDirection === "asc" ? "Asc" : "Desc";
   }
 
   return (

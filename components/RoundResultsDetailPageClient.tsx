@@ -667,8 +667,8 @@ export default function RoundResultsDetailPageClient({
   }
 
   function sortMarker(key: RoundSortKey) {
-    if (activeSortBy !== key) return "↑↓";
-    return activeSortDirection === "asc" ? "↑" : "↓";
+    if (activeSortBy !== key) return null;
+    return activeSortDirection === "asc" ? "Asc" : "Desc";
   }
 
   return (
@@ -961,9 +961,11 @@ export default function RoundResultsDetailPageClient({
                               }}
                             >
                               <span>{label}</span>
-                              <span style={{ opacity: activeSortBy === key ? 1 : 0.45, fontSize: 11 }}>
-                                {sortMarker(key)}
-                              </span>
+                              {sortMarker(key) && (
+                                <span style={{ opacity: 0.75, fontSize: 11 }}>
+                                  {sortMarker(key)}
+                                </span>
+                              )}
                             </button>
                           </UiTableHeadCell>
                         )

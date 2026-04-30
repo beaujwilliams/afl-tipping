@@ -859,7 +859,7 @@ export default function RoundResultsDetailPageClient({
             {players.length === 0 ? (
               <div style={{ padding: "0 12px 12px", opacity: 0.72, fontSize: 12 }}>No tips found for this round.</div>
             ) : isMobile ? (
-              <div className="mobile-standings-list">
+              <div className="mobile-standings-list round-leaderboard-mobile-list">
                 {sortedPlayers.map((p) => {
                   const isChampion = championHighlightSet.has(p.user_id);
                   return (
@@ -909,7 +909,10 @@ export default function RoundResultsDetailPageClient({
               </div>
             ) : (
               <UiTableScroll>
-                <table className={`ui-table ${isMobile ? "ui-table--compact" : ""}`} style={{ minWidth: tableMinWidth }}>
+                <table
+                  className={`ui-table round-leaderboard-table ${isMobile ? "ui-table--compact" : ""}`}
+                  style={{ minWidth: tableMinWidth }}
+                >
                   <thead>
                     <tr className="ui-table-head-row">
                       {([
@@ -946,7 +949,7 @@ export default function RoundResultsDetailPageClient({
                                 color: "inherit",
                                 cursor: "pointer",
                                 font: "inherit",
-                                fontWeight: activeSortBy === key ? 800 : 600,
+                                fontWeight: activeSortBy === key ? 700 : 500,
                                 display: "inline-flex",
                                 alignItems: "center",
                                 gap: 6,
@@ -969,14 +972,14 @@ export default function RoundResultsDetailPageClient({
                         <tr key={p.user_id}>
                           <UiTableCell
                             style={{
-                              fontWeight: 900,
+                              fontWeight: 600,
                               ...rankSticky,
                             }}
                           >
                             #{roundRankByUserId[p.user_id] ?? "-"}
                           </UiTableCell>
                           <UiTableCell
-                            style={{ fontWeight: 700, ...stickyColumnStyle(2, false) }}
+                            style={{ fontWeight: 500, ...stickyColumnStyle(2, false) }}
                             title={
                               p.payment_status === "pending"
                                 ? `${p.display_name} (unpaid)`
@@ -1000,7 +1003,7 @@ export default function RoundResultsDetailPageClient({
                               <ChampionSeasonLabels seasons={championSeasonsByUserId[p.user_id]} />
                             </span>
                           </UiTableCell>
-                          <UiTableCell style={{ fontWeight: 800, width: 112, minWidth: 112 }}>
+                          <UiTableCell style={{ fontWeight: 600, width: 112, minWidth: 112 }}>
                             {fmtPts(p.round_score)}
                           </UiTableCell>
                           <UiTableCell style={{ width: 72, minWidth: 72 }}>

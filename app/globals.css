@@ -639,6 +639,18 @@ button {
   border-top: 6px solid currentColor;
 }
 
+.round-leaderboard-table th {
+  padding: 7px 10px !important;
+  font-size: 12px;
+  line-height: 1.15;
+}
+
+.round-leaderboard-table td {
+  padding: 8px 10px !important;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
 .leaderboard-mobile-shell {
   overflow: hidden;
 }
@@ -1143,6 +1155,58 @@ button {
 
   .mobile-standings-sheet h2 {
     font-size: 21px;
+  }
+}
+
+.round-leaderboard-mobile-list .mobile-standings-summary {
+  grid-template-columns: 34px minmax(0, 1fr) minmax(56px, auto) minmax(48px, auto);
+  gap: 6px;
+  min-height: 44px;
+  padding: 6px 8px;
+}
+
+.round-leaderboard-mobile-list .mobile-standings-extra {
+  gap: 4px;
+  padding: 6px 8px 8px;
+}
+
+.round-leaderboard-mobile-list .mobile-standings-rank,
+.round-leaderboard-mobile-list .mobile-standings-name {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.round-leaderboard-mobile-list .mobile-standings-primary strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.round-leaderboard-mobile-list .mobile-standings-primary span {
+  font-size: 8px;
+  font-weight: 500;
+  letter-spacing: 0.035em;
+}
+
+.round-leaderboard-mobile-list .mobile-standings-stat {
+  border-radius: 8px;
+  padding: 5px 6px;
+}
+
+.round-leaderboard-mobile-list .mobile-standings-stat span {
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+.round-leaderboard-mobile-list .mobile-standings-stat strong {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+@media (max-width: 390px) {
+  .round-leaderboard-mobile-list .mobile-standings-summary {
+    grid-template-columns: 32px minmax(0, 1fr) minmax(52px, auto) minmax(44px, auto);
+    padding: 6px 7px;
   }
 }
 

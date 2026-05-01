@@ -315,7 +315,7 @@ export default function AppLayoutChrome({
   const tippingItems = useMemo<MenuItem[]>(
     () => [
       { href: "/round/2026", label: "Submit your tips" },
-      { href: "/results/2026", label: "Results" },
+      { href: "/results/2026", label: "Round Results" },
       { href: statsHref, label: "My stats" },
     ],
     [statsHref]

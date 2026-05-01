@@ -120,6 +120,18 @@ function DropdownTrigger({
       style={pillStyles({ active })}
     >
       {label}
+      <span
+        aria-hidden="true"
+        style={{
+          fontSize: 14,
+          fontWeight: 600,
+          lineHeight: 1,
+          opacity: 0.78,
+          transform: `translateY(${open ? "-0.5px" : "0"})`,
+        }}
+      >
+        {open ? "↑" : "↓"}
+      </span>
       {typeof unread === "number" && unread > 0 && <CountBadge value={unread} />}
     </button>
   );

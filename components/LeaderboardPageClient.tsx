@@ -936,16 +936,13 @@ export default function LeaderboardPageClient({
   const [deletingGroup, setDeletingGroup] = useState(false);
   const [hasSyncedGroupFromQuery, setHasSyncedGroupFromQuery] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const hasInitialTrendData =
-    initialLeaderboardState.trendSeries.some((series) => series.points.length > 0);
-  const [isTrendPanelOpen, setIsTrendPanelOpen] = useState(isTrendPage || hasInitialTrendData);
   const [trendFetchStatus, setTrendFetchStatus] = useState<"idle" | "loading" | "loaded" | "error">(
     initialTrendsIncluded && initialLeaderboard !== null ? "loaded" : "idle"
   );
   const [trendFetchError, setTrendFetchError] = useState("");
   const [groupsLoaded, setGroupsLoaded] = useState(false);
   const showLeaderboardSkeleton = !!msg && msg.startsWith("Loading") && rows.length === 0;
-  const trendPanelVisible = isTrendPage || isTrendPanelOpen;
+  const trendPanelVisible = isTrendPage || viewMode === "groups";
 
   function applyLeaderboardData(json: LeaderboardResponse) {
     const normalized = normalizeLeaderboardState(json);
@@ -2947,7 +2944,8 @@ export default function LeaderboardPageClient({
             </UiTableShell>
           )}
 
-          <UiCard className={isTrendPage ? "ui-mt-4" : "ui-mt-3"}>
+          {trendPanelVisible && (
+            <UiCard className={isTrendPage ? "ui-mt-4" : "ui-mt-3"}>
             <div style={{ padding: 16, display: "grid", gap: 14 }}>
               <div className="ui-row-between">
                 <div style={{ display: "grid", gap: 4 }}>
@@ -2960,26 +2958,9 @@ export default function LeaderboardPageClient({
                     {trendRoundStatusLabel}
                   </p>
                 </div>
-                {!isTrendPage && (
-                  <UiButton
-                    pill
-                    onClick={() => {
-                      setIsTrendPanelOpen((prev) => !prev);
-                      if (trendFetchStatus === "error") {
-                        setTrendFetchStatus("idle");
-                      }
-                    }}
-                  >
-                    {isTrendPanelOpen ? "Hide trend" : "Show trend"}
-                  </UiButton>
-                )}
               </div>
 
-              {!trendPanelVisible ? (
-                <p className="ui-caption" style={{ margin: 0 }}>
-                  Open trend to load chart data and controls.
-                </p>
-              ) : trendFetchStatus === "loading" ? (
+              {trendFetchStatus === "loading" ? (
                 <LeaderboardTrendLoadingSkeleton isMobile={isMobile} />
               ) : trendFetchStatus === "error" ? (
                 <div className="ui-grid" style={{ gap: 8 }}>
@@ -3299,7 +3280,8 @@ export default function LeaderboardPageClient({
                 </>
               )}
             </div>
-          </UiCard>
+            </UiCard>
+          )}
         </>
       )}
     </main>

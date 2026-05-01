@@ -914,9 +914,14 @@ export default function LeaderboardPageClient({
   const [deletingGroup, setDeletingGroup] = useState(false);
   const [hasSyncedGroupFromQuery, setHasSyncedGroupFromQuery] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [leaderboardDetailsLoading, setLeaderboardDetailsLoading] = useState(
-    initialLeaderboard !== null
+  const hasInitialTrendData =
+    initialLeaderboardState.trendRounds.length > 0 ||
+    initialLeaderboardState.trendSeries.length > 0;
+  const [isTrendPanelOpen, setIsTrendPanelOpen] = useState(hasInitialTrendData);
+  const [trendFetchStatus, setTrendFetchStatus] = useState<"idle" | "loading" | "loaded" | "error">(
+    hasInitialTrendData ? "loaded" : "idle"
   );
+  const [trendFetchError, setTrendFetchError] = useState("");
   const [groupsLoaded, setGroupsLoaded] = useState(false);
   const showLeaderboardSkeleton = !!msg && msg.startsWith("Loading") && rows.length === 0;
 
@@ -1341,23 +1346,13 @@ export default function LeaderboardPageClient({
   const currentGroupQuery = String(searchParams.get("group") ?? "").trim();
 
   useEffect(() => {
+    if (!isTrendPanelOpen) return;
+    if (trendFetchStatus !== "idle") return;
+
     let cancelled = false;
-    let timeoutId: ReturnType<typeof globalThis.setTimeout> | null = null;
-    let idleId: number | null = null;
-    const win =
-      typeof window === "undefined"
-        ? null
-        : (window as Window & {
-            requestIdleCallback?: (
-              callback: IdleRequestCallback,
-              options?: IdleRequestOptions
-            ) => number;
-            cancelIdleCallback?: (handle: number) => void;
-          });
-
-    async function loadLeaderboardDetails() {
-      setLeaderboardDetailsLoading(true);
-
+    async function loadLeaderboardTrends() {
+      setTrendFetchStatus("loading");
+      setTrendFetchError("");
       const res = await fetch(
         `/api/leaderboard?season=${encodeURIComponent(String(season))}&include_trends=1`,
         {
@@ -1372,33 +1367,22 @@ export default function LeaderboardPageClient({
         if (!hasInitialRows) {
           setMsg(json?.error || "Could not load leaderboard.");
         }
-        setLeaderboardDetailsLoading(false);
+        setTrendFetchStatus("error");
+        setTrendFetchError(json?.error || "Could not load trend data.");
         return;
       }
 
       applyLeaderboardData(json);
       setMsg("");
-      setLeaderboardDetailsLoading(false);
+      setTrendFetchStatus("loaded");
     }
 
-    if (typeof win?.requestIdleCallback === "function") {
-      idleId = win.requestIdleCallback(() => {
-        void loadLeaderboardDetails();
-      }, { timeout: 800 });
-    } else {
-      timeoutId = globalThis.setTimeout(() => {
-        void loadLeaderboardDetails();
-      }, 150);
-    }
+    void loadLeaderboardTrends();
 
     return () => {
       cancelled = true;
-      if (timeoutId !== null) globalThis.clearTimeout(timeoutId);
-      if (idleId !== null && typeof win?.cancelIdleCallback === "function") {
-        win.cancelIdleCallback(idleId);
-      }
     };
-  }, [hasInitialRows, season]);
+  }, [hasInitialRows, isTrendPanelOpen, season, trendFetchStatus]);
 
   useEffect(() => {
     if (groupsLoaded) return;
@@ -2928,14 +2912,7 @@ export default function LeaderboardPageClient({
 
           <UiCard className="ui-mt-3">
             <div style={{ padding: 16, display: "grid", gap: 14 }}>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) auto",
-                  gap: isMobile ? 10 : 16,
-                  alignItems: "start",
-                }}
-              >
+              <div className="ui-row-between">
                 <div style={{ display: "grid", gap: 4 }}>
                   <h2 className="leaderboard-trend-title">Position Trend</h2>
                   <p className="ui-caption" style={{ margin: 0 }}>
@@ -2943,304 +2920,341 @@ export default function LeaderboardPageClient({
                     multiple tipsters to track head-to-head movement.
                   </p>
                 </div>
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 6,
-                    alignItems: isMobile ? "flex-start" : "flex-end",
-                    justifySelf: isMobile ? "start" : "end",
+                <UiButton
+                  pill
+                  onClick={() => {
+                    setIsTrendPanelOpen((prev) => !prev);
+                    if (trendFetchStatus === "error") {
+                      setTrendFetchStatus("idle");
+                    }
                   }}
                 >
-                  <div
-                    role="group"
-                    aria-label="Trend metric"
-                    className="leaderboard-trend-metric"
-                    style={{
-                      display: "inline-flex",
-                      border: "1px solid var(--border)",
-                      borderRadius: 999,
-                      overflow: "hidden",
-                      background: "var(--card)",
-                    }}
-                  >
-                    {(["rank", "points"] as const).map((option) => {
-                      const isActive = trendMetric === option;
-                      return (
-                        <button
-                          key={option}
-                          type="button"
-                          onClick={() => setTrendMetric(option)}
-                          style={{
-                            appearance: "none",
-                            border: "none",
-                            padding: isMobile ? "6px 14px" : "6px 12px",
-                            cursor: "pointer",
-                            fontSize: 13,
-                            fontWeight: 700,
-                            background: isActive ? "var(--foreground)" : "transparent",
-                            color: isActive ? "var(--background)" : "var(--foreground)",
-                          }}
-                          aria-pressed={isActive}
-                        >
-                          {option === "rank" ? "Rank" : "Points"}
-                        </button>
-                      );
-                    })}
+                  {isTrendPanelOpen ? "Hide trend" : "Show trend"}
+                </UiButton>
+              </div>
+
+              {!isTrendPanelOpen ? (
+                <p className="ui-caption" style={{ margin: 0 }}>
+                  Open trend to load chart data and controls.
+                </p>
+              ) : trendFetchStatus === "loading" ? (
+                <LeaderboardTrendLoadingSkeleton isMobile={isMobile} />
+              ) : trendFetchStatus === "error" ? (
+                <div className="ui-grid" style={{ gap: 8 }}>
+                  <p className="ui-caption" style={{ margin: 0, color: "rgb(185,28,28)" }}>
+                    {trendFetchError || "Could not load trend data."}
+                  </p>
+                  <div>
+                    <UiButton
+                      pill
+                      onClick={() => {
+                        setTrendFetchStatus("idle");
+                        setTrendFetchError("");
+                      }}
+                    >
+                      Retry trend load
+                    </UiButton>
                   </div>
                 </div>
-              </div>
-              {trendRangeSummary && (
-                <p className="ui-caption leaderboard-trend-range-summary" style={{ margin: 0 }}>
-                  {trendRangeSummary}
-                </p>
-              )}
-
-              {leaderboardDetailsLoading ? (
-                <LeaderboardTrendLoadingSkeleton isMobile={isMobile} />
-              ) : scopedTrendSeries.length === 0 || trendRounds.length === 0 ? (
-                <p className="ui-caption" style={{ margin: 0 }}>
-                  Trend data appears after rounds are scored.
-                </p>
-              ) : activeTrendRounds.length === 0 ? (
-                <p className="ui-caption" style={{ margin: 0 }}>
-                  No rounds found for the selected range.
-                </p>
               ) : (
-                <div style={{ display: "grid", gap: 14 }}>
-                  <TrendChart
-                    rounds={activeTrendRounds}
-                    selectedSeries={selectedTrendSeries}
-                    totalParticipants={Math.max(1, scopedRows.length)}
-                    metric={trendMetric}
-                    colorByUserId={trendColorByUserId}
-                    rangeControls={
-                      <div style={{ display: "grid", gap: 8 }}>
+                <>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 6,
+                      alignItems: isMobile ? "flex-start" : "flex-end",
+                    }}
+                  >
+                    <div
+                      role="group"
+                      aria-label="Trend metric"
+                      className="leaderboard-trend-metric"
+                      style={{
+                        display: "inline-flex",
+                        border: "1px solid var(--border)",
+                        borderRadius: 999,
+                        overflow: "hidden",
+                        background: "var(--card)",
+                      }}
+                    >
+                      {(["rank", "points"] as const).map((option) => {
+                        const isActive = trendMetric === option;
+                        return (
+                          <button
+                            key={option}
+                            type="button"
+                            onClick={() => setTrendMetric(option)}
+                            style={{
+                              appearance: "none",
+                              border: "none",
+                              padding: isMobile ? "6px 14px" : "6px 12px",
+                              cursor: "pointer",
+                              fontSize: 13,
+                              fontWeight: 700,
+                              background: isActive ? "var(--foreground)" : "transparent",
+                              color: isActive ? "var(--background)" : "var(--foreground)",
+                            }}
+                            aria-pressed={isActive}
+                          >
+                            {option === "rank" ? "Rank" : "Points"}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {trendRangeSummary && (
+                    <p className="ui-caption leaderboard-trend-range-summary" style={{ margin: 0 }}>
+                      {trendRangeSummary}
+                    </p>
+                  )}
+
+                  {scopedTrendSeries.length === 0 || trendRounds.length === 0 ? (
+                    <p className="ui-caption" style={{ margin: 0 }}>
+                      Trend data appears after rounds are scored.
+                    </p>
+                  ) : activeTrendRounds.length === 0 ? (
+                    <p className="ui-caption" style={{ margin: 0 }}>
+                      No rounds found for the selected range.
+                    </p>
+                  ) : (
+                    <div style={{ display: "grid", gap: 14 }}>
+                      <TrendChart
+                        rounds={activeTrendRounds}
+                        selectedSeries={selectedTrendSeries}
+                        totalParticipants={Math.max(1, scopedRows.length)}
+                        metric={trendMetric}
+                        colorByUserId={trendColorByUserId}
+                        rangeControls={
+                          <div style={{ display: "grid", gap: 8 }}>
+                            <div
+                              role="group"
+                              aria-label="Trend round range"
+                              style={{
+                                display: "flex",
+                                flexWrap: "wrap",
+                                justifyContent: "flex-start",
+                                gap: 6,
+                              }}
+                            >
+                              {TREND_RANGE_OPTIONS.map((option) => {
+                                const isActive = trendRangePreset === option.value;
+                                const isDisabled = option.value === "finals" && !hasFinalsRounds;
+                                return (
+                                  <button
+                                    key={option.value}
+                                    type="button"
+                                    onClick={() => {
+                                      if (isDisabled) return;
+                                      setTrendRangePreset(option.value);
+                                    }}
+                                    disabled={isDisabled}
+                                    style={{
+                                      appearance: "none",
+                                      border: "1px solid var(--border)",
+                                      borderRadius: 999,
+                                      padding: "5px 10px",
+                                      cursor: isDisabled ? "not-allowed" : "pointer",
+                                      fontSize: 12,
+                                      fontWeight: 700,
+                                      background: isActive ? "var(--foreground)" : "var(--card)",
+                                      color: isActive ? "var(--background)" : "var(--foreground)",
+                                      opacity: isDisabled ? 0.45 : 1,
+                                    }}
+                                    aria-pressed={isActive}
+                                  >
+                                    {option.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+
+                            {trendRangePreset === "custom" && trendRounds.length > 0 && (
+                              <div
+                                style={{
+                                  display: "flex",
+                                  gap: 8,
+                                  flexWrap: "wrap",
+                                  justifyContent: "flex-start",
+                                }}
+                              >
+                                <label className="ui-caption" style={{ display: "grid", gap: 4 }}>
+                                  <span>From</span>
+                                  <select
+                                    className="ui-input"
+                                    value={trendRangeStartRound ?? ""}
+                                    onChange={(event) =>
+                                      setTrendRangeStartRound(Number(event.target.value))
+                                    }
+                                    style={{ minWidth: 96, height: 34, padding: "0 10px" }}
+                                  >
+                                    {trendRounds.map((roundNumber) => (
+                                      <option key={`range-start-${roundNumber}`} value={roundNumber}>
+                                        R{roundNumber}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                                <label className="ui-caption" style={{ display: "grid", gap: 4 }}>
+                                  <span>To</span>
+                                  <select
+                                    className="ui-input"
+                                    value={trendRangeEndRound ?? ""}
+                                    onChange={(event) =>
+                                      setTrendRangeEndRound(Number(event.target.value))
+                                    }
+                                    style={{ minWidth: 96, height: 34, padding: "0 10px" }}
+                                  >
+                                    {trendRounds.map((roundNumber) => (
+                                      <option key={`range-end-${roundNumber}`} value={roundNumber}>
+                                        R{roundNumber}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                              </div>
+                            )}
+                          </div>
+                        }
+                      />
+
+                      <div style={{ display: "grid", gap: 10 }}>
+                        <input
+                          value={trendSearch}
+                          onChange={(event) => setTrendSearch(event.target.value)}
+                          placeholder="Search tipsters..."
+                          className="ui-input"
+                          aria-label="Search tipsters"
+                        />
+
                         <div
-                          role="group"
-                          aria-label="Trend round range"
                           style={{
-                            display: "flex",
-                            flexWrap: "wrap",
-                            justifyContent: "flex-start",
-                            gap: 6,
+                            border: "1px solid var(--border)",
+                            borderRadius: 12,
+                            maxHeight: isMobile ? 220 : 260,
+                            overflow: "auto",
+                            background: "var(--background)",
                           }}
                         >
-                          {TREND_RANGE_OPTIONS.map((option) => {
-                            const isActive = trendRangePreset === option.value;
-                            const isDisabled = option.value === "finals" && !hasFinalsRounds;
+                          {filteredTrendOptions.map((series) => {
+                            const checked = selectedTrendUserIds.includes(series.user_id);
+                            const rank = rankByUserId.get(series.user_id);
                             return (
-                              <button
-                                key={option.value}
-                                type="button"
-                                onClick={() => {
-                                  if (isDisabled) return;
-                                  setTrendRangePreset(option.value);
-                                }}
-                                disabled={isDisabled}
+                              <label
+                                key={`picker-${series.user_id}`}
                                 style={{
-                                  appearance: "none",
-                                  border: "1px solid var(--border)",
-                                  borderRadius: 999,
-                                  padding: "5px 10px",
-                                  cursor: isDisabled ? "not-allowed" : "pointer",
-                                  fontSize: 12,
-                                  fontWeight: 700,
-                                  background: isActive ? "var(--foreground)" : "var(--card)",
-                                  color: isActive ? "var(--background)" : "var(--foreground)",
-                                  opacity: isDisabled ? 0.45 : 1,
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 8,
+                                  padding: "9px 10px",
+                                  borderBottom: "1px solid var(--border)",
+                                  cursor: "pointer",
+                                  fontSize: 14,
                                 }}
-                                aria-pressed={isActive}
                               >
-                                {option.label}
-                              </button>
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => toggleTrendUser(series.user_id)}
+                                  aria-label={`Toggle ${series.display_name}`}
+                                />
+                                <span
+                                  aria-hidden
+                                  style={{
+                                    width: 9,
+                                    height: 9,
+                                    borderRadius: 999,
+                                    background: trendColorForUser(trendColorByUserId, series.user_id),
+                                  }}
+                                />
+                                <span
+                                  style={{
+                                    flex: 1,
+                                    minWidth: 0,
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
+                                  {series.display_name}
+                                </span>
+                                <span className="ui-caption" style={{ fontSize: 12 }}>
+                                  {rank ? `#${rank}` : ""}
+                                </span>
+                              </label>
                             );
                           })}
                         </div>
 
-                        {trendRangePreset === "custom" && trendRounds.length > 0 && (
-                          <div
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                          <button
+                            type="button"
+                            onClick={() => selectTopTrendUsers(5, { includeCurrentUser: true })}
                             style={{
-                              display: "flex",
-                              gap: 8,
-                              flexWrap: "wrap",
-                              justifyContent: "flex-start",
-                            }}
-                          >
-                            <label className="ui-caption" style={{ display: "grid", gap: 4 }}>
-                              <span>From</span>
-                              <select
-                                className="ui-input"
-                                value={trendRangeStartRound ?? ""}
-                                onChange={(event) =>
-                                  setTrendRangeStartRound(Number(event.target.value))
-                                }
-                                style={{ minWidth: 96, height: 34, padding: "0 10px" }}
-                              >
-                                {trendRounds.map((roundNumber) => (
-                                  <option key={`range-start-${roundNumber}`} value={roundNumber}>
-                                    R{roundNumber}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                            <label className="ui-caption" style={{ display: "grid", gap: 4 }}>
-                              <span>To</span>
-                              <select
-                                className="ui-input"
-                                value={trendRangeEndRound ?? ""}
-                                onChange={(event) =>
-                                  setTrendRangeEndRound(Number(event.target.value))
-                                }
-                                style={{ minWidth: 96, height: 34, padding: "0 10px" }}
-                              >
-                                {trendRounds.map((roundNumber) => (
-                                  <option key={`range-end-${roundNumber}`} value={roundNumber}>
-                                    R{roundNumber}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                          </div>
-                        )}
-                      </div>
-                    }
-                  />
-
-                  <div style={{ display: "grid", gap: 10 }}>
-                    <input
-                      value={trendSearch}
-                      onChange={(event) => setTrendSearch(event.target.value)}
-                      placeholder="Search tipsters..."
-                      className="ui-input"
-                      aria-label="Search tipsters"
-                    />
-
-                    <div
-                      style={{
-                        border: "1px solid var(--border)",
-                        borderRadius: 12,
-                        maxHeight: isMobile ? 220 : 260,
-                        overflow: "auto",
-                        background: "var(--background)",
-                      }}
-                    >
-                      {filteredTrendOptions.map((series) => {
-                        const checked = selectedTrendUserIds.includes(series.user_id);
-                        const rank = rankByUserId.get(series.user_id);
-                        return (
-                          <label
-                            key={`picker-${series.user_id}`}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 8,
-                              padding: "9px 10px",
-                              borderBottom: "1px solid var(--border)",
+                              border: "1px solid var(--border)",
+                              background: "var(--card)",
+                              color: "var(--foreground)",
+                              borderRadius: 999,
+                              padding: "6px 12px",
                               cursor: "pointer",
-                              fontSize: 14,
+                              fontWeight: 600,
                             }}
                           >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => toggleTrendUser(series.user_id)}
-                              aria-label={`Toggle ${series.display_name}`}
-                            />
-                            <span
-                              aria-hidden
-                              style={{
-                                width: 9,
-                                height: 9,
-                                borderRadius: 999,
-                                background: trendColorForUser(trendColorByUserId, series.user_id),
-                              }}
-                            />
-                            <span
-                              style={{
-                                flex: 1,
-                                minWidth: 0,
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              {series.display_name}
-                            </span>
-                            <span className="ui-caption" style={{ fontSize: 12 }}>
-                              {rank ? `#${rank}` : ""}
-                            </span>
-                          </label>
-                        );
-                      })}
+                            Top 5 + You
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => selectTopTrendUsers(15, { includeCurrentUser: true })}
+                            style={{
+                              border: "1px solid var(--border)",
+                              background: "var(--card)",
+                              color: "var(--foreground)",
+                              borderRadius: 999,
+                              padding: "6px 12px",
+                              cursor: "pointer",
+                              fontWeight: 600,
+                            }}
+                          >
+                            Top 15 + You
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setSelectedTrendUserIds(scopedTrendSeries.map((series) => series.user_id))
+                            }
+                            style={{
+                              border: "1px solid var(--border)",
+                              background: "var(--card)",
+                              color: "var(--foreground)",
+                              borderRadius: 999,
+                              padding: "6px 12px",
+                              cursor: "pointer",
+                              fontWeight: 600,
+                            }}
+                          >
+                            All
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedTrendUserIds([])}
+                            style={{
+                              border: "1px solid var(--border)",
+                              background: "var(--card)",
+                              color: "var(--foreground)",
+                              borderRadius: 999,
+                              padding: "6px 12px",
+                              cursor: "pointer",
+                              fontWeight: 600,
+                            }}
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      </div>
                     </div>
-
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                      <button
-                        type="button"
-                        onClick={() => selectTopTrendUsers(5, { includeCurrentUser: true })}
-                        style={{
-                          border: "1px solid var(--border)",
-                          background: "var(--card)",
-                          color: "var(--foreground)",
-                          borderRadius: 999,
-                          padding: "6px 12px",
-                          cursor: "pointer",
-                          fontWeight: 600,
-                        }}
-                      >
-                        Top 5 + You
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => selectTopTrendUsers(15, { includeCurrentUser: true })}
-                        style={{
-                          border: "1px solid var(--border)",
-                          background: "var(--card)",
-                          color: "var(--foreground)",
-                          borderRadius: 999,
-                          padding: "6px 12px",
-                          cursor: "pointer",
-                          fontWeight: 600,
-                        }}
-                      >
-                        Top 15 + You
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setSelectedTrendUserIds(scopedTrendSeries.map((series) => series.user_id))
-                        }
-                        style={{
-                          border: "1px solid var(--border)",
-                          background: "var(--card)",
-                          color: "var(--foreground)",
-                          borderRadius: 999,
-                          padding: "6px 12px",
-                          cursor: "pointer",
-                          fontWeight: 600,
-                        }}
-                      >
-                        All
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedTrendUserIds([])}
-                        style={{
-                          border: "1px solid var(--border)",
-                          background: "var(--card)",
-                          color: "var(--foreground)",
-                          borderRadius: 999,
-                          padding: "6px 12px",
-                          cursor: "pointer",
-                          fontWeight: 600,
-                        }}
-                      >
-                        Clear
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                  )}
+                </>
               )}
             </div>
           </UiCard>

@@ -407,25 +407,6 @@ export default function RoundResultsDetailPageClient({
     roundLeaderboardColumnWidths.potential;
   const roundLeaderboardTableFontSize = isMobile ? 13 : 14;
 
-  function stickyColumnStyle(col: 1 | 2, isHeader: boolean) {
-    const stickyBackground = isHeader ? "var(--card-soft)" : "var(--card)";
-
-    return {
-      position: "sticky" as const,
-      left: col === 1 ? 0 : rankColWidth,
-      zIndex: isHeader ? (col === 1 ? 20 : 19) : col === 1 ? 10 : 9,
-      background: stickyBackground,
-      width: col === 1 ? rankColWidth : tipsterColWidth,
-      minWidth: col === 1 ? rankColWidth : tipsterColWidth,
-      maxWidth: col === 1 ? rankColWidth : tipsterColWidth,
-      boxSizing: "border-box" as const,
-      backgroundClip: "padding-box",
-      overflow: "hidden",
-      borderRight: "1px solid var(--border)",
-      boxShadow: col === 2 ? "1px 0 0 var(--border)" : undefined,
-    };
-  }
-
   const finishedMatches = useMemo(() => {
     return matches.filter((m) => isMatchCompleted(m)).length;
   }, [matches]);
@@ -831,21 +812,14 @@ export default function RoundResultsDetailPageClient({
                   )}
                 </>
               ) : (
-                <div className="ui-grid ui-mt-3" style={{ gap: 6 }}>
+                <div className="ui-grid ui-mt-3 round-results-my-tip-list">
                   {myTipRows.map((row) => (
                     <div
                       key={`my-tip-${row.match_id}`}
-                      style={{
-                        fontSize: 13,
-                        opacity: 0.92,
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: 10,
-                        flexWrap: "wrap",
-                        alignItems: "center",
-                      }}
+                      className="round-results-my-tip-row"
+                      style={{ fontSize: 13, opacity: 0.92 }}
                     >
-                      <div>
+                      <div className="round-results-my-tip-row-text">
                         {row.match_label} —{" "}
                         {row.picked ? (
                           <span>
@@ -856,11 +830,15 @@ export default function RoundResultsDetailPageClient({
                         )}
                       </div>
 
-                      {row.status !== "pending" && (
-                        <span className={myTipStatusClassName(row.status)}>
-                          {myTipStatusLabel(row.status)}
-                        </span>
-                      )}
+                      <span
+                        className={
+                          row.status === "pending"
+                            ? "ui-badge round-results-my-tip-status round-results-my-tip-status--pending"
+                            : `${myTipStatusClassName(row.status)} round-results-my-tip-status`
+                        }
+                      >
+                        {myTipStatusLabel(row.status)}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -926,9 +904,9 @@ export default function RoundResultsDetailPageClient({
             ) : (
               <UiTableScroll>
                 <table
-                  className={`ui-table leaderboard-table ${isMobile ? "ui-table--compact" : ""}`}
+                  className={`ui-table leaderboard-table round-results-leaderboard-table ${isMobile ? "ui-table--compact" : ""}`}
                   style={{
-                    width: tableMinWidth,
+                    width: "100%",
                     minWidth: tableMinWidth,
                     fontSize: roundLeaderboardTableFontSize,
                     borderCollapse: "separate",
@@ -947,28 +925,24 @@ export default function RoundResultsDetailPageClient({
                   <thead>
                     <tr className="ui-table-head-row">
                       {([
-                        ["Rank", "rank", 1, rankColWidth],
-                        ["Name", "display_name", 2, tipsterColWidth],
-                        ["Round Score", "round_score", undefined, roundLeaderboardColumnWidths.roundScore],
-                        ["Correct", "correct_tips", undefined, roundLeaderboardColumnWidths.correct],
-                        ["Accuracy", "accuracy_pct", undefined, roundLeaderboardColumnWidths.accuracy],
-                        ["Potential", "potential_score", undefined, roundLeaderboardColumnWidths.potential],
-                      ] as Array<[string, RoundSortKey, 1 | 2 | undefined, number | undefined]>).map(
-                        ([label, key, stickyCol, width]) => (
+                        ["Rank", "rank", rankColWidth, false],
+                        ["Name", "display_name", tipsterColWidth, false],
+                        ["Round Score", "round_score", roundLeaderboardColumnWidths.roundScore, true],
+                        ["Correct", "correct_tips", roundLeaderboardColumnWidths.correct, true],
+                        ["Accuracy", "accuracy_pct", roundLeaderboardColumnWidths.accuracy, true],
+                        ["Potential", "potential_score", roundLeaderboardColumnWidths.potential, true],
+                      ] as Array<[string, RoundSortKey, number, boolean]>).map(
+                        ([label, key, width, numeric]) => (
                           <UiTableHeadCell
                             key={key}
                             style={{
-                              ...(stickyCol ? stickyColumnStyle(stickyCol, true) : {}),
-                              ...(width
-                                ? {
-                                    width,
-                                    minWidth: width,
-                                    maxWidth: width,
-                                    boxSizing: "border-box",
-                                  }
-                                : {}),
+                              width,
+                              minWidth: width,
+                              maxWidth: width,
+                              boxSizing: "border-box",
                               whiteSpace: "nowrap",
                               verticalAlign: "middle",
+                              textAlign: numeric ? "right" : "left",
                             }}
                           >
                             <button
@@ -984,14 +958,14 @@ export default function RoundResultsDetailPageClient({
                                 font: "inherit",
                                 fontWeight: activeSortBy === key ? 800 : 600,
                                 display: "flex",
-                                width: stickyCol ? "auto" : "100%",
+                                width: "100%",
                                 alignItems: "center",
-                                justifyContent: stickyCol ? "flex-start" : "space-between",
+                                justifyContent: numeric ? "flex-end" : "space-between",
                                 gap: 6,
                                 padding: 0,
                                 whiteSpace: "nowrap",
                                 lineHeight: 1.15,
-                                textAlign: "left",
+                                textAlign: numeric ? "right" : "left",
                               }}
                             >
                               <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -1007,19 +981,18 @@ export default function RoundResultsDetailPageClient({
                   <tbody>
                     {sortedPlayers.map((p) => {
                       const isChampion = championHighlightSet.has(p.user_id);
-                      const rankSticky = stickyColumnStyle(1, false);
                       return (
                         <tr key={p.user_id}>
                           <UiTableCell
                             style={{
                               fontWeight: 500,
-                              ...rankSticky,
+                              fontVariantNumeric: "tabular-nums",
                             }}
                           >
                             #{roundRankByUserId[p.user_id] ?? "-"}
                           </UiTableCell>
                           <UiTableCell
-                            style={{ fontWeight: 500, ...stickyColumnStyle(2, false) }}
+                            style={{ fontWeight: 500 }}
                             title={
                               p.payment_status === "pending"
                                 ? `${p.display_name} (unpaid)`
@@ -1058,32 +1031,32 @@ export default function RoundResultsDetailPageClient({
                           <UiTableCell
                             style={{
                               fontWeight: 500,
-                              width: roundLeaderboardColumnWidths.roundScore,
-                              minWidth: roundLeaderboardColumnWidths.roundScore,
+                              textAlign: "right",
+                              fontVariantNumeric: "tabular-nums",
                             }}
                           >
                             {fmtPts(p.round_score)}
                           </UiTableCell>
                           <UiTableCell
                             style={{
-                              width: roundLeaderboardColumnWidths.correct,
-                              minWidth: roundLeaderboardColumnWidths.correct,
+                              textAlign: "right",
+                              fontVariantNumeric: "tabular-nums",
                             }}
                           >
                             {p.correct_tips}
                           </UiTableCell>
                           <UiTableCell
                             style={{
-                              width: roundLeaderboardColumnWidths.accuracy,
-                              minWidth: roundLeaderboardColumnWidths.accuracy,
+                              textAlign: "right",
+                              fontVariantNumeric: "tabular-nums",
                             }}
                           >
                             {fmtPct(p.accuracy_pct)}
                           </UiTableCell>
                           <UiTableCell
                             style={{
-                              width: roundLeaderboardColumnWidths.potential,
-                              minWidth: roundLeaderboardColumnWidths.potential,
+                              textAlign: "right",
+                              fontVariantNumeric: "tabular-nums",
                             }}
                           >
                             {fmtPts(p.potential_score)}

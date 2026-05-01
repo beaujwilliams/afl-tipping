@@ -624,6 +624,36 @@ button {
   line-height: 1.25;
 }
 
+.round-results-my-tip-list {
+  gap: 8px;
+}
+
+.round-results-my-tip-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.round-results-my-tip-row-text {
+  min-width: 0;
+  line-height: 1.35;
+}
+
+.round-results-my-tip-status {
+  min-width: 90px;
+}
+
+.round-results-my-tip-status--pending {
+  background: var(--card-soft);
+  color: var(--muted);
+  border-color: var(--border);
+}
+
+.round-results-leaderboard-table td {
+  white-space: nowrap;
+}
+
 .ui-sort-arrow {
   display: inline-block;
   width: 0;

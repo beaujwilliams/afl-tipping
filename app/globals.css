@@ -639,18 +639,6 @@ button {
   border-top: 6px solid currentColor;
 }
 
-.round-leaderboard-table th {
-  padding: 7px 10px !important;
-  font-size: 12px;
-  line-height: 1.15;
-}
-
-.round-leaderboard-table td {
-  padding: 8px 10px !important;
-  font-size: 13px;
-  line-height: 1.2;
-}
-
 .leaderboard-mobile-shell {
   overflow: hidden;
 }

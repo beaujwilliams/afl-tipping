@@ -390,25 +390,39 @@ export default function RoundResultsDetailPageClient({
     () => new Set(championHighlightUserIds),
     [championHighlightUserIds]
   );
-  const rankColWidth = isMobile ? 56 : 68;
-  const tipsterColWidth = isMobile ? 148 : 188;
-  const tableMinWidth = isMobile ? 680 : 760;
+  const rankColWidth = isMobile ? 58 : 72;
+  const tipsterColWidth = isMobile ? 156 : 260;
+  const roundLeaderboardColumnWidths = {
+    roundScore: isMobile ? 98 : 118,
+    correct: isMobile ? 72 : 82,
+    accuracy: isMobile ? 84 : 96,
+    potential: isMobile ? 98 : 118,
+  };
+  const tableMinWidth =
+    rankColWidth +
+    tipsterColWidth +
+    roundLeaderboardColumnWidths.roundScore +
+    roundLeaderboardColumnWidths.correct +
+    roundLeaderboardColumnWidths.accuracy +
+    roundLeaderboardColumnWidths.potential;
+  const roundLeaderboardTableFontSize = isMobile ? 13 : 14;
 
   function stickyColumnStyle(col: 1 | 2, isHeader: boolean) {
+    const stickyBackground = isHeader ? "var(--card-soft)" : "var(--card)";
+
     return {
       position: "sticky" as const,
       left: col === 1 ? 0 : rankColWidth,
       zIndex: isHeader ? (col === 1 ? 20 : 19) : col === 1 ? 10 : 9,
-      background: "var(--card)",
+      background: stickyBackground,
       width: col === 1 ? rankColWidth : tipsterColWidth,
       minWidth: col === 1 ? rankColWidth : tipsterColWidth,
       maxWidth: col === 1 ? rankColWidth : tipsterColWidth,
+      boxSizing: "border-box" as const,
       backgroundClip: "padding-box",
       overflow: "hidden",
-      boxShadow:
-        col === 2
-          ? "3px 0 0 var(--card), 4px 0 0 var(--border)"
-          : "1px 0 0 var(--border)",
+      borderRight: "1px solid var(--border)",
+      boxShadow: col === 2 ? "1px 0 0 var(--border)" : undefined,
     };
   }
 
@@ -912,18 +926,33 @@ export default function RoundResultsDetailPageClient({
             ) : (
               <UiTableScroll>
                 <table
-                  className={`ui-table round-leaderboard-table ${isMobile ? "ui-table--compact" : ""}`}
-                  style={{ minWidth: tableMinWidth }}
+                  className={`ui-table leaderboard-table ${isMobile ? "ui-table--compact" : ""}`}
+                  style={{
+                    width: tableMinWidth,
+                    minWidth: tableMinWidth,
+                    fontSize: roundLeaderboardTableFontSize,
+                    borderCollapse: "separate",
+                    borderSpacing: 0,
+                    tableLayout: "fixed",
+                  }}
                 >
+                  <colgroup>
+                    <col style={{ width: rankColWidth }} />
+                    <col style={{ width: tipsterColWidth }} />
+                    <col style={{ width: roundLeaderboardColumnWidths.roundScore }} />
+                    <col style={{ width: roundLeaderboardColumnWidths.correct }} />
+                    <col style={{ width: roundLeaderboardColumnWidths.accuracy }} />
+                    <col style={{ width: roundLeaderboardColumnWidths.potential }} />
+                  </colgroup>
                   <thead>
                     <tr className="ui-table-head-row">
                       {([
-                        ["Rank", "rank", 1, undefined],
-                        ["Tipster", "display_name", 2, undefined],
-                        ["Round score", "round_score", undefined, 112],
-                        ["Correct", "correct_tips", undefined, 72],
-                        ["Accuracy", "accuracy_pct", undefined, 88],
-                        ["Potential", "potential_score", undefined, 94],
+                        ["Rank", "rank", 1, rankColWidth],
+                        ["Name", "display_name", 2, tipsterColWidth],
+                        ["Round Score", "round_score", undefined, roundLeaderboardColumnWidths.roundScore],
+                        ["Correct", "correct_tips", undefined, roundLeaderboardColumnWidths.correct],
+                        ["Accuracy", "accuracy_pct", undefined, roundLeaderboardColumnWidths.accuracy],
+                        ["Potential", "potential_score", undefined, roundLeaderboardColumnWidths.potential],
                       ] as Array<[string, RoundSortKey, 1 | 2 | undefined, number | undefined]>).map(
                         ([label, key, stickyCol, width]) => (
                           <UiTableHeadCell
@@ -935,9 +964,11 @@ export default function RoundResultsDetailPageClient({
                                     width,
                                     minWidth: width,
                                     maxWidth: width,
+                                    boxSizing: "border-box",
                                   }
                                 : {}),
                               whiteSpace: "nowrap",
+                              verticalAlign: "middle",
                             }}
                           >
                             <button
@@ -951,14 +982,21 @@ export default function RoundResultsDetailPageClient({
                                 color: "inherit",
                                 cursor: "pointer",
                                 font: "inherit",
-                                fontWeight: activeSortBy === key ? 700 : 500,
-                                display: "inline-flex",
+                                fontWeight: activeSortBy === key ? 800 : 600,
+                                display: "flex",
+                                width: stickyCol ? "auto" : "100%",
                                 alignItems: "center",
+                                justifyContent: stickyCol ? "flex-start" : "space-between",
                                 gap: 6,
                                 padding: 0,
+                                whiteSpace: "nowrap",
+                                lineHeight: 1.15,
+                                textAlign: "left",
                               }}
                             >
-                              <span>{label}</span>
+                              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
+                                {label}
+                              </span>
                               {sortMarker(key)}
                             </button>
                           </UiTableHeadCell>
@@ -974,21 +1012,30 @@ export default function RoundResultsDetailPageClient({
                         <tr key={p.user_id}>
                           <UiTableCell
                             style={{
-                              fontWeight: 600,
+                              fontWeight: 900,
                               ...rankSticky,
                             }}
                           >
                             #{roundRankByUserId[p.user_id] ?? "-"}
                           </UiTableCell>
                           <UiTableCell
-                            style={{ fontWeight: 500, ...stickyColumnStyle(2, false) }}
+                            style={{ fontWeight: 700, ...stickyColumnStyle(2, false) }}
                             title={
                               p.payment_status === "pending"
                                 ? `${p.display_name} (unpaid)`
                                 : p.display_name
                             }
                           >
-                            <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "baseline",
+                                gap: 6,
+                                flexWrap: "wrap",
+                                rowGap: 2,
+                                minWidth: 0,
+                              }}
+                            >
                               <UnpaidTag paymentStatus={p.payment_status ?? null} compact={isMobile} />
                               <span
                                 style={{
@@ -1002,19 +1049,43 @@ export default function RoundResultsDetailPageClient({
                               >
                                 {p.display_name}
                               </span>
-                              <ChampionSeasonLabels seasons={championSeasonsByUserId[p.user_id]} />
+                              <ChampionSeasonLabels
+                                seasons={championSeasonsByUserId[p.user_id]}
+                                fontSize={10}
+                              />
                             </span>
                           </UiTableCell>
-                          <UiTableCell style={{ fontWeight: 600, width: 112, minWidth: 112 }}>
+                          <UiTableCell
+                            style={{
+                              fontWeight: 800,
+                              width: roundLeaderboardColumnWidths.roundScore,
+                              minWidth: roundLeaderboardColumnWidths.roundScore,
+                            }}
+                          >
                             {fmtPts(p.round_score)}
                           </UiTableCell>
-                          <UiTableCell style={{ width: 72, minWidth: 72 }}>
+                          <UiTableCell
+                            style={{
+                              width: roundLeaderboardColumnWidths.correct,
+                              minWidth: roundLeaderboardColumnWidths.correct,
+                            }}
+                          >
                             {p.correct_tips}
                           </UiTableCell>
-                          <UiTableCell style={{ width: 88, minWidth: 88 }}>
+                          <UiTableCell
+                            style={{
+                              width: roundLeaderboardColumnWidths.accuracy,
+                              minWidth: roundLeaderboardColumnWidths.accuracy,
+                            }}
+                          >
                             {fmtPct(p.accuracy_pct)}
                           </UiTableCell>
-                          <UiTableCell style={{ width: 94, minWidth: 94 }}>
+                          <UiTableCell
+                            style={{
+                              width: roundLeaderboardColumnWidths.potential,
+                              minWidth: roundLeaderboardColumnWidths.potential,
+                            }}
+                          >
                             {fmtPts(p.potential_score)}
                           </UiTableCell>
                         </tr>

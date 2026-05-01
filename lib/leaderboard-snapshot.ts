@@ -120,6 +120,7 @@ export type LeaderboardResponse = {
   champion_highlight_user_ids?: string[];
   champion_seasons_by_user_id?: Record<string, number[]>;
   latest_scored_round: number | null;
+  latest_scored_round_in_progress: boolean | null;
   previous_round_for_movement: number | null;
   matches_scored: number;
   matches_skipped_no_odds?: number;
@@ -309,6 +310,7 @@ export async function computeLeaderboardSnapshot(params: {
       champion_highlight_user_ids: reigningChampion.champion_highlight_user_ids,
       champion_seasons_by_user_id: reigningChampion.champion_seasons_by_user_id,
       latest_scored_round: null,
+      latest_scored_round_in_progress: null,
       previous_round_for_movement: null,
       matches_scored: 0,
       scored_rounds: [],
@@ -537,6 +539,22 @@ export async function computeLeaderboardSnapshot(params: {
 
   const previousRoundForMovement =
     roundsWithScores.length >= 2 ? roundsWithScores[roundsWithScores.length - 2] : null;
+  const latestRoundMatchCount =
+    latestScoredRound === null
+      ? 0
+      : matchRows.filter((match) => {
+          const round = roundById.get(String(match.round_id));
+          if (!round) return false;
+          return Number(round.round_number) === latestScoredRound;
+        }).length;
+  const latestRoundScoredMatchCount =
+    latestScoredRound === null
+      ? 0
+      : scoredMatches.filter((match) => Number(match.round_number) === latestScoredRound).length;
+  const latestScoredRoundInProgress =
+    latestScoredRound === null
+      ? null
+      : latestRoundScoredMatchCount > 0 && latestRoundScoredMatchCount < latestRoundMatchCount;
 
   for (const stats of statsByUser.values()) {
     for (const match of scoredMatches) {
@@ -749,6 +767,7 @@ export async function computeLeaderboardSnapshot(params: {
     champion_highlight_user_ids: reigningChampion.champion_highlight_user_ids,
     champion_seasons_by_user_id: reigningChampion.champion_seasons_by_user_id,
     latest_scored_round: latestScoredRound,
+    latest_scored_round_in_progress: latestScoredRoundInProgress,
     previous_round_for_movement: previousRoundForMovement,
     matches_scored: scoredMatches.length,
     matches_skipped_no_odds: skippedNoOdds,
@@ -908,7 +927,22 @@ export async function getLeaderboardSnapshot(params: {
           rank_trends: [],
         };
 
-    if (params.preferCached) {
+    const cachedHasTrendSeries =
+      Array.isArray(enrichedCachedPayload.rank_trends) &&
+      enrichedCachedPayload.rank_trends.some((series) => {
+        const points = Array.isArray(series?.points) ? series.points : [];
+        return points.length > 0;
+      });
+    const needsTrendBackfill =
+      includeTrends &&
+      Array.isArray(enrichedCachedPayload.scored_rounds) &&
+      enrichedCachedPayload.scored_rounds.length > 0 &&
+      !cachedHasTrendSeries;
+    const missingRoundStatusFlag =
+      enrichedCachedPayload.latest_scored_round !== null &&
+      typeof enrichedCachedPayload.latest_scored_round_in_progress !== "boolean";
+
+    if (params.preferCached && !needsTrendBackfill && !missingRoundStatusFlag) {
       return payload;
     }
 
@@ -917,7 +951,7 @@ export async function getLeaderboardSnapshot(params: {
       Number.isFinite(computedAtMs) &&
       computedAtMs > 0 &&
       Date.now() - computedAtMs <= LEADERBOARD_CACHE_MAX_AGE_MS;
-    if (fresh) {
+    if (fresh && !needsTrendBackfill && !missingRoundStatusFlag) {
       return payload;
     }
   }

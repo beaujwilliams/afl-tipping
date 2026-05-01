@@ -57,6 +57,7 @@ type LeaderboardResponse = {
   champion_highlight_user_ids?: string[];
   champion_seasons_by_user_id?: Record<string, number[]>;
   latest_scored_round: number | null;
+  latest_scored_round_in_progress?: boolean | null;
   previous_round_for_movement: number | null;
   matches_scored: number;
   scored_rounds?: number[];
@@ -132,6 +133,8 @@ type LeaderboardPageClientProps = {
   initialLeaderboard: LeaderboardResponse | null;
   initialMessage?: string | null;
   initialViewMode?: "overall" | "groups";
+  pageMode?: "leaderboard" | "trend";
+  initialTrendsIncluded?: boolean;
 };
 
 function fmtPts(n: number) {
@@ -231,6 +234,14 @@ function buildNiceNumberTicks(maxValue: number, targetTickCount = 6) {
 
 function normalizeLeaderboardState(json: LeaderboardResponse | null | undefined) {
   const rows = Array.isArray(json?.rows) ? json.rows : [];
+  const latestScoredRound =
+    json?.latest_scored_round !== null && Number.isFinite(Number(json?.latest_scored_round))
+      ? Number(json?.latest_scored_round)
+      : null;
+  const latestScoredRoundInProgress =
+    typeof json?.latest_scored_round_in_progress === "boolean"
+      ? json.latest_scored_round_in_progress
+      : null;
   const championHighlightUserIds = normalizeUserIdList(json?.champion_highlight_user_ids);
   const reigningChampionUserId =
     typeof json?.reigning_champion_user_id === "string"
@@ -276,6 +287,8 @@ function normalizeLeaderboardState(json: LeaderboardResponse | null | undefined)
 
   return {
     rows,
+    latestScoredRound,
+    latestScoredRoundInProgress,
     championHighlightUserIds,
     championSeasonsByUserId: normalizeChampionSeasonsByUserId(
       json?.champion_seasons_by_user_id
@@ -856,14 +869,23 @@ export default function LeaderboardPageClient({
   initialLeaderboard,
   initialMessage = null,
   initialViewMode = "overall",
+  pageMode = "leaderboard",
+  initialTrendsIncluded = false,
 }: LeaderboardPageClientProps) {
   const toast = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialLeaderboardState = normalizeLeaderboardState(initialLeaderboard);
+  const isTrendPage = pageMode === "trend";
   const hasInitialRows = initialLeaderboardState.rows.length > 0;
 
   const [rows, setRows] = useState<LeaderboardRow[]>(initialLeaderboardState.rows);
+  const [latestScoredRound, setLatestScoredRound] = useState<number | null>(
+    initialLeaderboardState.latestScoredRound
+  );
+  const [latestScoredRoundInProgress, setLatestScoredRoundInProgress] = useState<
+    boolean | null
+  >(initialLeaderboardState.latestScoredRoundInProgress);
   const [championHighlightUserIds, setChampionHighlightUserIds] = useState<string[]>(
     initialLeaderboardState.championHighlightUserIds
   );
@@ -915,20 +937,22 @@ export default function LeaderboardPageClient({
   const [hasSyncedGroupFromQuery, setHasSyncedGroupFromQuery] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const hasInitialTrendData =
-    initialLeaderboardState.trendRounds.length > 0 ||
-    initialLeaderboardState.trendSeries.length > 0;
-  const [isTrendPanelOpen, setIsTrendPanelOpen] = useState(hasInitialTrendData);
+    initialLeaderboardState.trendSeries.some((series) => series.points.length > 0);
+  const [isTrendPanelOpen, setIsTrendPanelOpen] = useState(isTrendPage || hasInitialTrendData);
   const [trendFetchStatus, setTrendFetchStatus] = useState<"idle" | "loading" | "loaded" | "error">(
-    hasInitialTrendData ? "loaded" : "idle"
+    initialTrendsIncluded && initialLeaderboard !== null ? "loaded" : "idle"
   );
   const [trendFetchError, setTrendFetchError] = useState("");
   const [groupsLoaded, setGroupsLoaded] = useState(false);
   const showLeaderboardSkeleton = !!msg && msg.startsWith("Loading") && rows.length === 0;
+  const trendPanelVisible = isTrendPage || isTrendPanelOpen;
 
   function applyLeaderboardData(json: LeaderboardResponse) {
     const normalized = normalizeLeaderboardState(json);
 
     setRows(normalized.rows);
+    setLatestScoredRound(normalized.latestScoredRound);
+    setLatestScoredRoundInProgress(normalized.latestScoredRoundInProgress);
     setChampionHighlightUserIds(normalized.championHighlightUserIds);
     setChampionSeasonsByUserId(normalized.championSeasonsByUserId);
     setTrendRounds(normalized.trendRounds);
@@ -1346,7 +1370,7 @@ export default function LeaderboardPageClient({
   const currentGroupQuery = String(searchParams.get("group") ?? "").trim();
 
   useEffect(() => {
-    if (!isTrendPanelOpen) return;
+    if (!trendPanelVisible) return;
     if (trendFetchStatus !== "idle") return;
 
     let cancelled = false;
@@ -1382,7 +1406,7 @@ export default function LeaderboardPageClient({
     return () => {
       cancelled = true;
     };
-  }, [hasInitialRows, isTrendPanelOpen, season, trendFetchStatus]);
+  }, [hasInitialRows, season, trendFetchStatus, trendPanelVisible]);
 
   useEffect(() => {
     if (groupsLoaded) return;
@@ -1937,65 +1961,76 @@ export default function LeaderboardPageClient({
     }
   }
 
+  const trendRoundStatusLabel =
+    latestScoredRound === null
+      ? "No scored rounds yet."
+      : latestScoredRoundInProgress === true
+        ? `Round R${latestScoredRound} is in progress.`
+        : `Round R${latestScoredRound} is complete.`;
+
   return (
-    <main className="ui-page ui-page--wide">
+    <main className={`ui-page ${isTrendPage ? "ui-page--content" : "ui-page--wide"}`}>
       <div className="ui-page-header">
-        <h1 className="ui-title leaderboard-title">Leaderboard {season}</h1>
-        <div
-          role="group"
-          aria-label="Leaderboard mode"
-          style={{
-            display: "inline-flex",
-            border: "1px solid var(--border)",
-            borderRadius: 999,
-            overflow: "hidden",
-            background: "var(--card)",
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => {
-              setViewMode("overall");
-              setInvitingMembers(false);
-              setCreatingGroup(false);
-            }}
+        <h1 className="ui-title leaderboard-title">
+          {isTrendPage ? `Leaderboard Trend ${season}` : `Leaderboard ${season}`}
+        </h1>
+        {!isTrendPage && (
+          <div
+            role="group"
+            aria-label="Leaderboard mode"
             style={{
-              appearance: "none",
-              border: "none",
-              padding: "6px 12px",
-              cursor: "pointer",
-              fontSize: 13,
-              fontWeight: 700,
-              background: viewMode === "overall" ? "var(--foreground)" : "transparent",
-              color: viewMode === "overall" ? "var(--background)" : "var(--foreground)",
+              display: "inline-flex",
+              border: "1px solid var(--border)",
+              borderRadius: 999,
+              overflow: "hidden",
+              background: "var(--card)",
             }}
-            aria-pressed={viewMode === "overall"}
           >
-            Overall
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setViewMode("groups");
-              if (!selectedGroupId && groups.length > 0) {
-                setSelectedGroupId(groups[0].id);
-              }
-            }}
-            style={{
-              appearance: "none",
-              border: "none",
-              padding: "6px 12px",
-              cursor: "pointer",
-              fontSize: 13,
-              fontWeight: 700,
-              background: viewMode === "groups" ? "var(--foreground)" : "transparent",
-              color: viewMode === "groups" ? "var(--background)" : "var(--foreground)",
-            }}
-            aria-pressed={viewMode === "groups"}
-          >
-            My Groups
-          </button>
-        </div>
+            <button
+              type="button"
+              onClick={() => {
+                setViewMode("overall");
+                setInvitingMembers(false);
+                setCreatingGroup(false);
+              }}
+              style={{
+                appearance: "none",
+                border: "none",
+                padding: "6px 12px",
+                cursor: "pointer",
+                fontSize: 13,
+                fontWeight: 700,
+                background: viewMode === "overall" ? "var(--foreground)" : "transparent",
+                color: viewMode === "overall" ? "var(--background)" : "var(--foreground)",
+              }}
+              aria-pressed={viewMode === "overall"}
+            >
+              Overall
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setViewMode("groups");
+                if (!selectedGroupId && groups.length > 0) {
+                  setSelectedGroupId(groups[0].id);
+                }
+              }}
+              style={{
+                appearance: "none",
+                border: "none",
+                padding: "6px 12px",
+                cursor: "pointer",
+                fontSize: 13,
+                fontWeight: 700,
+                background: viewMode === "groups" ? "var(--foreground)" : "transparent",
+                color: viewMode === "groups" ? "var(--background)" : "var(--foreground)",
+              }}
+              aria-pressed={viewMode === "groups"}
+            >
+              My Groups
+            </button>
+          </div>
+        )}
       </div>
 
       {showLeaderboardSkeleton && <LeaderboardLoadingSkeleton isMobile={isMobile} />}
@@ -2003,19 +2038,19 @@ export default function LeaderboardPageClient({
 
       {!msg && (
         <>
-          {loadingGroups && (
+          {!isTrendPage && loadingGroups && (
             <p className="ui-caption ui-mt-2">Loading private groups...</p>
           )}
-          {!loadingGroups && groupMsg && (
+          {!isTrendPage && !loadingGroups && groupMsg && (
             <p className="ui-caption ui-mt-2" style={{ color: "rgb(185,28,28)" }}>
               {groupMsg}
             </p>
           )}
-          {!loadingGroups && groupActionMsg && (
+          {!isTrendPage && !loadingGroups && groupActionMsg && (
             <p className="ui-caption ui-mt-2">{groupActionMsg}</p>
           )}
 
-          {pendingInviteCount > 0 && (
+          {!isTrendPage && pendingInviteCount > 0 && (
             <UiCard className="ui-mt-3">
               <div style={{ padding: 14, display: "grid", gap: 8 }}>
                 <div className="ui-row-between">
@@ -2050,7 +2085,7 @@ export default function LeaderboardPageClient({
             </UiCard>
           )}
 
-          {viewMode === "groups" && (
+          {!isTrendPage && viewMode === "groups" && (
             <UiCard className="ui-mt-3">
               <div style={{ padding: 14, display: "grid", gap: 10 }}>
                 <div
@@ -2567,7 +2602,8 @@ export default function LeaderboardPageClient({
             </UiCard>
           )}
 
-          <UiTableShell className={`ui-mt-3 ${isMobile ? "leaderboard-mobile-shell" : ""}`}>
+          {!isTrendPage && (
+            <UiTableShell className={`ui-mt-3 ${isMobile ? "leaderboard-mobile-shell" : ""}`}>
             {scopedRows.length === 0 ? (
               <div style={{ padding: 16 }} className="ui-caption">
                 {viewMode === "groups"
@@ -2908,9 +2944,10 @@ export default function LeaderboardPageClient({
                 </table>
               </UiTableScroll>
             )}
-          </UiTableShell>
+            </UiTableShell>
+          )}
 
-          <UiCard className="ui-mt-3">
+          <UiCard className={isTrendPage ? "ui-mt-4" : "ui-mt-3"}>
             <div style={{ padding: 16, display: "grid", gap: 14 }}>
               <div className="ui-row-between">
                 <div style={{ display: "grid", gap: 4 }}>
@@ -2919,21 +2956,26 @@ export default function LeaderboardPageClient({
                     Compare leaderboard rank or total points across completed rounds. Select
                     multiple tipsters to track head-to-head movement.
                   </p>
+                  <p className="ui-caption" style={{ margin: 0 }}>
+                    {trendRoundStatusLabel}
+                  </p>
                 </div>
-                <UiButton
-                  pill
-                  onClick={() => {
-                    setIsTrendPanelOpen((prev) => !prev);
-                    if (trendFetchStatus === "error") {
-                      setTrendFetchStatus("idle");
-                    }
-                  }}
-                >
-                  {isTrendPanelOpen ? "Hide trend" : "Show trend"}
-                </UiButton>
+                {!isTrendPage && (
+                  <UiButton
+                    pill
+                    onClick={() => {
+                      setIsTrendPanelOpen((prev) => !prev);
+                      if (trendFetchStatus === "error") {
+                        setTrendFetchStatus("idle");
+                      }
+                    }}
+                  >
+                    {isTrendPanelOpen ? "Hide trend" : "Show trend"}
+                  </UiButton>
+                )}
               </div>
 
-              {!isTrendPanelOpen ? (
+              {!trendPanelVisible ? (
                 <p className="ui-caption" style={{ margin: 0 }}>
                   Open trend to load chart data and controls.
                 </p>

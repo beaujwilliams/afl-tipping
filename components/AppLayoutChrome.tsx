@@ -13,7 +13,7 @@ import { supabaseBrowser } from "@/lib/supabase-browser";
 const BUILD_LABEL = process.env.NEXT_PUBLIC_BUILD_LABEL || "local dev";
 const TEAM_PROMPT_ONCE_KEY = "complicatedtips_team_prompt_seen_once_v1";
 
-type MenuKey = "tipping" | "info";
+type MenuKey = "tipping" | "leaderboard" | "info";
 type MenuItem = {
   href: string;
   label: string;
@@ -306,6 +306,7 @@ export default function AppLayoutChrome({
 
   const tippingActive =
     pathname.startsWith("/round/") || pathname.startsWith("/results/") || pathname.startsWith("/stats");
+  const leaderboardActive = pathname.startsWith("/leaderboard/");
   const infoActive =
     pathname.startsWith("/announcements") ||
     pathname.startsWith("/info") ||
@@ -333,7 +334,20 @@ export default function AppLayoutChrome({
     return items;
   }, [initialIsAdmin, unreadAnnouncements]);
 
-  const mobileOpenItems = openMenu === "tipping" ? tippingItems : infoItems;
+  const leaderboardItems = useMemo<MenuItem[]>(
+    () => [
+      { href: "/leaderboard/2026", label: "Ladder", badge: unreadLeaderboardInvites },
+      { href: "/leaderboard/2026/trend", label: "Trend" },
+    ],
+    [unreadLeaderboardInvites]
+  );
+
+  const mobileOpenItems =
+    openMenu === "tipping"
+      ? tippingItems
+      : openMenu === "leaderboard"
+      ? leaderboardItems
+      : infoItems;
   const unreadAnnouncementsLabel = `${unreadAnnouncements} new announcement${
     unreadAnnouncements === 1 ? "" : "s"
   }`;
@@ -472,16 +486,26 @@ export default function AppLayoutChrome({
                   )}
                 </div>
 
-                <TopLink
-                  href="/leaderboard/2026"
-                  label="Leaderboard"
-                  pathname={pathname}
-                  badges={
-                    unreadLeaderboardInvites > 0
-                      ? [{ value: unreadLeaderboardInvites }]
-                      : []
-                  }
-                />
+                <div
+                  style={{ position: "relative", flex: "0 0 auto" }}
+                  onMouseEnter={() => onTriggerHoverOpen("leaderboard")}
+                  onMouseLeave={() => onTriggerHoverClose("leaderboard")}
+                >
+                  <DropdownTrigger
+                    label="Leaderboard"
+                    active={leaderboardActive}
+                    open={openMenu === "leaderboard"}
+                    unread={unreadLeaderboardInvites}
+                    onClick={() => onTriggerClick("leaderboard")}
+                  />
+                  {!isMobile && openMenu === "leaderboard" && (
+                    <DesktopDropdown
+                      items={leaderboardItems}
+                      pathname={pathname}
+                      onSelect={() => setOpenMenu(null)}
+                    />
+                  )}
+                </div>
                 <TopLink
                   href="/chat"
                   label="Chat"

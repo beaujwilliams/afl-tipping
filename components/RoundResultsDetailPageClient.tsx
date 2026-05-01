@@ -168,8 +168,8 @@ function myTipStatusClassName(status: MyTipStatus) {
 function RoundResultsLoadingSkeleton({ isMobile }: { isMobile: boolean }) {
   return (
     <div className="ui-grid ui-mt-4" style={{ gap: 14 }}>
-      <UiCardGrid columns={2} style={{ gap: 10 }}>
-        {Array.from({ length: 2 }).map((_, index) => (
+      <UiCardGrid columns={3} style={{ gap: 10 }}>
+        {Array.from({ length: 3 }).map((_, index) => (
           <UiCard key={`round-results-metric-skeleton-${index}`} soft>
             <UiSkeleton width="42%" height={12} />
             <UiSkeleton width="34%" height={26} className="ui-mt-2" />
@@ -411,10 +411,6 @@ export default function RoundResultsDetailPageClient({
     return matches.filter((m) => isMatchCompleted(m)).length;
   }, [matches]);
 
-  const submittedTipsters = useMemo(() => {
-    return players.filter((p) => Number(p.total_tips ?? 0) > 0).length;
-  }, [players]);
-
   useEffect(() => {
     const timer = window.setInterval(() => setNowMs(Date.now()), 30_000);
     return () => window.clearInterval(timer);
@@ -609,6 +605,7 @@ export default function RoundResultsDetailPageClient({
     });
     return out;
   }, [players]);
+  const myRoundRank = currentUserId ? roundRankByUserId[currentUserId] : undefined;
 
   const sortedPlayers = useMemo(() => {
     const list = [...players];
@@ -696,7 +693,7 @@ export default function RoundResultsDetailPageClient({
 
       {!invalidParams && !msg && (
         <>
-          <UiCardGrid columns={2} className="ui-mt-4" style={{ gap: 10 }}>
+          <UiCardGrid columns={3} className="ui-mt-4" style={{ gap: 10 }}>
             <UiCard soft>
               <div className="ui-kicker">Matches finished</div>
               <div style={{ marginTop: 5, fontSize: 22, fontWeight: 900 }}>
@@ -705,9 +702,16 @@ export default function RoundResultsDetailPageClient({
             </UiCard>
 
             <UiCard soft>
-              <div className="ui-kicker">Submitted</div>
+              <div className="ui-kicker">Round score</div>
               <div style={{ marginTop: 5, fontSize: 22, fontWeight: 900 }}>
-                {submittedTipsters}/{players.length}
+                {myRoundRow ? fmtPts(myRoundRow.round_score ?? 0) : "-"}
+              </div>
+            </UiCard>
+
+            <UiCard soft>
+              <div className="ui-kicker">Round ranking</div>
+              <div style={{ marginTop: 5, fontSize: 22, fontWeight: 900 }}>
+                {myRoundRank ? `#${myRoundRank}` : "-"}
               </div>
             </UiCard>
           </UiCardGrid>

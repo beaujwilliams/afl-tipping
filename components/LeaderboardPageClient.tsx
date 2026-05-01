@@ -143,8 +143,8 @@ function fmtPct(n: number) {
 }
 
 function movementText(movement: number) {
-  if (movement > 0) return `Up ${movement}`;
-  if (movement < 0) return `Down ${Math.abs(movement)}`;
+  if (movement > 0) return `▲ ${movement}`;
+  if (movement < 0) return `▼ ${Math.abs(movement)}`;
   return "-";
 }
 
@@ -167,8 +167,8 @@ function fmtInviteTimestamp(iso: string | null | undefined) {
 }
 
 function movementBadgeText(movement: number) {
-  if (movement > 0) return `Up ${movement}`;
-  if (movement < 0) return `Down ${Math.abs(movement)}`;
+  if (movement > 0) return `▲ ${movement}`;
+  if (movement < 0) return `▼ ${Math.abs(movement)}`;
   return "-";
 }
 

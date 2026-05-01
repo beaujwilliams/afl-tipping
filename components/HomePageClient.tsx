@@ -142,7 +142,7 @@ function fmtPts(n: number) {
 function movementText(movement: number) {
   if (movement > 0) return `Up ${movement}`;
   if (movement < 0) return `Down ${Math.abs(movement)}`;
-  return "No change";
+  return "-";
 }
 
 function movementColor(movement: number | null | undefined) {

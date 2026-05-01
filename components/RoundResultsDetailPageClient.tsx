@@ -1012,14 +1012,14 @@ export default function RoundResultsDetailPageClient({
                         <tr key={p.user_id}>
                           <UiTableCell
                             style={{
-                              fontWeight: 900,
+                              fontWeight: 500,
                               ...rankSticky,
                             }}
                           >
                             #{roundRankByUserId[p.user_id] ?? "-"}
                           </UiTableCell>
                           <UiTableCell
-                            style={{ fontWeight: 700, ...stickyColumnStyle(2, false) }}
+                            style={{ fontWeight: 500, ...stickyColumnStyle(2, false) }}
                             title={
                               p.payment_status === "pending"
                                 ? `${p.display_name} (unpaid)`
@@ -1057,7 +1057,7 @@ export default function RoundResultsDetailPageClient({
                           </UiTableCell>
                           <UiTableCell
                             style={{
-                              fontWeight: 800,
+                              fontWeight: 500,
                               width: roundLeaderboardColumnWidths.roundScore,
                               minWidth: roundLeaderboardColumnWidths.roundScore,
                             }}

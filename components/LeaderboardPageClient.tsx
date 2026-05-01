@@ -169,7 +169,7 @@ function fmtInviteTimestamp(iso: string | null | undefined) {
 function movementBadgeText(movement: number) {
   if (movement > 0) return `Up ${movement}`;
   if (movement < 0) return `Down ${Math.abs(movement)}`;
-  return "Even";
+  return "-";
 }
 
 const TREND_COLORS = [
@@ -2803,7 +2803,7 @@ export default function LeaderboardPageClient({
                         <tr key={r.user_id}>
                           <UiTableCell
                             style={{
-                              fontWeight: 900,
+                              fontWeight: 500,
                               ...rankSticky,
                             }}
                           >
@@ -2811,7 +2811,7 @@ export default function LeaderboardPageClient({
                           </UiTableCell>
                           <UiTableCell
                             style={{
-                              fontWeight: 700,
+                              fontWeight: 500,
                               ...stickyColumnStyle(2, false),
                             }}
                             title={
@@ -2850,7 +2850,7 @@ export default function LeaderboardPageClient({
                           </UiTableCell>
                           <UiTableCell
                             style={{
-                              fontWeight: 800,
+                              fontWeight: 500,
                               width: leaderboardColumnWidths.totalPoints,
                               minWidth: leaderboardColumnWidths.totalPoints,
                             }}
@@ -2910,7 +2910,7 @@ export default function LeaderboardPageClient({
                           </UiTableCell>
                           <UiTableCell
                             style={{
-                              fontWeight: 700,
+                              fontWeight: 500,
                               width: leaderboardColumnWidths.roundScore,
                               minWidth: leaderboardColumnWidths.roundScore,
                             }}

@@ -584,6 +584,11 @@ button {
   background-clip: padding-box;
 }
 
+.leaderboard-table td {
+  padding-top: 7px;
+  padding-bottom: 7px;
+}
+
 .leaderboard-table tbody tr:first-child td {
   border-top: 0 !important;
 }
@@ -750,8 +755,8 @@ button {
 }
 
 .mobile-standings-rank {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 400;
   letter-spacing: -0.02em;
 }
 
@@ -773,8 +778,8 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 400;
   line-height: 1.1;
 }
 
@@ -823,8 +828,8 @@ button {
 }
 
 .mobile-standings-primary strong {
-  font-size: 16px;
-  font-weight: 700;
+  font-size: 15px;
+  font-weight: 400;
   line-height: 1;
 }
 
@@ -1125,7 +1130,7 @@ button {
 
   .mobile-standings-rank,
   .mobile-standings-name {
-    font-size: 13px;
+    font-size: 12px;
   }
 
   .mobile-standings-move {
@@ -1134,7 +1139,7 @@ button {
   }
 
   .mobile-standings-primary strong {
-    font-size: 15px;
+    font-size: 14px;
   }
 
   .mobile-standings-sheet {
@@ -1161,12 +1166,12 @@ button {
 .round-leaderboard-mobile-list .mobile-standings-rank,
 .round-leaderboard-mobile-list .mobile-standings-name {
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .round-leaderboard-mobile-list .mobile-standings-primary strong {
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .round-leaderboard-mobile-list .mobile-standings-primary span {

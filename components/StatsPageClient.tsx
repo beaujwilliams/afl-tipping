@@ -63,7 +63,7 @@ function movementLabel(value: number) {
   const num = Number(value ?? 0);
   if (num > 0) return `Up ${num}`;
   if (num < 0) return `Down ${Math.abs(num)}`;
-  return "No change";
+  return "-";
 }
 
 export default function StatsPageClient(props: {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "@/components/ToastProvider";
 import { supabaseBrowser } from "@/lib/supabase-browser";
@@ -49,6 +49,20 @@ type LeaderboardRow = {
   avg_winning_odds: number;
 };
 
+type LeaderboardFavouriteBenchmark = {
+  display_name: string;
+  total_points: number;
+  correct_tips: number;
+  tips_submitted: number;
+  tips_possible: number;
+  missed_tips: number;
+  accuracy_pct: number;
+  round_score: number;
+  avg_winning_odds: number;
+  rank_if_added: number | null;
+  behind_leader: number;
+};
+
 type LeaderboardResponse = {
   ok: boolean;
   season: number;
@@ -62,6 +76,7 @@ type LeaderboardResponse = {
   matches_scored: number;
   scored_rounds?: number[];
   rank_trends?: LeaderboardTrendSeries[];
+  favourite_benchmark?: LeaderboardFavouriteBenchmark | null;
   rows: LeaderboardRow[];
   error?: string;
 };
@@ -285,6 +300,32 @@ function normalizeLeaderboardState(json: LeaderboardResponse | null | undefined)
       }))
     : [];
 
+  const favouriteBenchmarkRaw = json?.favourite_benchmark;
+  const favouriteBenchmark: LeaderboardFavouriteBenchmark | null =
+    favouriteBenchmarkRaw &&
+    Number.isFinite(Number(favouriteBenchmarkRaw.total_points)) &&
+    Number.isFinite(Number(favouriteBenchmarkRaw.correct_tips))
+      ? {
+          display_name: String(
+            favouriteBenchmarkRaw.display_name ?? "All Favourites"
+          ),
+          total_points: Number(favouriteBenchmarkRaw.total_points ?? 0),
+          correct_tips: Number(favouriteBenchmarkRaw.correct_tips ?? 0),
+          tips_submitted: Number(favouriteBenchmarkRaw.tips_submitted ?? 0),
+          tips_possible: Number(favouriteBenchmarkRaw.tips_possible ?? 0),
+          missed_tips: Number(favouriteBenchmarkRaw.missed_tips ?? 0),
+          accuracy_pct: Number(favouriteBenchmarkRaw.accuracy_pct ?? 0),
+          round_score: Number(favouriteBenchmarkRaw.round_score ?? 0),
+          avg_winning_odds: Number(favouriteBenchmarkRaw.avg_winning_odds ?? 0),
+          rank_if_added:
+            favouriteBenchmarkRaw.rank_if_added !== null &&
+            Number.isFinite(Number(favouriteBenchmarkRaw.rank_if_added))
+              ? Number(favouriteBenchmarkRaw.rank_if_added)
+              : null,
+          behind_leader: Number(favouriteBenchmarkRaw.behind_leader ?? 0),
+        }
+      : null;
+
   return {
     rows,
     latestScoredRound,
@@ -293,6 +334,7 @@ function normalizeLeaderboardState(json: LeaderboardResponse | null | undefined)
     championSeasonsByUserId: normalizeChampionSeasonsByUserId(
       json?.champion_seasons_by_user_id
     ),
+    favouriteBenchmark,
     trendRounds,
     trendSeries,
     selectedTrendUserIds: rows
@@ -892,6 +934,9 @@ export default function LeaderboardPageClient({
   const [championSeasonsByUserId, setChampionSeasonsByUserId] = useState<Record<string, number[]>>(
     initialLeaderboardState.championSeasonsByUserId
   );
+  const [favouriteBenchmark, setFavouriteBenchmark] = useState<LeaderboardFavouriteBenchmark | null>(
+    initialLeaderboardState.favouriteBenchmark
+  );
   const [trendRounds, setTrendRounds] = useState<number[]>(initialLeaderboardState.trendRounds);
   const [trendSeries, setTrendSeries] = useState<LeaderboardTrendSeries[]>(
     initialLeaderboardState.trendSeries
@@ -952,6 +997,7 @@ export default function LeaderboardPageClient({
     setLatestScoredRoundInProgress(normalized.latestScoredRoundInProgress);
     setChampionHighlightUserIds(normalized.championHighlightUserIds);
     setChampionSeasonsByUserId(normalized.championSeasonsByUserId);
+    setFavouriteBenchmark(normalized.favouriteBenchmark);
     setTrendRounds(normalized.trendRounds);
     setTrendSeries(normalized.trendSeries);
 
@@ -1557,6 +1603,26 @@ export default function LeaderboardPageClient({
   const sortedRows = useMemo(() => {
     return sortLeaderboardRows(scopedRows, activeSortBy, activeSortDirection);
   }, [activeSortBy, activeSortDirection, scopedRows]);
+  const shouldShowFavouriteMarker =
+    viewMode === "overall" &&
+    !!favouriteBenchmark &&
+    ((activeSortBy === "total_points" && activeSortDirection === "desc") ||
+      (activeSortBy === "rank" && activeSortDirection === "asc"));
+  const favouriteMarkerRank =
+    shouldShowFavouriteMarker &&
+    favouriteBenchmark?.rank_if_added !== null &&
+    Number.isFinite(Number(favouriteBenchmark?.rank_if_added))
+      ? Number(favouriteBenchmark?.rank_if_added)
+      : null;
+  const favouriteMarkerInsertionIndex = useMemo(() => {
+    if (favouriteMarkerRank === null) return null;
+    const firstLowerRowIndex = sortedRows.findIndex((row) => {
+      const scopedRank = scopeRankMetaByUserId.get(row.user_id)?.rank ?? row.rank;
+      return scopedRank >= favouriteMarkerRank;
+    });
+    if (firstLowerRowIndex < 0) return sortedRows.length;
+    return firstLowerRowIndex;
+  }, [favouriteMarkerRank, scopeRankMetaByUserId, sortedRows]);
   const currentUserLeaderboardRow = useMemo(() => {
     if (!currentUserId) return null;
     return sortedRows.find((row) => row.user_id === currentUserId) ?? null;
@@ -2618,7 +2684,7 @@ export default function LeaderboardPageClient({
                   )}
                 </div>
                 <div className="mobile-standings-list" role="list">
-                  {sortedRows.map((r) => {
+                  {sortedRows.map((r, index) => {
                     const scopedRank = scopeRankMetaByUserId.get(r.user_id)?.rank ?? r.rank;
                     const scopedBehind =
                       scopeRankMetaByUserId.get(r.user_id)?.behind ?? r.behind_leader;
@@ -2628,45 +2694,72 @@ export default function LeaderboardPageClient({
                       r.movement > 0 ? "up" : r.movement < 0 ? "down" : "flat";
 
                     return (
-                      <button
-                        key={r.user_id}
-                        id={`leaderboard-mobile-row-${r.user_id}`}
-                        type="button"
-                        role="listitem"
-                        className={`mobile-standings-row${isCurrentUser ? " mobile-standings-row--mine" : ""}`}
-                        onClick={() => setSelectedMobileRowId(r.user_id)}
-                        aria-label={`Open leaderboard detail for ${r.display_name}`}
-                      >
-                        <span className="mobile-standings-rank">#{scopedRank}</span>
-                        <span className="mobile-standings-person">
-                          <span className="mobile-standings-name-line">
-                            <UnpaidTag paymentStatus={r.payment_status ?? null} compact />
-                            <span
-                              className="mobile-standings-name"
-                              style={{ color: isChampion ? "var(--champion-gold)" : undefined }}
-                            >
-                              {r.display_name}
-                            </span>
-                            <ChampionSeasonLabels
-                              seasons={championSeasonsByUserId[r.user_id]}
-                              fontSize={11}
+                      <Fragment key={r.user_id}>
+                        {shouldShowFavouriteMarker &&
+                          favouriteBenchmark &&
+                          favouriteMarkerRank !== null &&
+                          favouriteMarkerInsertionIndex === index && (
+                            <div
+                              style={{
+                                height: 1,
+                                background: "#7c3aed",
+                                margin: "0 10px",
+                              }}
+                              aria-hidden
                             />
+                          )}
+                        <button
+                          id={`leaderboard-mobile-row-${r.user_id}`}
+                          type="button"
+                          role="listitem"
+                          className={`mobile-standings-row${isCurrentUser ? " mobile-standings-row--mine" : ""}`}
+                          onClick={() => setSelectedMobileRowId(r.user_id)}
+                          aria-label={`Open leaderboard detail for ${r.display_name}`}
+                        >
+                          <span className="mobile-standings-rank">#{scopedRank}</span>
+                          <span className="mobile-standings-person">
+                            <span className="mobile-standings-name-line">
+                              <UnpaidTag paymentStatus={r.payment_status ?? null} compact />
+                              <span
+                                className="mobile-standings-name"
+                                style={{ color: isChampion ? "var(--champion-gold)" : undefined }}
+                              >
+                                {r.display_name}
+                              </span>
+                              <ChampionSeasonLabels
+                                seasons={championSeasonsByUserId[r.user_id]}
+                                fontSize={11}
+                              />
+                            </span>
+                            <span className="mobile-standings-meta">
+                              {r.correct_tips} correct
+                              <span aria-hidden="true"> · </span>
+                              {scopedBehind <= 0 ? "Leader" : `${fmtPts(scopedBehind)} behind`}
+                            </span>
                           </span>
-                          <span className="mobile-standings-meta">
-                            {r.correct_tips} correct
-                            <span aria-hidden="true"> · </span>
-                            {scopedBehind <= 0 ? "Leader" : `${fmtPts(scopedBehind)} behind`}
+                          <span className={`mobile-standings-move mobile-standings-move--${movementTone}`}>
+                            {movementBadgeText(r.movement)}
                           </span>
-                        </span>
-                        <span className={`mobile-standings-move mobile-standings-move--${movementTone}`}>
-                          {movementBadgeText(r.movement)}
-                        </span>
-                        <span className="mobile-standings-primary">
-                          <strong>{fmtPts(r.total_points)}</strong>
-                        </span>
-                      </button>
+                          <span className="mobile-standings-primary">
+                            <strong>{fmtPts(r.total_points)}</strong>
+                          </span>
+                        </button>
+                      </Fragment>
                     );
                   })}
+                  {shouldShowFavouriteMarker &&
+                    favouriteBenchmark &&
+                    favouriteMarkerRank !== null &&
+                    favouriteMarkerInsertionIndex === sortedRows.length && (
+                      <div
+                        style={{
+                          height: 1,
+                          background: "#7c3aed",
+                          margin: "0 10px",
+                        }}
+                        aria-hidden
+                      />
+                    )}
                 </div>
 
                 {selectedMobileRow && (
@@ -2810,133 +2903,181 @@ export default function LeaderboardPageClient({
                     </tr>
                   </thead>
                   <tbody>
-                    {sortedRows.map((r) => {
+                    {sortedRows.map((r, index) => {
                       const scopedRank = scopeRankMetaByUserId.get(r.user_id)?.rank ?? r.rank;
                       const scopedBehind =
                         scopeRankMetaByUserId.get(r.user_id)?.behind ?? r.behind_leader;
                       const isChampion = championHighlightSet.has(r.user_id);
                       const rankSticky = stickyColumnStyle(1, false);
                       return (
-                        <tr key={r.user_id}>
-                          <UiTableCell
-                            style={{
-                              fontWeight: 500,
-                              ...rankSticky,
-                            }}
-                          >
-                            #{scopedRank}
-                          </UiTableCell>
-                          <UiTableCell
-                            style={{
-                              fontWeight: 500,
-                              ...stickyColumnStyle(2, false),
-                            }}
-                            title={
-                              r.payment_status === "pending"
-                                ? `${r.display_name} (unpaid)`
-                                : r.display_name
-                            }
-                          >
-                            <span
+                        <Fragment key={r.user_id}>
+                          {shouldShowFavouriteMarker &&
+                            favouriteBenchmark &&
+                            favouriteMarkerRank !== null &&
+                            favouriteMarkerInsertionIndex === index && (
+                              <tr>
+                                <UiTableCell
+                                  colSpan={10}
+                                  style={{
+                                    padding: 0,
+                                    borderTop: "none",
+                                  }}
+                                >
+                                  <div
+                                    style={{
+                                      height: 1,
+                                      width: "100%",
+                                      background: "#7c3aed",
+                                    }}
+                                    aria-hidden
+                                  />
+                                </UiTableCell>
+                              </tr>
+                            )}
+                          <tr>
+                            <UiTableCell
                               style={{
-                                display: "inline-flex",
-                                alignItems: "baseline",
-                                gap: 6,
-                                flexWrap: "wrap",
-                                rowGap: 2,
-                                minWidth: 0,
+                                fontWeight: 500,
+                                ...rankSticky,
                               }}
                             >
-                              <UnpaidTag paymentStatus={r.payment_status ?? null} compact={isMobile} />
+                              #{scopedRank}
+                            </UiTableCell>
+                            <UiTableCell
+                              style={{
+                                fontWeight: 500,
+                                ...stickyColumnStyle(2, false),
+                              }}
+                              title={
+                                r.payment_status === "pending"
+                                  ? `${r.display_name} (unpaid)`
+                                  : r.display_name
+                              }
+                            >
                               <span
                                 style={{
-                                  display: "block",
-                                  color: isChampion ? "var(--champion-gold)" : undefined,
-                                  fontSize: "inherit",
-                                  lineHeight: 1.15,
-                                  whiteSpace: "nowrap",
+                                  display: "inline-flex",
+                                  alignItems: "baseline",
+                                  gap: 6,
+                                  flexWrap: "wrap",
+                                  rowGap: 2,
+                                  minWidth: 0,
                                 }}
                               >
-                                {r.display_name}
+                                <UnpaidTag paymentStatus={r.payment_status ?? null} compact={isMobile} />
+                                <span
+                                  style={{
+                                    display: "block",
+                                    color: isChampion ? "var(--champion-gold)" : undefined,
+                                    fontSize: "inherit",
+                                    lineHeight: 1.15,
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
+                                  {r.display_name}
+                                </span>
+                                <ChampionSeasonLabels
+                                  seasons={championSeasonsByUserId[r.user_id]}
+                                  fontSize={10}
+                                />
                               </span>
-                              <ChampionSeasonLabels
-                                seasons={championSeasonsByUserId[r.user_id]}
-                                fontSize={10}
-                              />
-                            </span>
-                          </UiTableCell>
-                          <UiTableCell
-                            style={{
-                              fontWeight: 500,
-                              width: leaderboardColumnWidths.totalPoints,
-                              minWidth: leaderboardColumnWidths.totalPoints,
-                            }}
-                          >
-                            {fmtPts(r.total_points)}
-                          </UiTableCell>
-                          <UiTableCell
-                            style={{
-                              width: leaderboardColumnWidths.behind,
-                              minWidth: leaderboardColumnWidths.behind,
-                            }}
-                          >
-                            {scopedBehind <= 0 ? "-" : fmtPts(scopedBehind)}
-                          </UiTableCell>
-                          <UiTableCell
-                            style={{
-                              width: leaderboardColumnWidths.movement,
-                              minWidth: leaderboardColumnWidths.movement,
-                              color: movementColor(r.movement),
-                              fontWeight: 800,
-                            }}
-                            title={r.previous_rank ? `Previously #${r.previous_rank}` : "No previous round baseline"}
-                          >
-                            {movementText(r.movement)}
-                          </UiTableCell>
-                          <UiTableCell
-                            style={{
-                              width: leaderboardColumnWidths.accuracy,
-                              minWidth: leaderboardColumnWidths.accuracy,
-                            }}
-                          >
-                            {fmtPct(r.accuracy_pct)}
-                          </UiTableCell>
-                          <UiTableCell
-                            style={{
-                              width: leaderboardColumnWidths.streak,
-                              minWidth: leaderboardColumnWidths.streak,
-                            }}
-                          >
-                            {r.current_streak}
-                          </UiTableCell>
-                          <UiTableCell
-                            style={{
-                              width: leaderboardColumnWidths.avgOdds,
-                              minWidth: leaderboardColumnWidths.avgOdds,
-                            }}
-                          >
-                            {fmtPts(r.avg_winning_odds)}
-                          </UiTableCell>
-                          <UiTableCell
-                            style={{
-                              width: leaderboardColumnWidths.correct,
-                              minWidth: leaderboardColumnWidths.correct,
-                            }}
-                          >
-                            {r.correct_tips}
-                          </UiTableCell>
-                          <UiTableCell
-                            style={{
-                              fontWeight: 500,
-                              width: leaderboardColumnWidths.roundScore,
-                              minWidth: leaderboardColumnWidths.roundScore,
-                            }}
-                          >
-                            {fmtPts(r.round_score)}
-                          </UiTableCell>
-                        </tr>
+                            </UiTableCell>
+                            <UiTableCell
+                              style={{
+                                fontWeight: 500,
+                                width: leaderboardColumnWidths.totalPoints,
+                                minWidth: leaderboardColumnWidths.totalPoints,
+                              }}
+                            >
+                              {fmtPts(r.total_points)}
+                            </UiTableCell>
+                            <UiTableCell
+                              style={{
+                                width: leaderboardColumnWidths.behind,
+                                minWidth: leaderboardColumnWidths.behind,
+                              }}
+                            >
+                              {scopedBehind <= 0 ? "-" : fmtPts(scopedBehind)}
+                            </UiTableCell>
+                            <UiTableCell
+                              style={{
+                                width: leaderboardColumnWidths.movement,
+                                minWidth: leaderboardColumnWidths.movement,
+                                color: movementColor(r.movement),
+                                fontWeight: 800,
+                              }}
+                              title={r.previous_rank ? `Previously #${r.previous_rank}` : "No previous round baseline"}
+                            >
+                              {movementText(r.movement)}
+                            </UiTableCell>
+                            <UiTableCell
+                              style={{
+                                width: leaderboardColumnWidths.accuracy,
+                                minWidth: leaderboardColumnWidths.accuracy,
+                              }}
+                            >
+                              {fmtPct(r.accuracy_pct)}
+                            </UiTableCell>
+                            <UiTableCell
+                              style={{
+                                width: leaderboardColumnWidths.streak,
+                                minWidth: leaderboardColumnWidths.streak,
+                              }}
+                            >
+                              {r.current_streak}
+                            </UiTableCell>
+                            <UiTableCell
+                              style={{
+                                width: leaderboardColumnWidths.avgOdds,
+                                minWidth: leaderboardColumnWidths.avgOdds,
+                              }}
+                            >
+                              {fmtPts(r.avg_winning_odds)}
+                            </UiTableCell>
+                            <UiTableCell
+                              style={{
+                                width: leaderboardColumnWidths.correct,
+                                minWidth: leaderboardColumnWidths.correct,
+                              }}
+                            >
+                              {r.correct_tips}
+                            </UiTableCell>
+                            <UiTableCell
+                              style={{
+                                fontWeight: 500,
+                                width: leaderboardColumnWidths.roundScore,
+                                minWidth: leaderboardColumnWidths.roundScore,
+                              }}
+                            >
+                              {fmtPts(r.round_score)}
+                            </UiTableCell>
+                          </tr>
+                        </Fragment>
                       );
                     })}
+                    {shouldShowFavouriteMarker &&
+                      favouriteBenchmark &&
+                      favouriteMarkerRank !== null &&
+                      favouriteMarkerInsertionIndex === sortedRows.length && (
+                        <tr>
+                          <UiTableCell
+                            colSpan={10}
+                            style={{
+                              padding: 0,
+                              borderTop: "none",
+                            }}
+                          >
+                            <div
+                              style={{
+                                height: 1,
+                                width: "100%",
+                                background: "#7c3aed",
+                              }}
+                              aria-hidden
+                            />
+                          </UiTableCell>
+                        </tr>
+                      )}
                   </tbody>
                 </table>
               </UiTableScroll>

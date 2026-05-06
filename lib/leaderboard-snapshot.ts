@@ -112,6 +112,20 @@ export type LeaderboardTrendSeries = {
   points: LeaderboardTrendPoint[];
 };
 
+export type LeaderboardFavouriteBenchmark = {
+  display_name: string;
+  total_points: number;
+  correct_tips: number;
+  tips_submitted: number;
+  tips_possible: number;
+  missed_tips: number;
+  accuracy_pct: number;
+  round_score: number;
+  avg_winning_odds: number;
+  rank_if_added: number | null;
+  behind_leader: number;
+};
+
 export type LeaderboardResponse = {
   ok: true;
   season: number;
@@ -126,6 +140,7 @@ export type LeaderboardResponse = {
   matches_skipped_no_odds?: number;
   scored_rounds: number[];
   rank_trends: LeaderboardTrendSeries[];
+  favourite_benchmark?: LeaderboardFavouriteBenchmark | null;
   rows: LeaderboardRow[];
 };
 
@@ -315,6 +330,7 @@ export async function computeLeaderboardSnapshot(params: {
       matches_scored: 0,
       scored_rounds: [],
       rank_trends: [],
+      favourite_benchmark: null,
       rows: [],
     };
   }
@@ -702,6 +718,98 @@ export async function computeLeaderboardSnapshot(params: {
     };
   });
 
+  let favouriteTotalPoints = 0;
+  let favouriteCorrectTips = 0;
+  let favouriteCorrectPointsSum = 0;
+  let favouriteRoundScore = 0;
+
+  for (const match of scoredMatches) {
+    const winnerTeam = String(match.winner_team ?? "").trim();
+    if (!winnerTeam) continue;
+
+    const homeOdds = Number(match.home_odds ?? 0);
+    const awayOdds = Number(match.away_odds ?? 0);
+
+    const homeIsFavourite = homeOdds <= awayOdds;
+    const awayIsFavourite = awayOdds <= homeOdds;
+
+    const winnerIsFavourite =
+      (winnerTeam === match.home_team && homeIsFavourite) ||
+      (winnerTeam === match.away_team && awayIsFavourite);
+    if (!winnerIsFavourite) continue;
+
+    const winnerOdds =
+      winnerTeam === match.home_team
+        ? homeOdds
+        : winnerTeam === match.away_team
+          ? awayOdds
+          : 0;
+    if (!(winnerOdds > 0)) continue;
+
+    favouriteCorrectTips += 1;
+    favouriteTotalPoints += winnerOdds;
+    favouriteCorrectPointsSum += winnerOdds;
+    if (
+      latestScoredRound !== null &&
+      Number(match.round_number) === Number(latestScoredRound)
+    ) {
+      favouriteRoundScore += winnerOdds;
+    }
+  }
+
+  const favouriteTipsPossible = scoredMatches.length;
+  const favouriteAccuracyPct =
+    favouriteTipsPossible > 0
+      ? (favouriteCorrectTips / favouriteTipsPossible) * 100
+      : 0;
+  const favouriteAvgWinningOdds =
+    favouriteCorrectTips > 0
+      ? favouriteCorrectPointsSum / favouriteCorrectTips
+      : 0;
+
+  const favouriteBenchmarkUserId = "__all_favourites__";
+  const favouriteRankIfAdded =
+    [...currentRanked, {
+      user_id: favouriteBenchmarkUserId,
+      display_name: "All Favourites",
+      total_points: Number(favouriteTotalPoints),
+      accuracy_pct: Number(favouriteAccuracyPct),
+      correct_tips: Number(favouriteCorrectTips),
+    }]
+      .sort((a, b) =>
+        leaderboardRankComparator(
+          {
+            total_points: a.total_points,
+            accuracy_pct: a.accuracy_pct,
+            correct_tips: a.correct_tips,
+            display_name: a.display_name,
+          },
+          {
+            total_points: b.total_points,
+            accuracy_pct: b.accuracy_pct,
+            correct_tips: b.correct_tips,
+            display_name: b.display_name,
+          }
+        )
+      )
+      .findIndex((row) => row.user_id === favouriteBenchmarkUserId) + 1;
+
+  const favouriteBenchmark: LeaderboardFavouriteBenchmark = {
+    display_name: "All Favourites",
+    total_points: round2(favouriteTotalPoints),
+    correct_tips: favouriteCorrectTips,
+    tips_submitted: favouriteTipsPossible,
+    tips_possible: favouriteTipsPossible,
+    missed_tips: 0,
+    accuracy_pct: round2(favouriteAccuracyPct),
+    round_score: round2(favouriteRoundScore),
+    avg_winning_odds: round2(favouriteAvgWinningOdds),
+    rank_if_added: favouriteRankIfAdded > 0 ? favouriteRankIfAdded : null,
+    behind_leader: round2(
+      Math.max(0, Number(leaderPoints) - Number(favouriteTotalPoints))
+    ),
+  };
+
   let rankTrends: LeaderboardTrendSeries[] = [];
 
   if (includeTrends) {
@@ -773,6 +881,7 @@ export async function computeLeaderboardSnapshot(params: {
     matches_skipped_no_odds: skippedNoOdds,
     scored_rounds: roundsWithScores,
     rank_trends: rankTrends,
+    favourite_benchmark: favouriteBenchmark,
     rows,
   };
 }
@@ -941,8 +1050,18 @@ export async function getLeaderboardSnapshot(params: {
     const missingRoundStatusFlag =
       enrichedCachedPayload.latest_scored_round !== null &&
       typeof enrichedCachedPayload.latest_scored_round_in_progress !== "boolean";
+    const missingFavouriteBenchmark =
+      !Object.prototype.hasOwnProperty.call(
+        enrichedCachedPayload,
+        "favourite_benchmark"
+      );
 
-    if (params.preferCached && !needsTrendBackfill && !missingRoundStatusFlag) {
+    if (
+      params.preferCached &&
+      !needsTrendBackfill &&
+      !missingRoundStatusFlag &&
+      !missingFavouriteBenchmark
+    ) {
       return payload;
     }
 
@@ -951,7 +1070,12 @@ export async function getLeaderboardSnapshot(params: {
       Number.isFinite(computedAtMs) &&
       computedAtMs > 0 &&
       Date.now() - computedAtMs <= LEADERBOARD_CACHE_MAX_AGE_MS;
-    if (fresh && !needsTrendBackfill && !missingRoundStatusFlag) {
+    if (
+      fresh &&
+      !needsTrendBackfill &&
+      !missingRoundStatusFlag &&
+      !missingFavouriteBenchmark
+    ) {
       return payload;
     }
   }

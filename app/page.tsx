@@ -1,4 +1,6 @@
+import { Suspense } from "react";
 import HomePageClient from "@/components/HomePageClient";
+import HomePageFallback from "@/components/HomePageFallback";
 import { createClient, createServiceClient } from "@/lib/supabase-server";
 import { resolveCompetitionIdForSeason } from "@/lib/competition-resolver";
 import { getRoundTipStatusResponse } from "@/lib/round-tip-status-data";
@@ -27,6 +29,11 @@ type HomeFirstMatchRow = {
 };
 
 type HomeRoundStatusRow = Awaited<ReturnType<typeof getRoundTipStatusResponse>>["rounds"][number];
+type HomeAuthedUser = {
+  id: string;
+  email?: string | null;
+  user_metadata?: Record<string, unknown> | null;
+};
 
 function fallbackWelcomeName(user: {
   email?: string | null;
@@ -99,18 +106,15 @@ function resolvePrimaryRoundForHome(rounds: HomeRoundStatusRow[], nowMs: number)
   return nextOpenRound ?? currentRound;
 }
 
-export default async function HomePage() {
-  const authClient = await createClient();
-  const {
-    data: { user },
-  } = await authClient.auth.getUser();
-
-  if (!user) {
-    return <LoginPage />;
-  }
-
+async function HomePageData({
+  user,
+  initialWelcomeName,
+}: {
+  user: HomeAuthedUser;
+  initialWelcomeName: string;
+}) {
   const supabase = createServiceClient();
-  let welcomeName = fallbackWelcomeName(user);
+  let welcomeName = initialWelcomeName;
   let initialMessage: string | null = null;
   let rounds = [] as Awaited<ReturnType<typeof getRoundTipStatusResponse>>["rounds"];
   let me = null as Awaited<ReturnType<typeof getLeaderboardSnapshot>>["rows"][number] | null;
@@ -236,5 +240,23 @@ export default async function HomePage() {
       firstMatches={firstMatches}
       initialMessage={initialMessage}
     />
+  );
+}
+
+export default async function HomePage() {
+  const authClient = await createClient();
+  const {
+    data: { user },
+  } = await authClient.auth.getUser();
+
+  if (!user) {
+    return <LoginPage />;
+  }
+
+  const initialWelcomeName = fallbackWelcomeName(user);
+  return (
+    <Suspense fallback={<HomePageFallback welcomeName={initialWelcomeName} />}>
+      <HomePageData user={user as HomeAuthedUser} initialWelcomeName={initialWelcomeName} />
+    </Suspense>
   );
 }

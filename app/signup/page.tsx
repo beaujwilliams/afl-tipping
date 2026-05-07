@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { AFL_TEAMS } from "@/lib/afl-teams";
-import { supabaseBrowser } from "@/lib/supabase-browser";
 import NextSeasonInterestForm from "@/components/NextSeasonInterestForm";
 import { CURRENT_SEASON, NEXT_SEASON, SIGNUPS_OPEN } from "@/lib/season-config";
 
@@ -37,29 +36,6 @@ export default function SignupPage() {
     return () => clearInterval(t);
   }, []);
 
-  useEffect(() => {
-    if (!SIGNUPS_OPEN) return;
-
-    let mounted = true;
-
-    async function goIfLoggedIn() {
-      const { data } = await supabaseBrowser.auth.getSession();
-      if (!mounted) return;
-      if (data.session) window.location.href = `/round/${CURRENT_SEASON}`;
-    }
-
-    goIfLoggedIn();
-
-    const { data: sub } = supabaseBrowser.auth.onAuthStateChange((_event, session) => {
-      if (session) window.location.href = `/round/${CURRENT_SEASON}`;
-    });
-
-    return () => {
-      mounted = false;
-      sub.subscription.unsubscribe();
-    };
-  }, []);
-
   const canSubmit = useMemo(() => cooldownLeftMs === 0 && !busy, [cooldownLeftMs, busy]);
 
   async function createAccount(e: React.FormEvent) {
@@ -91,6 +67,7 @@ export default function SignupPage() {
     setCooldownNow();
     const trimmedEmail = email.trim();
     const emailLocalName = trimmedEmail.split("@")[0]?.trim() ?? "";
+    const { supabaseBrowser } = await import("@/lib/supabase-browser");
 
     const { error } = await supabaseBrowser.auth.signUp({
       email: trimmedEmail,

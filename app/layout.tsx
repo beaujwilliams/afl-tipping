@@ -5,6 +5,7 @@ import "./globals.css";
 import { ChatActivityProvider } from "@/components/ChatActivityProvider";
 import AppLayoutChrome from "@/components/AppLayoutChrome";
 import { ToastProvider } from "@/components/ToastProvider";
+import WebVitalsReporter from "@/components/WebVitalsReporter";
 import { createClient, createServiceClient } from "@/lib/supabase-server";
 
 export const metadata: Metadata = {
@@ -59,6 +60,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             fontFamily: "var(--font-sans)",
           }}
         >
+          <WebVitalsReporter />
           {children}
         </body>
       </html>
@@ -89,6 +91,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           fontFamily: "var(--font-sans)",
         }}
       >
+        <WebVitalsReporter />
         <ToastProvider>
           <ChatActivityProvider initialAuthenticated={!!user}>
             <AppLayoutChrome

@@ -1,10 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { supabaseBrowser } from "@/lib/supabase-browser";
+import { useMemo, useState } from "react";
 import { UiButton, UiButtonLink } from "@/components/ui";
 import { CURRENT_SEASON, NEXT_SEASON, SIGNUPS_OPEN } from "@/lib/season-config";
+
+async function loadSupabaseBrowser() {
+  const mod = await import("@/lib/supabase-browser");
+  return mod.supabaseBrowser;
+}
 
 export default function LoginPage() {
   const postLoginHref = "/";
@@ -18,38 +22,13 @@ export default function LoginPage() {
   });
   const displayMsg = useMemo(() => msg ?? callbackError, [msg, callbackError]);
 
-  // ✅ Auto-forward if already logged in (initial check + auth change listener)
-  useEffect(() => {
-    let mounted = true;
-
-    async function goIfLoggedIn() {
-      const { data, error } = await supabaseBrowser.auth.getUser();
-      if (!mounted) return;
-      if (error) return;
-      if (data.user) window.location.replace(postLoginHref);
-    }
-
-    goIfLoggedIn();
-
-    const { data: sub } = supabaseBrowser.auth.onAuthStateChange((event, session) => {
-      if (!mounted) return;
-      if (event === "SIGNED_IN" && session) {
-        window.location.replace(postLoginHref);
-      }
-    });
-
-    return () => {
-      mounted = false;
-      sub.subscription.unsubscribe();
-    };
-  }, [postLoginHref]);
-
   async function signIn(e: React.FormEvent) {
     e.preventDefault();
     if (busy) return;
 
     setMsg(null);
     setBusy(true);
+    const supabaseBrowser = await loadSupabaseBrowser();
 
     const { error } = await supabaseBrowser.auth.signInWithPassword({
       email,

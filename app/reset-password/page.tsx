@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { supabaseBrowser } from "@/lib/supabase-browser";
 
 export default function ResetPasswordPage() {
   const [password, setPassword] = useState("");
@@ -17,6 +16,7 @@ export default function ResetPasswordPage() {
     let mounted = true;
 
     async function boot() {
+      const { supabaseBrowser } = await import("@/lib/supabase-browser");
       const url = new URL(window.location.href);
       const code = url.searchParams.get("code");
       const tokenHash = url.searchParams.get("token_hash");
@@ -95,17 +95,26 @@ export default function ResetPasswordPage() {
 
     boot();
 
-    const { data: sub } = supabaseBrowser.auth.onAuthStateChange((event, session) => {
-      if (!mounted) return;
-      if (event === "PASSWORD_RECOVERY" || !!session) {
-        setCanReset(true);
-        setMsg(null);
+    let sub: { subscription: { unsubscribe: () => void } } | null = null;
+    (async () => {
+      const { supabaseBrowser } = await import("@/lib/supabase-browser");
+      const listener = supabaseBrowser.auth.onAuthStateChange((event, session) => {
+        if (!mounted) return;
+        if (event === "PASSWORD_RECOVERY" || !!session) {
+          setCanReset(true);
+          setMsg(null);
+        }
+      });
+      if (!mounted) {
+        listener.data.subscription.unsubscribe();
+        return;
       }
-    });
+      sub = listener.data;
+    })();
 
     return () => {
       mounted = false;
-      sub.subscription.unsubscribe();
+      sub?.subscription.unsubscribe();
     };
   }, []);
 
@@ -125,6 +134,7 @@ export default function ResetPasswordPage() {
 
     setBusy(true);
     setMsg(null);
+    const { supabaseBrowser } = await import("@/lib/supabase-browser");
 
     const { error } = await supabaseBrowser.auth.updateUser({ password });
 

@@ -3,7 +3,6 @@ import SeasonRoundsPageClient from "@/components/SeasonRoundsPageClient";
 import { createClient, createServiceClient } from "@/lib/supabase-server";
 import { userHasAdminRole } from "@/lib/admin-auth";
 import { resolveCompetitionIdForSeason } from "@/lib/competition-resolver";
-import { normalizeChampionSeasonsByUserId } from "@/lib/champion-metadata";
 import { getRoundTipStatusResponse } from "@/lib/round-tip-status-data";
 
 type SeasonRoundsPageProps = {
@@ -61,19 +60,23 @@ export default async function SeasonRoundsPage(props: SeasonRoundsPageProps) {
     if (!competitionId) {
       initialMessage = "No competition found.";
     } else {
-      const admin = await userHasAdminRole({
+      const adminPromise = userHasAdminRole({
         userId: user.id,
         competitionId,
         supabase,
       });
 
-      const payload = await getRoundTipStatusResponse({
+      const payloadPromise = getRoundTipStatusResponse({
         competitionId,
         season,
         userId: user.id,
-        admin,
+        admin: false,
+        includePlayerLists: false,
+        includeChampionData: false,
         supabase,
       });
+
+      const [admin, payload] = await Promise.all([adminPromise, payloadPromise]);
 
       rows = payload.rounds.map((round) => ({
         id: round.round_id,
@@ -84,24 +87,9 @@ export default async function SeasonRoundsPage(props: SeasonRoundsPageProps) {
       statusByRoundId = Object.fromEntries(
         payload.rounds.map((round) => [round.round_id, round])
       );
-      isAdmin = payload.admin;
-      championHighlightUserIds = Array.isArray(payload.champion_highlight_user_ids)
-        ? payload.champion_highlight_user_ids
-            .map((value) => (typeof value === "string" ? value.trim() : ""))
-            .filter(Boolean)
-        : [];
-      if (
-        typeof payload.reigning_champion_user_id === "string" &&
-        payload.reigning_champion_user_id.trim()
-      ) {
-        const reigningChampionUserId = payload.reigning_champion_user_id.trim();
-        if (!championHighlightUserIds.includes(reigningChampionUserId)) {
-          championHighlightUserIds.unshift(reigningChampionUserId);
-        }
-      }
-      championSeasonsByUserId = normalizeChampionSeasonsByUserId(
-        payload.champion_seasons_by_user_id
-      );
+      isAdmin = admin;
+      championHighlightUserIds = [];
+      championSeasonsByUserId = {};
     }
   } catch (error) {
     initialMessage =

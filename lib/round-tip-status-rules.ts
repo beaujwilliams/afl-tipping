@@ -34,29 +34,49 @@ export function buildRoundTipStatusPlayerLists(params: {
   tipCountByUserId?: Map<string, number>;
   latestSubmittedAtByUserId?: Map<string, string>;
   lastReminderAtByUserId?: Map<string, string>;
+  includePlayerLists?: boolean;
 }) {
   const tipsByUser = params.tipCountByUserId ?? new Map<string, number>();
   const latestSubmittedAtByUserId =
     params.latestSubmittedAtByUserId ?? new Map<string, string>();
   const lastReminderAtByUserId = params.lastReminderAtByUserId ?? new Map<string, string>();
+  const includePlayerLists = params.includePlayerLists ?? true;
   const hasCompletedTips = (userId: string) =>
     params.totalMatches > 0 && (tipsByUser.get(userId) ?? 0) >= params.totalMatches;
 
   const missingPlayers: RoundTipStatusPlayer[] = [];
   const tippedPlayers: RoundTipStatusPlayer[] = [];
+  let tippedCount = 0;
+  let missingCount = 0;
 
   for (const userId of params.memberIds) {
+    const tipsEntered = Math.min(tipsByUser.get(userId) ?? 0, params.totalMatches);
+    const hasCompleted = hasCompletedTips(userId);
+    if (hasCompleted) tippedCount += 1;
+    else missingCount += 1;
+
+    if (!includePlayerLists) continue;
+
     const row: RoundTipStatusPlayer = {
       user_id: userId,
       display_name: params.profileNameByUserId.get(userId) ?? null,
       payment_status: params.paymentStatusByUserId.get(userId) ?? null,
-      tips_entered: Math.min(tipsByUser.get(userId) ?? 0, params.totalMatches),
+      tips_entered: tipsEntered,
       latest_submitted_at_utc: latestSubmittedAtByUserId.get(userId) ?? null,
       last_reminded_at_utc: lastReminderAtByUserId.get(userId) ?? null,
     };
 
-    if (hasCompletedTips(userId)) tippedPlayers.push(row);
+    if (hasCompleted) tippedPlayers.push(row);
     else missingPlayers.push(row);
+  }
+
+  if (!includePlayerLists) {
+    return {
+      missingPlayers: undefined,
+      tippedPlayers: undefined,
+      tippedCount,
+      missingCount,
+    };
   }
 
   const timestampDesc = (aIso?: string | null, bIso?: string | null) => {
@@ -85,7 +105,7 @@ export function buildRoundTipStatusPlayerLists(params: {
   return {
     missingPlayers,
     tippedPlayers,
-    tippedCount: tippedPlayers.length,
-    missingCount: missingPlayers.length,
+    tippedCount,
+    missingCount,
   };
 }

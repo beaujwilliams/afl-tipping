@@ -63,14 +63,15 @@ type CachedRoundStatusRow = {
   tipped_players: number;
   missing_count: number;
   match_ids: string[];
-  missing_players: RoundPlayerStatusRow[];
-  tipped_players_list: RoundPlayerStatusRow[];
+  missing_players?: RoundPlayerStatusRow[];
+  tipped_players_list?: RoundPlayerStatusRow[];
 };
 
 type RoundTipStatusAggregatePayload = {
   reigning_champion_user_id?: string | null;
   champion_highlight_user_ids?: string[];
   champion_seasons_by_user_id?: Record<string, number[]>;
+  has_player_lists?: boolean;
   rounds: CachedRoundStatusRow[];
 };
 
@@ -241,6 +242,7 @@ async function readReminderLogsForRounds(params: {
 async function computeRoundTipStatusAggregate(params: {
   competitionId: string;
   season: number;
+  includePlayerLists: boolean;
   supabase?: ReturnType<typeof createServiceClient>;
 }): Promise<RoundTipStatusAggregatePayload> {
   const supabase = params.supabase ?? createServiceClient();
@@ -430,6 +432,7 @@ async function computeRoundTipStatusAggregate(params: {
         tipCountByUserId: tipsByUser,
         latestSubmittedAtByUserId: latestSubmittedAtByRoundUser.get(r.id),
         lastReminderAtByUserId: lastReminderAtByRoundUser.get(r.id),
+        includePlayerLists: params.includePlayerLists,
       });
 
     return {
@@ -449,6 +452,7 @@ async function computeRoundTipStatusAggregate(params: {
   });
 
   return {
+    has_player_lists: params.includePlayerLists,
     rounds: roundsPayload,
   };
 }
@@ -501,9 +505,19 @@ async function writeRoundTipStatusCache(params: {
   }
 }
 
+function payloadHasPlayerLists(payload: RoundTipStatusAggregatePayload) {
+  if (!Array.isArray(payload.rounds) || payload.rounds.length === 0) {
+    return Boolean(payload.has_player_lists);
+  }
+  return payload.rounds.every(
+    (round) => Array.isArray(round.missing_players) && Array.isArray(round.tipped_players_list)
+  );
+}
+
 async function getRoundTipStatusAggregate(params: {
   competitionId: string;
   season: number;
+  includePlayerLists: boolean;
   supabase?: ReturnType<typeof createServiceClient>;
 }): Promise<RoundTipStatusAggregatePayload> {
   const supabase = params.supabase ?? createServiceClient();
@@ -514,19 +528,22 @@ async function getRoundTipStatusAggregate(params: {
   });
 
   if (cached?.payload?.rounds) {
-    if (!cached.payload.champion_seasons_by_user_id) {
-      const reigningChampion = await resolveReigningChampion({
+    const cachedHasPlayerLists = payloadHasPlayerLists(cached.payload);
+    const canUseCached = !params.includePlayerLists || cachedHasPlayerLists;
+    if (!canUseCached) {
+      const payload = await computeRoundTipStatusAggregate({
         competitionId: params.competitionId,
         season: params.season,
+        includePlayerLists: true,
         supabase,
       });
-
-      return {
-        ...cached.payload,
-        reigning_champion_user_id: reigningChampion.reigning_champion_user_id,
-        champion_highlight_user_ids: reigningChampion.champion_highlight_user_ids,
-        champion_seasons_by_user_id: reigningChampion.champion_seasons_by_user_id,
-      };
+      await writeRoundTipStatusCache({
+        competitionId: params.competitionId,
+        season: params.season,
+        payload,
+        supabase,
+      });
+      return payload;
     }
     return cached.payload;
   }
@@ -534,6 +551,7 @@ async function getRoundTipStatusAggregate(params: {
   const payload = await computeRoundTipStatusAggregate({
     competitionId: params.competitionId,
     season: params.season,
+    includePlayerLists: params.includePlayerLists,
     supabase,
   });
   await writeRoundTipStatusCache({
@@ -551,13 +569,17 @@ export async function getRoundTipStatusResponse(params: {
   userId: string;
   admin: boolean;
   includeChampionData?: boolean;
+  includePlayerLists?: boolean;
+  onlyRoundId?: string | null;
   supabase?: ReturnType<typeof createServiceClient>;
 }) {
   const supabase = params.supabase ?? createServiceClient();
   const includeChampionData = params.includeChampionData ?? true;
+  const includePlayerLists = params.includePlayerLists ?? params.admin;
   const aggregate = await getRoundTipStatusAggregate({
     competitionId: params.competitionId,
     season: params.season,
+    includePlayerLists,
     supabase,
   });
 
@@ -580,9 +602,14 @@ export async function getRoundTipStatusResponse(params: {
     championSeasonsByUserId = reigningChampion.champion_seasons_by_user_id;
   }
 
+  const selectedRoundId = String(params.onlyRoundId ?? "").trim();
+  const aggregateRounds = selectedRoundId
+    ? aggregate.rounds.filter((round) => round.round_id === selectedRoundId)
+    : aggregate.rounds;
+
   const roundIdByMatchId = new Map<string, string>();
   const allMatchIds: string[] = [];
-  aggregate.rounds.forEach((round) => {
+  aggregateRounds.forEach((round) => {
     round.match_ids.forEach((matchId) => {
       roundIdByMatchId.set(matchId, round.round_id);
       allMatchIds.push(matchId);
@@ -609,7 +636,7 @@ export async function getRoundTipStatusResponse(params: {
     });
   }
 
-  const rounds: RoundTipStatusRound[] = aggregate.rounds.map((round) => ({
+  const rounds: RoundTipStatusRound[] = aggregateRounds.map((round) => ({
     round_id: round.round_id,
     round_number: round.round_number,
     lock_time_utc: round.lock_time_utc,
@@ -620,8 +647,9 @@ export async function getRoundTipStatusResponse(params: {
     total_players: round.total_players,
     tipped_players: round.tipped_players,
     missing_count: round.missing_count,
-    missing_players: params.admin ? round.missing_players : undefined,
-    tipped_players_list: params.admin ? round.tipped_players_list : undefined,
+    missing_players: params.admin && includePlayerLists ? round.missing_players : undefined,
+    tipped_players_list:
+      params.admin && includePlayerLists ? round.tipped_players_list : undefined,
   }));
 
   return {

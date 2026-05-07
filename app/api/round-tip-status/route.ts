@@ -18,6 +18,11 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const season = Number(url.searchParams.get("season") ?? "2026");
     const competitionFromQS = url.searchParams.get("competition_id")?.trim() ?? null;
+    const includePlayerLists =
+      String(url.searchParams.get("include_player_lists") ?? "1").trim() !== "0";
+    const includeChampionData =
+      String(url.searchParams.get("include_champion_data") ?? "1").trim() !== "0";
+    const onlyRoundId = url.searchParams.get("round_id")?.trim() ?? null;
 
     const supabase = createServiceClient();
     const userId = await getUserIdFromBearer(req);
@@ -42,6 +47,9 @@ export async function GET(req: Request) {
       season,
       userId,
       admin,
+      includePlayerLists,
+      includeChampionData,
+      onlyRoundId,
       supabase,
     });
 

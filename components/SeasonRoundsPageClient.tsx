@@ -63,6 +63,20 @@ type ReminderApiResponse = {
   };
 };
 
+type RoundTipStatusApiResponse = {
+  ok?: boolean;
+  error?: string;
+  rounds?: SeasonTipStatusRound[];
+  reigning_champion_user_id?: string | null;
+  champion_highlight_user_ids?: string[];
+  champion_seasons_by_user_id?: Record<string, number[]>;
+};
+
+type AdminRoundPlayers = {
+  missing_players: RoundStatusPlayer[];
+  tipped_players_list: RoundStatusPlayer[];
+};
+
 type SeasonRoundsPageClientProps = {
   season: number;
   rows: SeasonRoundRow[];
@@ -116,9 +130,15 @@ export default function SeasonRoundsPageClient({
 }: SeasonRoundsPageClientProps) {
   const toast = useToast();
   const msg = initialMessage ?? "";
+  const [dynamicChampionHighlightUserIds, setDynamicChampionHighlightUserIds] = useState(
+    championHighlightUserIds
+  );
+  const [dynamicChampionSeasonsByUserId, setDynamicChampionSeasonsByUserId] = useState(
+    championSeasonsByUserId
+  );
   const championHighlightSet = useMemo(
-    () => new Set(championHighlightUserIds),
-    [championHighlightUserIds]
+    () => new Set(dynamicChampionHighlightUserIds),
+    [dynamicChampionHighlightUserIds]
   );
 
   // per-round expand/collapse for "who hasn't tipped"
@@ -131,10 +151,138 @@ export default function SeasonRoundsPageClient({
   );
   const [reminderRunningRoundId, setReminderRunningRoundId] = useState<string | null>(null);
   const [reminderStatusByRoundId, setReminderStatusByRoundId] = useState<Record<string, string>>({});
+  const [adminRoundPlayersByRoundId, setAdminRoundPlayersByRoundId] = useState<
+    Record<string, AdminRoundPlayers>
+  >({});
+  const [adminRoundLoadingByRoundId, setAdminRoundLoadingByRoundId] = useState<
+    Record<string, boolean>
+  >({});
+  const [adminRoundErrorByRoundId, setAdminRoundErrorByRoundId] = useState<Record<string, string>>({});
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   function setRoundReminderStatus(roundId: string, text: string) {
     setReminderStatusByRoundId((prev) => ({ ...prev, [roundId]: text }));
+  }
+
+  function mergeChampionData(payload: RoundTipStatusApiResponse | null) {
+    if (!payload) return;
+
+    const highlightIds = Array.isArray(payload.champion_highlight_user_ids)
+      ? payload.champion_highlight_user_ids
+          .map((value) => (typeof value === "string" ? value.trim() : ""))
+          .filter(Boolean)
+      : [];
+    const reigningId = String(payload.reigning_champion_user_id ?? "").trim();
+
+    if (highlightIds.length > 0 || reigningId) {
+      setDynamicChampionHighlightUserIds((prev) => {
+        const next = new Set(prev);
+        highlightIds.forEach((id) => next.add(id));
+        if (reigningId) next.add(reigningId);
+        return Array.from(next);
+      });
+    }
+
+    const seasonsByUser = payload.champion_seasons_by_user_id;
+    if (!seasonsByUser || typeof seasonsByUser !== "object") return;
+
+    setDynamicChampionSeasonsByUserId((prev) => {
+      const next: Record<string, number[]> = { ...prev };
+      Object.entries(seasonsByUser).forEach(([userId, seasons]) => {
+        if (!Array.isArray(seasons)) return;
+        const normalized = seasons
+          .map((value) => Number(value))
+          .filter((value) => Number.isFinite(value))
+          .map((value) => Math.trunc(value));
+        if (!normalized.length) return;
+        const merged = new Set([...(next[userId] ?? []), ...normalized]);
+        next[userId] = Array.from(merged).sort((a, b) => a - b);
+      });
+      return next;
+    });
+  }
+
+  function getAdminRoundPlayers(
+    roundId: string,
+    status: SeasonTipStatusRound | null | undefined
+  ): AdminRoundPlayers | null {
+    if (Array.isArray(status?.missing_players) && Array.isArray(status?.tipped_players_list)) {
+      return {
+        missing_players: status.missing_players,
+        tipped_players_list: status.tipped_players_list,
+      };
+    }
+    return adminRoundPlayersByRoundId[roundId] ?? null;
+  }
+
+  async function ensureRoundAdminDetails(roundId: string) {
+    if (!isAdmin) return false;
+    if (adminRoundPlayersByRoundId[roundId]) return true;
+    if (adminRoundLoadingByRoundId[roundId]) return false;
+
+    setAdminRoundLoadingByRoundId((prev) => ({ ...prev, [roundId]: true }));
+    setAdminRoundErrorByRoundId((prev) => ({ ...prev, [roundId]: "" }));
+
+    try {
+      const { data } = await supabaseBrowser.auth.getSession();
+      const sessionToken = data.session?.access_token ?? null;
+      if (!sessionToken) {
+        setAdminRoundErrorByRoundId((prev) => ({ ...prev, [roundId]: "Not authenticated." }));
+        return false;
+      }
+
+      const res = await fetch(
+        `/api/round-tip-status?season=${encodeURIComponent(
+          String(season)
+        )}&round_id=${encodeURIComponent(
+          roundId
+        )}&include_player_lists=1&include_champion_data=1`,
+        {
+          cache: "no-store",
+          headers: {
+            Authorization: `Bearer ${sessionToken}`,
+          },
+        }
+      );
+
+      const json = (await res.json().catch(() => null)) as RoundTipStatusApiResponse | null;
+      if (!res.ok || !json?.ok || !Array.isArray(json.rounds)) {
+        const errorText = String(json?.error ?? "Could not load round tip lists.");
+        setAdminRoundErrorByRoundId((prev) => ({ ...prev, [roundId]: errorText }));
+        return false;
+      }
+
+      mergeChampionData(json);
+      const round = json.rounds.find((row) => row.round_id === roundId) ?? null;
+      if (
+        !round ||
+        !Array.isArray(round.missing_players) ||
+        !Array.isArray(round.tipped_players_list)
+      ) {
+        setAdminRoundErrorByRoundId((prev) => ({
+          ...prev,
+          [roundId]: "No tip lists returned for this round.",
+        }));
+        return false;
+      }
+
+      setAdminRoundPlayersByRoundId((prev) => ({
+        ...prev,
+        [roundId]: {
+          missing_players: round.missing_players ?? [],
+          tipped_players_list: round.tipped_players_list ?? [],
+        },
+      }));
+      return true;
+    } catch {
+      setAdminRoundErrorByRoundId((prev) => ({
+        ...prev,
+        [roundId]: "Could not load round tip lists.",
+      }));
+      return false;
+    } finally {
+      setAdminRoundLoadingByRoundId((prev) => ({ ...prev, [roundId]: false }));
+    }
   }
 
   async function sendRoundReminders(roundId: string, roundNumber: number) {
@@ -250,8 +398,18 @@ export default function SeasonRoundsPageClient({
   const currentRoundToggleId = currentRound ? `current:${currentRound.id}` : null;
   const currentRoundTipListOpen = currentRoundToggleId ? openRoundId === currentRoundToggleId : false;
   const currentRoundOpenTab = currentRound ? openRoundTabById[currentRound.id] ?? "missing" : "missing";
-  const currentRoundMissingPlayers = currentRoundStatus?.missing_players ?? [];
-  const currentRoundTippedPlayers = currentRoundStatus?.tipped_players_list ?? [];
+  const currentRoundPlayers = currentRound
+    ? getAdminRoundPlayers(currentRound.id, currentRoundStatus)
+    : null;
+  const currentRoundMissingPlayers = currentRoundPlayers?.missing_players ?? [];
+  const currentRoundTippedPlayers = currentRoundPlayers?.tipped_players_list ?? [];
+  const currentRoundDetailsLoading = currentRound
+    ? Boolean(adminRoundLoadingByRoundId[currentRound.id])
+    : false;
+  const currentRoundDetailsError = currentRound
+    ? String(adminRoundErrorByRoundId[currentRound.id] ?? "")
+    : "";
+  const currentRoundHasDetails = Boolean(currentRoundPlayers);
   const currentRoundActiveList =
     currentRoundOpenTab === "missing" ? currentRoundMissingPlayers : currentRoundTippedPlayers;
   const currentRoundSearch = currentRound ? tipListSearchByRoundId[currentRound.id] ?? "" : "";
@@ -308,24 +466,27 @@ export default function SeasonRoundsPageClient({
               </UiButtonLink>
             </div>
 
-            {isAdmin && currentRoundStatus?.missing_players && currentRoundToggleId && (
+            {isAdmin && currentRoundToggleId && (
               <button
                 type="button"
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  const nextOpen = currentRoundTipListOpen ? null : currentRoundToggleId;
-                  setOpenRoundId(nextOpen);
-                  if (nextOpen && currentRound) {
-                    setOpenRoundTabById((prev) => ({
-                      ...prev,
-                      [currentRound.id]: prev[currentRound.id] ?? "missing",
-                    }));
-                    setTipListSearchByRoundId((prev) => ({
-                      ...prev,
-                      [currentRound.id]: prev[currentRound.id] ?? "",
-                    }));
+                  if (!currentRound) return;
+                  if (currentRoundTipListOpen) {
+                    setOpenRoundId(null);
+                    return;
                   }
+                  setOpenRoundId(currentRoundToggleId);
+                  setOpenRoundTabById((prev) => ({
+                    ...prev,
+                    [currentRound.id]: prev[currentRound.id] ?? "missing",
+                  }));
+                  setTipListSearchByRoundId((prev) => ({
+                    ...prev,
+                    [currentRound.id]: prev[currentRound.id] ?? "",
+                  }));
+                  void ensureRoundAdminDetails(currentRound.id);
                 }}
                 aria-label={currentRoundTipListOpen ? "Collapse tip lists" : "Expand tip lists"}
                 title={currentRoundTipListOpen ? "Collapse tip lists" : "Expand tip lists"}
@@ -366,13 +527,31 @@ export default function SeasonRoundsPageClient({
               </button>
             )}
 
-            {isAdmin && currentRoundTipListOpen && currentRoundStatus?.missing_players && (
+            {isAdmin && currentRoundTipListOpen && (
               <div
                 style={{
                   padding: "10px 14px 12px",
                   borderTop: "1px solid rgba(127,127,127,0.18)",
                 }}
               >
+                {currentRoundDetailsLoading && (
+                  <div style={{ opacity: 0.78, fontSize: 13, marginBottom: 10 }}>Loading tip lists…</div>
+                )}
+
+                {!currentRoundDetailsLoading && !!currentRoundDetailsError && (
+                  <div style={{ opacity: 0.82, fontSize: 13, marginBottom: 10, color: "rgb(239, 68, 68)" }}>
+                    {currentRoundDetailsError}
+                  </div>
+                )}
+
+                {!currentRoundDetailsLoading && !currentRoundDetailsError && !currentRoundHasDetails && (
+                  <div style={{ opacity: 0.78, fontSize: 13, marginBottom: 10 }}>
+                    Tip lists are not available for this round yet.
+                  </div>
+                )}
+
+                {currentRoundHasDetails && (
+                  <>
                 <div
                   style={{
                     display: "flex",
@@ -509,7 +688,7 @@ export default function SeasonRoundsPageClient({
                             >
                               {p.display_name?.trim() ? p.display_name : "(no display name)"}
                             </span>
-                            <ChampionSeasonLabels seasons={championSeasonsByUserId[p.user_id]} />
+                            <ChampionSeasonLabels seasons={dynamicChampionSeasonsByUserId[p.user_id]} />
                             <UnpaidTag paymentStatus={p.payment_status ?? null} />
                           </div>
                           <div
@@ -533,6 +712,8 @@ export default function SeasonRoundsPageClient({
                       );
                     })}
                   </div>
+                )}
+                </>
                 )}
               </div>
             )}
@@ -565,8 +746,12 @@ export default function SeasonRoundsPageClient({
             const total = status?.total_players ?? null;
             const tipped = status?.tipped_players ?? null;
             const missingCount = status?.missing_count ?? null;
-            const missingPlayers = status?.missing_players ?? [];
-            const tippedPlayers = status?.tipped_players_list ?? [];
+            const roundPlayers = getAdminRoundPlayers(r.id, status);
+            const missingPlayers = roundPlayers?.missing_players ?? [];
+            const tippedPlayers = roundPlayers?.tipped_players_list ?? [];
+            const roundDetailsLoading = Boolean(adminRoundLoadingByRoundId[r.id]);
+            const roundDetailsError = String(adminRoundErrorByRoundId[r.id] ?? "");
+            const hasRoundDetails = Boolean(roundPlayers);
 
             const isOpen = openRoundId === r.id;
             const openTab = openRoundTabById[r.id] ?? "missing";
@@ -646,24 +831,26 @@ export default function SeasonRoundsPageClient({
                 </Link>
 
                 {/* Admin toggle: full-width bottom strip (does NOT navigate) */}
-                {isAdmin && status?.missing_players && (
+                {isAdmin && (
                   <button
                     type="button"
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      const nextOpen = openRoundId === r.id ? null : r.id;
-                      setOpenRoundId(nextOpen);
-                      if (nextOpen === r.id) {
-                        setOpenRoundTabById((prev) => ({
-                          ...prev,
-                          [r.id]: prev[r.id] ?? "missing",
-                        }));
-                        setTipListSearchByRoundId((prev) => ({
-                          ...prev,
-                          [r.id]: prev[r.id] ?? "",
-                        }));
+                      if (isOpen) {
+                        setOpenRoundId(null);
+                        return;
                       }
+                      setOpenRoundId(r.id);
+                      setOpenRoundTabById((prev) => ({
+                        ...prev,
+                        [r.id]: prev[r.id] ?? "missing",
+                      }));
+                      setTipListSearchByRoundId((prev) => ({
+                        ...prev,
+                        [r.id]: prev[r.id] ?? "",
+                      }));
+                      void ensureRoundAdminDetails(r.id);
                     }}
                     aria-label={isOpen ? "Collapse tip lists" : "Expand tip lists"}
                     title={isOpen ? "Collapse tip lists" : "Expand tip lists"}
@@ -705,13 +892,35 @@ export default function SeasonRoundsPageClient({
                 )}
 
                 {/* Admin expandable list */}
-                {isAdmin && isOpen && status?.missing_players && (
+                {isAdmin && isOpen && (
                   <div
                     style={{
                       padding: "10px 14px 12px",
                       borderTop: "1px solid rgba(127,127,127,0.18)",
                     }}
                   >
+                    {roundDetailsLoading && (
+                      <div style={{ opacity: 0.78, fontSize: 13, marginBottom: 10 }}>
+                        Loading tip lists…
+                      </div>
+                    )}
+
+                    {!roundDetailsLoading && !!roundDetailsError && (
+                      <div
+                        style={{ opacity: 0.82, fontSize: 13, marginBottom: 10, color: "rgb(239, 68, 68)" }}
+                      >
+                        {roundDetailsError}
+                      </div>
+                    )}
+
+                    {!roundDetailsLoading && !roundDetailsError && !hasRoundDetails && (
+                      <div style={{ opacity: 0.78, fontSize: 13, marginBottom: 10 }}>
+                        Tip lists are not available for this round yet.
+                      </div>
+                    )}
+
+                    {hasRoundDetails && (
+                      <>
                     <div
                       style={{
                         display: "flex",
@@ -849,7 +1058,7 @@ export default function SeasonRoundsPageClient({
                               >
                                 {p.display_name?.trim() ? p.display_name : "(no display name)"}
                               </span>
-                              <ChampionSeasonLabels seasons={championSeasonsByUserId[p.user_id]} />
+                              <ChampionSeasonLabels seasons={dynamicChampionSeasonsByUserId[p.user_id]} />
                               <UnpaidTag paymentStatus={p.payment_status ?? null} />
                             </div>
                             <div
@@ -873,6 +1082,8 @@ export default function SeasonRoundsPageClient({
                           );
                         })}
                       </div>
+                    )}
+                      </>
                     )}
                   </div>
                 )}

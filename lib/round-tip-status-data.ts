@@ -67,13 +67,15 @@ type CachedRoundStatusRow = {
   tipped_players_list: RoundPlayerStatusRow[];
 };
 
+type RoundTipStatusAggregatePayload = {
+  reigning_champion_user_id?: string | null;
+  champion_highlight_user_ids?: string[];
+  champion_seasons_by_user_id?: Record<string, number[]>;
+  rounds: CachedRoundStatusRow[];
+};
+
 type RoundTipStatusCacheRow = {
-  payload: {
-    reigning_champion_user_id?: string | null;
-    champion_highlight_user_ids?: string[];
-    champion_seasons_by_user_id?: Record<string, number[]>;
-    rounds: CachedRoundStatusRow[];
-  };
+  payload: RoundTipStatusAggregatePayload;
   computed_at: string | null;
 };
 
@@ -240,7 +242,7 @@ async function computeRoundTipStatusAggregate(params: {
   competitionId: string;
   season: number;
   supabase?: ReturnType<typeof createServiceClient>;
-}) {
+}): Promise<RoundTipStatusAggregatePayload> {
   const supabase = params.supabase ?? createServiceClient();
 
   const { data: rounds, error: rErr } = await supabase
@@ -479,7 +481,7 @@ async function readRoundTipStatusCache(params: {
 async function writeRoundTipStatusCache(params: {
   competitionId: string;
   season: number;
-  payload: { rounds: CachedRoundStatusRow[] };
+  payload: RoundTipStatusAggregatePayload;
   supabase?: ReturnType<typeof createServiceClient>;
 }) {
   const supabase = params.supabase ?? createServiceClient();
@@ -503,7 +505,7 @@ async function getRoundTipStatusAggregate(params: {
   competitionId: string;
   season: number;
   supabase?: ReturnType<typeof createServiceClient>;
-}) {
+}): Promise<RoundTipStatusAggregatePayload> {
   const supabase = params.supabase ?? createServiceClient();
   const cached = await readRoundTipStatusCache({
     competitionId: params.competitionId,
@@ -548,20 +550,35 @@ export async function getRoundTipStatusResponse(params: {
   season: number;
   userId: string;
   admin: boolean;
+  includeChampionData?: boolean;
   supabase?: ReturnType<typeof createServiceClient>;
 }) {
   const supabase = params.supabase ?? createServiceClient();
+  const includeChampionData = params.includeChampionData ?? true;
   const aggregate = await getRoundTipStatusAggregate({
     competitionId: params.competitionId,
     season: params.season,
     supabase,
   });
 
-  const reigningChampion = await resolveReigningChampion({
-    competitionId: params.competitionId,
-    season: params.season,
-    supabase,
-  });
+  let reigningChampionUserId = aggregate.reigning_champion_user_id;
+  let championHighlightUserIds = aggregate.champion_highlight_user_ids;
+  let championSeasonsByUserId = aggregate.champion_seasons_by_user_id;
+
+  if (
+    includeChampionData &&
+    (!championSeasonsByUserId || !championHighlightUserIds || reigningChampionUserId === undefined)
+  ) {
+    const reigningChampion = await resolveReigningChampion({
+      competitionId: params.competitionId,
+      season: params.season,
+      supabase,
+    });
+
+    reigningChampionUserId = reigningChampion.reigning_champion_user_id;
+    championHighlightUserIds = reigningChampion.champion_highlight_user_ids;
+    championSeasonsByUserId = reigningChampion.champion_seasons_by_user_id;
+  }
 
   const roundIdByMatchId = new Map<string, string>();
   const allMatchIds: string[] = [];
@@ -611,9 +628,9 @@ export async function getRoundTipStatusResponse(params: {
     ok: true as const,
     season: params.season,
     competition_id: params.competitionId,
-    reigning_champion_user_id: reigningChampion.reigning_champion_user_id,
-    champion_highlight_user_ids: reigningChampion.champion_highlight_user_ids,
-    champion_seasons_by_user_id: reigningChampion.champion_seasons_by_user_id,
+    reigning_champion_user_id: includeChampionData ? reigningChampionUserId : undefined,
+    champion_highlight_user_ids: includeChampionData ? championHighlightUserIds : undefined,
+    champion_seasons_by_user_id: includeChampionData ? championSeasonsByUserId : undefined,
     admin: params.admin,
     rounds,
   };

@@ -6,6 +6,7 @@ import { getRoundTipStatusResponse } from "@/lib/round-tip-status-data";
 import { getLeaderboardSnapshot } from "@/lib/leaderboard-snapshot";
 
 const CURRENT_SEASON = 2026;
+const LIVE_SIGNAL_GRACE_MS = 6 * 60 * 60 * 1000;
 
 type HomeTodayPickRow = {
   match_id: string;
@@ -24,6 +25,8 @@ type HomeFirstMatchRow = {
   home_team: string;
   away_team: string;
 };
+
+type HomeRoundStatusRow = Awaited<ReturnType<typeof getRoundTipStatusResponse>>["rounds"][number];
 
 function fallbackWelcomeName(user: {
   email?: string | null;
@@ -48,6 +51,52 @@ function melbourneDayKey(value: string | Date) {
     month: "2-digit",
     day: "2-digit",
   }).format(d);
+}
+
+function roundLockMs(value: string | null) {
+  if (!value) return null;
+  const ms = new Date(value).getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function isRoundComplete(row: HomeRoundStatusRow | null | undefined) {
+  if (!row) return false;
+  return (
+    Boolean(row.round_complete) ||
+    (Number(row.total_matches ?? 0) > 0 &&
+      Number(row.completed_matches ?? 0) >= Number(row.total_matches ?? 0))
+  );
+}
+
+function resolvePrimaryRoundForHome(rounds: HomeRoundStatusRow[], nowMs: number) {
+  const sorted = [...rounds].sort((a, b) => Number(a.round_number) - Number(b.round_number));
+  if (!sorted.length) return null;
+
+  const liveRound =
+    [...sorted].reverse().find((round) => {
+      const lockMs = roundLockMs(round.lock_time_utc);
+      if (lockMs === null || nowMs < lockMs) return false;
+      if (Number(round.total_matches ?? 0) <= 0) return false;
+      if (isRoundComplete(round)) return false;
+
+      const completedMatches = Number(round.completed_matches ?? 0);
+      const recentlyLocked = nowMs - lockMs <= LIVE_SIGNAL_GRACE_MS;
+      return completedMatches > 0 || recentlyLocked;
+    }) ?? null;
+
+  const nextOpenRound = sorted.find((round) => {
+    const lockMs = roundLockMs(round.lock_time_utc);
+    return lockMs !== null && nowMs < lockMs;
+  });
+
+  const currentRound = liveRound ?? nextOpenRound ?? sorted[sorted.length - 1] ?? null;
+  if (!currentRound) return null;
+
+  const currentLockMs = roundLockMs(currentRound.lock_time_utc);
+  const currentLocked = currentLockMs !== null ? nowMs >= currentLockMs : false;
+
+  if (!currentLocked) return currentRound;
+  return nextOpenRound ?? currentRound;
 }
 
 export default async function HomePage() {
@@ -89,11 +138,14 @@ export default async function HomePage() {
           season: CURRENT_SEASON,
           userId: user.id,
           admin: false,
+          includeChampionData: false,
           supabase,
         }),
         getLeaderboardSnapshot({
           season: CURRENT_SEASON,
           competitionId,
+          preferCached: true,
+          includeTrends: false,
           supabase,
         }),
       ]);
@@ -107,38 +159,29 @@ export default async function HomePage() {
 
       rounds = roundStatus.rounds;
       me = leaderboard.rows.find((row) => row.user_id === user.id) ?? null;
+      const primaryRound = resolvePrimaryRoundForHome(rounds, Date.now());
+      const homeRoundId = String(primaryRound?.round_id ?? "").trim();
 
-      const roundIds = Array.from(
-        new Set(
-          rounds
-            .map((round) => String(round.round_id ?? "").trim())
-            .filter((roundId) => roundId.length > 0)
-        )
-      );
-
-      if (roundIds.length > 0) {
+      if (homeRoundId.length > 0) {
         const { data: matchRows, error: matchError } = await supabase
           .from("matches")
           .select("id, round_id, commence_time_utc, home_team, away_team, winner_team, status")
-          .in("round_id", roundIds)
+          .eq("round_id", homeRoundId)
           .order("commence_time_utc", { ascending: true });
 
         if (!matchError) {
-          const firstMatchByRoundId = new Map<string, HomeFirstMatchRow>();
-
-          (matchRows ?? []).forEach((match) => {
-            const roundId = String(match.round_id ?? "");
-            if (!roundId || firstMatchByRoundId.has(roundId)) return;
-            firstMatchByRoundId.set(roundId, {
-              round_id: roundId,
-              match_id: String(match.id),
-              commence_time_utc: String(match.commence_time_utc ?? ""),
-              home_team: String(match.home_team ?? ""),
-              away_team: String(match.away_team ?? ""),
-            });
-          });
-
-          firstMatches = Array.from(firstMatchByRoundId.values());
+          const firstMatch = (matchRows ?? [])[0];
+          if (firstMatch) {
+            firstMatches = [
+              {
+                round_id: String(firstMatch.round_id ?? ""),
+                match_id: String(firstMatch.id ?? ""),
+                commence_time_utc: String(firstMatch.commence_time_utc ?? ""),
+                home_team: String(firstMatch.home_team ?? ""),
+                away_team: String(firstMatch.away_team ?? ""),
+              },
+            ];
+          }
 
           const todayKey = melbourneDayKey(new Date());
           const todaysMatches = (matchRows ?? []).filter((match) => {

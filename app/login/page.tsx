@@ -115,6 +115,7 @@ export default function LoginPage() {
         <div style={{ marginTop: 10, textAlign: "right" }}>
           <Link
             href="/forgot-password"
+            prefetch={false}
             style={{ fontSize: 13, textDecoration: "underline", opacity: 0.85 }}
           >
             Forgot password?
@@ -128,6 +129,7 @@ export default function LoginPage() {
             </div>
             <UiButtonLink
               href="/signup"
+              prefetch={false}
               style={{ width: "100%", padding: 12, marginTop: 6 }}
             >
               Create account
@@ -138,7 +140,7 @@ export default function LoginPage() {
             <div className="ui-caption">
               Season {CURRENT_SEASON} is in progress, so new account creation is paused.
             </div>
-            <UiButtonLink href="/next-season" style={{ width: "100%", padding: 12 }}>
+            <UiButtonLink href="/next-season" prefetch={false} style={{ width: "100%", padding: 12 }}>
               Register your interest for {NEXT_SEASON} season
             </UiButtonLink>
           </div>

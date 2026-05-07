@@ -35,6 +35,7 @@ type UiButtonLinkProps = {
   style?: CSSProperties;
   pill?: boolean;
   tone?: ButtonTone;
+  prefetch?: boolean;
 };
 
 export function UiButtonLink({
@@ -44,10 +45,12 @@ export function UiButtonLink({
   style,
   pill = false,
   tone = "default",
+  prefetch,
 }: UiButtonLinkProps) {
   return (
     <Link
       href={href}
+      prefetch={prefetch}
       className={cx("ui-btn", pill && "ui-btn--pill", toneClass(tone), className)}
       style={style}
     >

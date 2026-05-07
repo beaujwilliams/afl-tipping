@@ -1,9 +1,9 @@
-import { redirect } from "next/navigation";
 import HomePageClient from "@/components/HomePageClient";
 import { createClient, createServiceClient } from "@/lib/supabase-server";
 import { resolveCompetitionIdForSeason } from "@/lib/competition-resolver";
 import { getRoundTipStatusResponse } from "@/lib/round-tip-status-data";
 import { getLeaderboardSnapshot } from "@/lib/leaderboard-snapshot";
+import LoginPage from "@/app/login/page";
 
 const CURRENT_SEASON = 2026;
 const LIVE_SIGNAL_GRACE_MS = 6 * 60 * 60 * 1000;
@@ -106,7 +106,7 @@ export default async function HomePage() {
   } = await authClient.auth.getUser();
 
   if (!user) {
-    redirect("/login");
+    return <LoginPage />;
   }
 
   const supabase = createServiceClient();

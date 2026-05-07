@@ -137,7 +137,12 @@ export default function SignupPage() {
           <NextSeasonInterestForm season={NEXT_SEASON} />
         </div>
 
-        <Link href="/login" className="ui-btn" style={{ width: "100%", padding: 12, marginTop: 12 }}>
+        <Link
+          href="/login"
+          prefetch={false}
+          className="ui-btn"
+          style={{ width: "100%", padding: 12, marginTop: 12 }}
+        >
           Back to login
         </Link>
       </main>
@@ -219,7 +224,7 @@ export default function SignupPage() {
               : "Create account"}
         </button>
 
-        <Link href="/login" className="ui-btn" style={{ width: "100%", padding: 12 }}>
+        <Link href="/login" prefetch={false} className="ui-btn" style={{ width: "100%", padding: 12 }}>
           Back to login
         </Link>
 

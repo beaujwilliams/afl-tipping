@@ -149,7 +149,11 @@ export default function ResetPasswordPage() {
         <>
           {msg && <p style={{ marginTop: 12 }}>{msg}</p>}
           <div style={{ marginTop: 16 }}>
-            <Link href="/forgot-password" style={{ fontSize: 13, textDecoration: "underline", opacity: 0.85 }}>
+            <Link
+              href="/forgot-password"
+              prefetch={false}
+              style={{ fontSize: 13, textDecoration: "underline", opacity: 0.85 }}
+            >
               Request a new reset link
             </Link>
           </div>
@@ -206,7 +210,7 @@ export default function ResetPasswordPage() {
       {ready && done && (
         <div style={{ marginTop: 16 }}>
           {msg && <p>{msg}</p>}
-          <Link href="/login" style={{ fontSize: 13, textDecoration: "underline", opacity: 0.85 }}>
+          <Link href="/login" prefetch={false} style={{ fontSize: 13, textDecoration: "underline", opacity: 0.85 }}>
             Go to login
           </Link>
         </div>

@@ -13,7 +13,7 @@ export default function NextSeasonPage() {
         {SIGNUPS_OPEN ? (
           <>
             <p className="ui-caption">Signup is currently open for season {CURRENT_SEASON}.</p>
-            <Link href="/signup" className="ui-btn" style={{ width: "100%", padding: 12 }}>
+            <Link href="/signup" prefetch={false} className="ui-btn" style={{ width: "100%", padding: 12 }}>
               Create account
             </Link>
           </>
@@ -30,7 +30,7 @@ export default function NextSeasonPage() {
         )}
       </div>
 
-      <Link href="/login" className="ui-btn" style={{ width: "100%", padding: 12, marginTop: 12 }}>
+      <Link href="/login" prefetch={false} className="ui-btn" style={{ width: "100%", padding: 12, marginTop: 12 }}>
         Back to login
       </Link>
     </main>

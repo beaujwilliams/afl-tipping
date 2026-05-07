@@ -72,7 +72,7 @@ export default function ForgotPasswordPage() {
       {msg && <p style={{ marginTop: 12 }}>{msg}</p>}
 
       <div style={{ marginTop: 16 }}>
-        <Link href="/login" style={{ fontSize: 13, textDecoration: "underline", opacity: 0.85 }}>
+        <Link href="/login" prefetch={false} style={{ fontSize: 13, textDecoration: "underline", opacity: 0.85 }}>
           Back to login
         </Link>
       </div>

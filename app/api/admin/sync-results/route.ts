@@ -42,7 +42,7 @@ type RoundRow = {
 
 const SUPABASE_RETRY_ATTEMPTS = 3;
 const SUPABASE_RETRY_BASE_DELAY_MS = 350;
-const RESULT_SYNC_WINDOW_AFTER_START_MS = 2 * 60 * 60 * 1000;
+const RESULT_SYNC_WINDOW_AFTER_START_MS = 3 * 60 * 60 * 1000;
 const RESULT_SYNC_THROTTLE_MS = 10 * 60 * 1000;
 
 function pickGameId(g: SquiggleGame) {

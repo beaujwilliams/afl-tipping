@@ -401,6 +401,11 @@ function parseSyncRoundsTargeted(syncJson: Record<string, unknown>) {
   return parsed;
 }
 
+function parseSyncSkipReason(syncJson: Record<string, unknown>) {
+  const value = String(syncJson.skip_reason ?? "").trim().toLowerCase();
+  return value || null;
+}
+
 function isMissingRelationError(message: string, relationName: string) {
   const m = String(message ?? "").toLowerCase();
   const rel = relationName.toLowerCase();
@@ -470,10 +475,19 @@ export async function GET(req: Request) {
       0,
       Math.trunc(parseSyncRoundsTargeted(syncResults.json))
     );
+    const syncSkipReason = parseSyncSkipReason(syncResults.json);
     const skipIdleActiveRun =
       scope === "active" && jobKind === "scoring_15m" && syncOk && roundsTargetedCount === 0;
+    const skipThrottledActiveRun =
+      scope === "active" &&
+      jobKind === "scoring_15m" &&
+      syncOk &&
+      syncSkipReason === "squiggle_result_throttle";
 
-    if (skipIdleActiveRun) {
+    if (skipIdleActiveRun || skipThrottledActiveRun) {
+      const skipReason = skipThrottledActiveRun
+        ? "squiggle_result_throttle"
+        : "no_live_round";
       const finishedAtUtc = new Date().toISOString();
       const details = {
         sync_results: syncResults,
@@ -481,10 +495,12 @@ export async function GET(req: Request) {
           status: 412,
           json: {
             ok: false,
-            error: "Skipped recalc because there is no locked unfinished round.",
+            error: skipThrottledActiveRun
+              ? "Skipped recalc because active result sync was throttled."
+              : "Skipped recalc because there is no locked unfinished round with matches in the result sync window.",
           },
         },
-        skip_reason: "no_live_round",
+        skip_reason: skipReason,
       };
 
       let logInsertError: string | null = null;
@@ -519,7 +535,7 @@ export async function GET(req: Request) {
         scope,
         job_kind: jobKind,
         run_status: "skipped",
-        skip_reason: "no_live_round",
+        skip_reason: skipReason,
         rounds_targeted: roundsTargetedCount,
         sync_updated: syncUpdated,
         recalc_triggered: false,

@@ -3,6 +3,7 @@ import { recordAdminAuditEvent } from "@/lib/admin-audit";
 import { createServiceClient } from "@/lib/supabase-server";
 import { getDefaultCompetitionId, requireAdminOrCron } from "@/lib/admin-auth";
 import { invalidateRoundTipStatusCache } from "@/lib/round-tip-status-data";
+import { fetchSquiggleJson } from "@/lib/squiggle-api";
 
 type SquiggleTeam = {
   id?: number;
@@ -148,14 +149,20 @@ function pickCommenceTimeUtc(g: SquiggleGame) {
   return null;
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
 async function fetchJson(url: string) {
-  const res = await fetch(url, {
-    cache: "no-store",
-    headers: { Accept: "application/json", "User-Agent": "afl-tipping-dev/1.0" },
-  });
-  const text = await res.text();
-  const json = JSON.parse(text);
-  return { res, json };
+  const { response, json, parseError, textHead } = await fetchSquiggleJson(url);
+  if (!response.ok) {
+    throw new Error(`Squiggle request failed with HTTP ${response.status}: ${textHead}`);
+  }
+  if (parseError) {
+    throw new Error(`Squiggle returned malformed JSON: ${parseError}`);
+  }
+  return { res: response, json };
 }
 
 export async function GET(req: Request) {
@@ -182,9 +189,15 @@ export async function GET(req: Request) {
 
   const { json: gamesJson } = await fetchJson(gamesUrl);
   const { json: teamsJson } = await fetchJson(teamsUrl);
+  const gamesPayload = asRecord(gamesJson);
+  const teamsPayload = asRecord(teamsJson);
 
-  const games: SquiggleGame[] = Array.isArray(gamesJson?.games) ? gamesJson.games : [];
-  const teams: SquiggleTeam[] = Array.isArray(teamsJson?.teams) ? teamsJson.teams : [];
+  const games: SquiggleGame[] = Array.isArray(gamesPayload?.games)
+    ? (gamesPayload.games as SquiggleGame[])
+    : [];
+  const teams: SquiggleTeam[] = Array.isArray(teamsPayload?.teams)
+    ? (teamsPayload.teams as SquiggleTeam[])
+    : [];
 
   const teamNameById = new Map<number, string>();
   for (const t of teams) {

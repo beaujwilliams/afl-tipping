@@ -9,6 +9,7 @@ import { invalidateLeaderboardSnapshotCache } from "@/lib/leaderboard-snapshot";
 import { isFinalMatchStatus, isMatchCompleted } from "@/lib/match-status";
 import { invalidateRoundTipStatusCache } from "@/lib/round-tip-status-data";
 import { invalidateStatsSeasonBaseCache } from "@/lib/stats-data";
+import { fetchSquiggleJson } from "@/lib/squiggle-api";
 
 type SquiggleGame = {
   id?: number | string | null;
@@ -28,6 +29,7 @@ type MatchLookupRow = {
   id: string;
   round_id: string;
   squiggle_game_id: number | null;
+  commence_time_utc: string | null;
   winner_team: string | null;
   status: string | null;
 };
@@ -40,6 +42,8 @@ type RoundRow = {
 
 const SUPABASE_RETRY_ATTEMPTS = 3;
 const SUPABASE_RETRY_BASE_DELAY_MS = 350;
+const RESULT_SYNC_WINDOW_AFTER_START_MS = 2 * 60 * 60 * 1000;
+const RESULT_SYNC_THROTTLE_MS = 10 * 60 * 1000;
 
 function pickGameId(g: SquiggleGame) {
   const id = g?.id ?? g?.game ?? g?.gameid ?? null;
@@ -78,6 +82,63 @@ function pickGameOutcome(g: SquiggleGame) {
   }
 
   return { final: false, winnerTeam: null };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function isInResultSyncWindow(match: MatchLookupRow, nowMs: number) {
+  const startMs = match.commence_time_utc ? new Date(match.commence_time_utc).getTime() : NaN;
+  return !Number.isFinite(startMs) || startMs + RESULT_SYNC_WINDOW_AFTER_START_MS <= nowMs;
+}
+
+function uniqueSortedRoundNumbers(roundNumbers: number[]) {
+  return Array.from(
+    new Set(roundNumbers.filter((round) => Number.isFinite(round)).map((round) => Number(round)))
+  ).sort((a, b) => a - b);
+}
+
+function buildSquiggleGamesUrls({
+  season,
+  scope,
+  targetRoundNumbers,
+}: {
+  season: number;
+  scope: "active" | "full";
+  targetRoundNumbers: number[];
+}) {
+  const baseUrl = `https://api.squiggle.com.au/?q=games;year=${season}`;
+  if (scope === "active") {
+    const rounds = uniqueSortedRoundNumbers(targetRoundNumbers);
+    if (rounds.length > 0) {
+      return rounds.map((round) => `${baseUrl};round=${round};complete=100;format=json`);
+    }
+  }
+  return [`${baseUrl};complete=100;format=json`];
+}
+
+function readNumberArray(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => Number(item)).filter((item) => Number.isFinite(item));
+}
+
+function hasRoundOverlap(left: number[], right: number[]) {
+  const rightSet = new Set(right.map((item) => Number(item)));
+  return left.some((item) => rightSet.has(Number(item)));
+}
+
+function readSyncJsonFromRunDetails(details: unknown) {
+  const detailsObj = asRecord(details);
+  const syncCall = asRecord(detailsObj?.sync_results);
+  return asRecord(syncCall?.json) ?? syncCall;
+}
+
+function hasSquiggleFetchAttempt(syncJson: Record<string, unknown>) {
+  if (asRecord(syncJson.fetchAttempt)) return true;
+  if (!Array.isArray(syncJson.fetchAttempts)) return false;
+  return syncJson.fetchAttempts.some((attempt) => Boolean(asRecord(attempt)));
 }
 
 function sleep(ms: number) {
@@ -124,6 +185,66 @@ async function withSupabaseRetry<T>(fn: () => PromiseLike<T> | T): Promise<T> {
     await sleep(delayMs);
   }
   return await fn();
+}
+
+async function findRecentActiveResultFetch(params: {
+  supabase: ReturnType<typeof createServiceClient>;
+  competitionId: string;
+  season: number;
+  targetRoundNumbers: number[];
+  nowMs: number;
+}) {
+  const cutoffUtc = new Date(params.nowMs - RESULT_SYNC_THROTTLE_MS).toISOString();
+  const recentRuns = await withSupabaseRetry(() =>
+    params.supabase
+      .from("scoring_automation_runs")
+      .select("id, started_at_utc, details")
+      .eq("competition_id", params.competitionId)
+      .eq("season", params.season)
+      .eq("job_kind", "scoring_15m")
+      .eq("scope", "active")
+      .gte("started_at_utc", cutoffUtc)
+      .order("started_at_utc", { ascending: false })
+      .limit(12)
+  );
+
+  if (recentRuns.error) {
+    return {
+      throttled: false,
+      unavailable: true,
+      error: recentRuns.error.message,
+    };
+  }
+
+  for (const row of recentRuns.data ?? []) {
+    const syncJson = readSyncJsonFromRunDetails((row as { details?: unknown }).details);
+    if (!syncJson || syncJson.scope !== "active") continue;
+    if (!hasSquiggleFetchAttempt(syncJson)) continue;
+
+    const roundsTargeted = readNumberArray(syncJson.roundsTargeted);
+    if (!hasRoundOverlap(roundsTargeted, params.targetRoundNumbers)) continue;
+
+    const startedAtUtc = String((row as { started_at_utc?: unknown }).started_at_utc ?? "");
+    const startedAtMs = new Date(startedAtUtc).getTime();
+    if (!Number.isFinite(startedAtMs)) continue;
+
+    const retryAfterMs = Math.max(0, startedAtMs + RESULT_SYNC_THROTTLE_MS - params.nowMs);
+    if (retryAfterMs <= 0) continue;
+
+    return {
+      throttled: true,
+      unavailable: false,
+      lastCheckedAtUtc: startedAtUtc,
+      retryAfterSeconds: Math.ceil(retryAfterMs / 1000),
+      roundsTargeted,
+    };
+  }
+
+  return {
+    throttled: false,
+    unavailable: false,
+    error: null,
+  };
 }
 
 export async function GET(req: Request) {
@@ -243,7 +364,7 @@ export async function GET(req: Request) {
     const matchesQuery = await withSupabaseRetry(() =>
       supabase
         .from("matches")
-        .select("id, round_id, squiggle_game_id, winner_team, status")
+        .select("id, round_id, squiggle_game_id, commence_time_utc, winner_team, status")
         .in("round_id", roundIds)
     );
 
@@ -268,7 +389,7 @@ export async function GET(req: Request) {
         const lockMs = round.lock_time_utc ? new Date(round.lock_time_utc).getTime() : NaN;
         if (!Number.isFinite(lockMs) || lockMs > nowMs) return false;
         const roundMatches = matchesByRoundId.get(String(round.id)) ?? [];
-        return roundMatches.some((m) => !isMatchCompleted(m));
+        return roundMatches.some((m) => !isMatchCompleted(m) && isInResultSyncWindow(m, nowMs));
       })
       .map((round) => String(round.id));
 
@@ -303,31 +424,162 @@ export async function GET(req: Request) {
         updateErrors: [],
         note:
           scope === "active"
-            ? "No locked unfinished rounds detected. Nothing to sync."
+            ? "No locked unfinished rounds with matches in the result sync window detected. Nothing to sync."
             : "No target rounds detected. Nothing to sync.",
       });
     }
 
-    const targetMatchesByGameId = new Map<string, MatchLookupRow>();
     const targetMatches = matchRows.filter((m) => targetRoundSet.has(String(m.round_id)));
+
+    const throttle =
+      scope === "active"
+        ? await findRecentActiveResultFetch({
+            supabase,
+            competitionId: resolvedCompetitionId,
+            season,
+            targetRoundNumbers,
+            nowMs,
+          })
+        : { throttled: false, unavailable: false, error: null };
+
+    if (throttle.throttled) {
+      return respond(200, {
+        ok: true,
+        season,
+        competition_id: resolvedCompetitionId,
+        scope,
+        roundsTargeted: targetRoundNumbers,
+        roundsTargetedCount: targetRoundNumbers.length,
+        activeRoundsDetected: roundRows
+          .filter((round) => activeRoundIds.includes(String(round.id)))
+          .map((round) => Number(round.round_number)),
+        targetMatchesCount: targetMatches.length,
+        fetchAttempt: null,
+        fetchAttempts: [],
+        gamesFetched: 0,
+        consideredFinal: 0,
+        updated: 0,
+        skipped: {
+          skippedNoGameId: 0,
+          skippedNoWinner: 0,
+          noDbMatch: 0,
+          alreadySet: 0,
+          skippedApiErrorRow: 0,
+        },
+        updateErrors: [],
+        throttled: true,
+        throttle: {
+          windowSeconds: Math.ceil(RESULT_SYNC_THROTTLE_MS / 1000),
+          lastCheckedAtUtc: throttle.lastCheckedAtUtc,
+          retryAfterSeconds: throttle.retryAfterSeconds,
+          roundsTargeted: throttle.roundsTargeted,
+        },
+        skip_reason: "squiggle_result_throttle",
+        note: "Skipped Squiggle result fetch because this active round was checked recently.",
+      });
+    }
+
+    const targetMatchesByGameId = new Map<string, MatchLookupRow>();
     for (const match of targetMatches) {
       const gameIdNumber = Number(match.squiggle_game_id ?? NaN);
       if (!Number.isFinite(gameIdNumber)) continue;
       targetMatchesByGameId.set(String(gameIdNumber), match);
     }
 
-    const gamesUrl = `https://api.squiggle.com.au/?q=games;year=${season};complete=100;format=json`;
+    const gamesUrls = buildSquiggleGamesUrls({ season, scope, targetRoundNumbers });
+    const games: SquiggleGame[] = [];
+    const fetchAttempts: Array<Record<string, unknown>> = [];
+    const finalDataSource =
+      scope === "active" ? "round-filtered complete=100" : "season complete=100";
 
-    const resp = await fetch(gamesUrl, {
-      cache: "no-store",
-      headers: {
-        Accept: "application/json",
-        "User-Agent": "afl-tipping/1.0 (results-sync)",
-      },
-    });
+    for (const gamesUrl of gamesUrls) {
+      const squiggleResult = await fetchSquiggleJson(gamesUrl);
+      const body = asRecord(squiggleResult.json);
+      const fetchedGames = Array.isArray(body?.games) ? (body.games as SquiggleGame[]) : [];
+      const attempt: Record<string, unknown> = {
+        url: gamesUrl,
+        httpStatus: squiggleResult.response.status,
+        httpOk: squiggleResult.response.ok,
+        rawGamesCount: fetchedGames.length,
+        finalGamesFound: fetchedGames.length,
+        finalDataSource,
+        userAgent: squiggleResult.userAgent,
+      };
 
-    const body = await resp.json().catch(() => null);
-    const games: SquiggleGame[] = Array.isArray(body?.games) ? (body.games as SquiggleGame[]) : [];
+      if (squiggleResult.parseError) {
+        attempt.parseError = squiggleResult.parseError;
+      }
+
+      fetchAttempts.push(attempt);
+
+      if (!squiggleResult.response.ok) {
+        attempt.responseHead = squiggleResult.textHead;
+        return respond(502, {
+          ok: false,
+          season,
+          competition_id: resolvedCompetitionId,
+          scope,
+          roundsTargeted: targetRoundNumbers,
+          roundsTargetedCount: targetRoundNumbers.length,
+          error: `Squiggle request failed with HTTP ${squiggleResult.response.status}.`,
+          fetchAttempt: attempt,
+          fetchAttempts,
+        });
+      }
+
+      if (squiggleResult.parseError || !body) {
+        attempt.responseHead = squiggleResult.textHead;
+        return respond(502, {
+          ok: false,
+          season,
+          competition_id: resolvedCompetitionId,
+          scope,
+          roundsTargeted: targetRoundNumbers,
+          roundsTargetedCount: targetRoundNumbers.length,
+          error: "Squiggle returned a non-JSON or malformed response.",
+          fetchAttempt: attempt,
+          fetchAttempts,
+        });
+      }
+
+      if (body.error || body.warning) {
+        return respond(502, {
+          ok: false,
+          season,
+          competition_id: resolvedCompetitionId,
+          scope,
+          roundsTargeted: targetRoundNumbers,
+          roundsTargetedCount: targetRoundNumbers.length,
+          error: "Squiggle returned an error/warning payload instead of game data.",
+          fetchAttempt: attempt,
+          fetchAttempts,
+          debug: {
+            error: body.error ?? null,
+            warning: body.warning ?? null,
+          },
+        });
+      }
+
+      if (!Array.isArray(body.games)) {
+        return respond(502, {
+          ok: false,
+          season,
+          competition_id: resolvedCompetitionId,
+          scope,
+          roundsTargeted: targetRoundNumbers,
+          roundsTargetedCount: targetRoundNumbers.length,
+          error: "Squiggle response did not include a games array.",
+          fetchAttempt: attempt,
+          fetchAttempts,
+          debug: {
+            responseKeys: Object.keys(body),
+          },
+        });
+      }
+
+      games.push(...fetchedGames);
+    }
+
     const rawGamesCount = games.length;
 
     const finals = games; // complete=100 already filters
@@ -355,13 +607,8 @@ export async function GET(req: Request) {
         ok: false,
         season,
         error: "Squiggle returned an error/warning payload instead of a game row.",
-        fetchAttempt: {
-          url: gamesUrl,
-          httpStatus: resp.status,
-          rawGamesCount,
-          finalGamesFound,
-          finalDataSource: "complete=100",
-        },
+        fetchAttempt: fetchAttempts[0] ?? null,
+        fetchAttempts,
         debug: {
           firstGameKeys,
           firstGameSample: first,
@@ -446,13 +693,9 @@ export async function GET(req: Request) {
         .filter((round) => activeRoundIds.includes(String(round.id)))
         .map((round) => Number(round.round_number)),
       targetMatchesCount: targetMatches.length,
-      fetchAttempt: {
-        url: gamesUrl,
-        httpStatus: resp.status,
-        rawGamesCount,
-        finalGamesFound,
-        finalDataSource: "complete=100",
-      },
+      fetchAttempt: fetchAttempts[0] ?? null,
+      fetchAttempts,
+      rawGamesCount,
       gamesFetched: finalGamesFound,
       consideredFinal,
       updated,
@@ -464,7 +707,7 @@ export async function GET(req: Request) {
       },
       note:
         scope === "active"
-          ? "Active scope: locked + unfinished rounds only. Recalc should run only when updated > 0."
+          ? "Active scope: locked + unfinished rounds with matches in the result sync window only. Recalc should run only when updated > 0."
           : "Full scope: all rounds in season for this competition.",
     });
   } catch (e: unknown) {

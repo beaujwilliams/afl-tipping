@@ -96,14 +96,9 @@ function resolvePrimaryRoundForHome(rounds: HomeRoundStatusRow[], nowMs: number)
     return lockMs !== null && nowMs < lockMs;
   });
 
-  const currentRound = liveRound ?? nextOpenRound ?? sorted[sorted.length - 1] ?? null;
-  if (!currentRound) return null;
-
-  const currentLockMs = roundLockMs(currentRound.lock_time_utc);
-  const currentLocked = currentLockMs !== null ? nowMs >= currentLockMs : false;
-
-  if (!currentLocked) return currentRound;
-  return nextOpenRound ?? currentRound;
+  if (liveRound) return liveRound;
+  if (nextOpenRound) return nextOpenRound;
+  return sorted[sorted.length - 1] ?? null;
 }
 
 async function HomePageData({

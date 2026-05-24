@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   UiBadge,
   UiCard,
@@ -16,6 +16,7 @@ import type {
   TeamStatsRow,
   TeamStatsTotals,
 } from "@/lib/stats-types";
+import { formatAflTeamNameForDisplay } from "@/lib/team-display";
 
 type TeamSortDirection = "asc" | "desc";
 type TeamSortKey =
@@ -79,6 +80,14 @@ export default function StatsPageClient(props: {
   const [showAllTeams, setShowAllTeams] = useState(false);
   const [teamSortBy, setTeamSortBy] = useState<TeamSortKey>("total_points");
   const [teamSortDirection, setTeamSortDirection] = useState<TeamSortDirection>("desc");
+  const teamDisplayContext = useMemo(
+    () => ({ season: props.season }),
+    [props.season]
+  );
+  const formatTeamLabel = useCallback(
+    (team: string | null | undefined) => formatAflTeamNameForDisplay(team, teamDisplayContext),
+    [teamDisplayContext]
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -341,8 +350,8 @@ export default function StatsPageClient(props: {
                   {props.teamTotals.correct}/{props.teamTotals.incorrect} correct
                 </div>
                 <div className="ui-caption" style={{ fontSize: 13 }}>
-                  Most tipped: <b>{mostTippedTeam ? mostTippedTeam.team : "-"}</b> • Best scoring:{" "}
-                  <b>{bestTeamByPoints ? bestTeamByPoints.team : "-"}</b>
+                  Most tipped: <b>{mostTippedTeam ? formatTeamLabel(mostTippedTeam.team) : "-"}</b> • Best scoring:{" "}
+                  <b>{bestTeamByPoints ? formatTeamLabel(bestTeamByPoints.team) : "-"}</b>
                 </div>
               </div>
             ) : (
@@ -360,13 +369,13 @@ export default function StatsPageClient(props: {
                 <UiCard>
                   <div className="ui-kicker">Most tipped</div>
                   <div className="ui-value" style={{ fontSize: 28 }}>
-                    {mostTippedTeam ? mostTippedTeam.team : "-"}
+                    {mostTippedTeam ? formatTeamLabel(mostTippedTeam.team) : "-"}
                   </div>
                 </UiCard>
                 <UiCard>
                   <div className="ui-kicker">Best scoring team</div>
                   <div className="ui-value" style={{ fontSize: 28 }}>
-                    {bestTeamByPoints ? bestTeamByPoints.team : "-"}
+                    {bestTeamByPoints ? formatTeamLabel(bestTeamByPoints.team) : "-"}
                   </div>
                 </UiCard>
               </UiCardGrid>
@@ -406,7 +415,9 @@ export default function StatsPageClient(props: {
                           gap: 8,
                         }}
                       >
-                        <div style={{ fontWeight: 700, fontSize: 17, lineHeight: 1.25 }}>{row.team}</div>
+                        <div style={{ fontWeight: 700, fontSize: 17, lineHeight: 1.25 }}>
+                          {formatTeamLabel(row.team)}
+                        </div>
                         <div style={{ fontWeight: 600, fontSize: 17, lineHeight: 1.25 }}>
                           {fmtPts(row.total_points)} pts
                         </div>
@@ -693,7 +704,9 @@ export default function StatsPageClient(props: {
                       ) : (
                         sortedDisplayedTeamRows.map((row) => (
                           <tr key={row.team}>
-                            <UiTableCell style={{ fontWeight: 700 }}>{row.team}</UiTableCell>
+                            <UiTableCell style={{ fontWeight: 700 }}>
+                              {formatTeamLabel(row.team)}
+                            </UiTableCell>
                             <UiTableCell>{row.tipped_count}</UiTableCell>
                             <UiTableCell>{row.correct_count}</UiTableCell>
                             <UiTableCell>{row.incorrect_count}</UiTableCell>

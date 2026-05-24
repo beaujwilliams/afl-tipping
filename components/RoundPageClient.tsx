@@ -15,6 +15,7 @@ import {
 } from "@/lib/round-page-rules";
 import { isMatchCompleted } from "@/lib/match-status";
 import { getRoundDisplayName } from "@/lib/round-label";
+import { formatAflTeamNameForDisplay } from "@/lib/team-display";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { UiSkeleton } from "@/components/ui";
 
@@ -259,6 +260,11 @@ export default function RoundPageClient({
     if (!lockMs) return "";
     return msToCountdown(lockMs - nowMs);
   }, [lockMs, nowMs]);
+
+  const teamDisplayContext = useMemo(
+    () => ({ season, roundNumber: round }),
+    [season, round]
+  );
 
   const tippedCount = useMemo(() => {
     if (!matches.length) return 0;
@@ -854,6 +860,8 @@ export default function RoundPageClient({
               const picked = tipsByMatchId[m.id] ?? null;
               const winner = String(m.winner_team ?? "").trim();
               const completed = isMatchCompleted(m);
+              const homeTeamLabel = formatAflTeamNameForDisplay(m.home_team, teamDisplayContext);
+              const awayTeamLabel = formatAflTeamNameForDisplay(m.away_team, teamDisplayContext);
               const resultLabel =
                 picked && completed ? (picked === winner ? "Correct" : "Incorrect") : null;
               const resultClassName =
@@ -880,20 +888,20 @@ export default function RoundPageClient({
                     {picked ? (
                       <>
                         {picked === m.home_team ? (
-                          <b>{m.home_team}</b>
+                          <b>{homeTeamLabel}</b>
                         ) : (
-                          <span style={{ opacity: 0.72 }}>{m.home_team}</span>
+                          <span style={{ opacity: 0.72 }}>{homeTeamLabel}</span>
                         )}{" "}
                         vs{" "}
                         {picked === m.away_team ? (
-                          <b>{m.away_team}</b>
+                          <b>{awayTeamLabel}</b>
                         ) : (
-                          <span style={{ opacity: 0.72 }}>{m.away_team}</span>
+                          <span style={{ opacity: 0.72 }}>{awayTeamLabel}</span>
                         )}
                       </>
                     ) : (
                       <>
-                        {m.home_team} vs {m.away_team} —{" "}
+                        {homeTeamLabel} vs {awayTeamLabel} —{" "}
                         <span style={{ opacity: 0.6 }}>Not tipped</span>
                       </>
                     )}
@@ -1004,6 +1012,9 @@ export default function RoundPageClient({
           const picked = tipsByMatchId[g.id] ?? null;
           const saving = savingMatchId === g.id;
           const disableTipButtons = isLocked || saving || paymentLocked || autoPicking || clearingTips;
+          const homeTeamLabel = formatAflTeamNameForDisplay(g.home_team, teamDisplayContext);
+          const awayTeamLabel = formatAflTeamNameForDisplay(g.away_team, teamDisplayContext);
+          const pickedLabel = formatAflTeamNameForDisplay(picked, teamDisplayContext);
 
           const odds = oddsByMatchId[g.id];
           const homeOdds = odds ? odds.home_odds : null;
@@ -1033,7 +1044,7 @@ export default function RoundPageClient({
                   }`}
                 >
                   <div className="round-tip-option-main">
-                    <span className="round-tip-option-team">{g.home_team}</span>
+                    <span className="round-tip-option-team">{homeTeamLabel}</span>
                     <span className="round-tip-option-odds">{fmtOdds(homeOdds)}</span>
                   </div>
                   {picked === g.home_team && (
@@ -1051,7 +1062,7 @@ export default function RoundPageClient({
                   }`}
                 >
                   <div className="round-tip-option-main">
-                    <span className="round-tip-option-team">{g.away_team}</span>
+                    <span className="round-tip-option-team">{awayTeamLabel}</span>
                     <span className="round-tip-option-odds">{fmtOdds(awayOdds)}</span>
                   </div>
                   {picked === g.away_team && (
@@ -1066,7 +1077,7 @@ export default function RoundPageClient({
 
               {!saving && !isLocked && picked && (
                 <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
-                  Saved: <b>{picked}</b>
+                  Saved: <b>{pickedLabel}</b>
                 </div>
               )}
 

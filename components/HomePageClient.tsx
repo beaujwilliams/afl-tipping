@@ -5,6 +5,7 @@ import { useChatActivity } from "@/components/ChatActivityProvider";
 import { UiBadge, UiButtonLink, UiCard, UiCardGrid, UiSectionHeader } from "@/components/ui";
 import { isMatchCompleted } from "@/lib/match-status";
 import { getRoundDisplayName } from "@/lib/round-label";
+import { formatAflMatchupForDisplay, formatAflTeamNameForDisplay } from "@/lib/team-display";
 
 const CURRENT_SEASON = 2026;
 const LIVE_SIGNAL_GRACE_MS = 6 * 60 * 60 * 1000;
@@ -31,6 +32,7 @@ export type HomeLeaderboardRow = {
 
 export type HomeTodayPickRow = {
   match_id: string;
+  round_number?: number;
   commence_time_utc: string;
   home_team: string;
   away_team: string;
@@ -41,6 +43,7 @@ export type HomeTodayPickRow = {
 
 export type HomeFirstMatchRow = {
   round_id: string;
+  round_number?: number;
   match_id: string;
   commence_time_utc: string;
   home_team: string;
@@ -267,6 +270,10 @@ export default function HomePageClient({
   const primaryFirstMatch = primaryTipRound
     ? firstMatchByRoundId.get(String(primaryTipRound.round_id))
     : null;
+  const primaryTeamDisplayContext = {
+    season: CURRENT_SEASON,
+    roundNumber: primaryTipRound?.round_number ?? primaryFirstMatch?.round_number ?? null,
+  };
 
   const primaryStatusValue =
     primaryTipRound && primaryRoundLocked
@@ -448,7 +455,11 @@ export default function HomePageClient({
                     <div className="ui-kicker">First match</div>
                     <div className="dashboard-match-value">
                       {primaryFirstMatch
-                        ? `${primaryFirstMatch.home_team} vs ${primaryFirstMatch.away_team}`
+                        ? formatAflMatchupForDisplay(
+                            primaryFirstMatch.home_team,
+                            primaryFirstMatch.away_team,
+                            primaryTeamDisplayContext
+                          )
                         : "Not scheduled"}
                     </div>
                     <div className="ui-meta">
@@ -487,12 +498,23 @@ export default function HomePageClient({
                     const pickedTeam = String(pick.picked_team ?? "").trim();
                     const winnerTeam = String(pick.winner_team ?? "").trim();
                     const completed = isMatchCompleted(pick);
+                    const pickDisplayContext = {
+                      season: CURRENT_SEASON,
+                      roundNumber: pick.round_number ?? liveRound?.round_number ?? currentRound?.round_number ?? null,
+                    };
                     const opponent =
                       pickedTeam === pick.home_team
                         ? pick.away_team
                         : pickedTeam === pick.away_team
                         ? pick.home_team
                         : `${pick.home_team} vs ${pick.away_team}`;
+                    const pickedTeamLabel = formatAflTeamNameForDisplay(pickedTeam, pickDisplayContext);
+                    const opponentLabel = formatAflTeamNameForDisplay(opponent, pickDisplayContext);
+                    const matchupLabel = formatAflMatchupForDisplay(
+                      pick.home_team,
+                      pick.away_team,
+                      pickDisplayContext
+                    );
 
                     let tone: "warning" | "info" | "success" | "danger" = "warning";
                     let statusLabel = "Not tipped";
@@ -513,11 +535,11 @@ export default function HomePageClient({
                       <div key={pick.match_id} className="dashboard-today-item">
                         <div className="dashboard-today-copy">
                           <div className="dashboard-today-picked">
-                            {pickedTeam || `${pick.home_team} vs ${pick.away_team}`}
+                            {pickedTeam ? pickedTeamLabel : matchupLabel}
                           </div>
                           <div className="ui-meta">
                             {pickedTeam
-                              ? `vs ${opponent} • ${fmtMelbourneTime(pick.commence_time_utc)}`
+                              ? `vs ${opponentLabel} • ${fmtMelbourneTime(pick.commence_time_utc)}`
                               : `${fmtMelbourneTime(pick.commence_time_utc)} • Tip not saved`}
                           </div>
                         </div>

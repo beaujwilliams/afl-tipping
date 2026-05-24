@@ -14,6 +14,7 @@ import {
 } from "@/components/ui";
 import { ChampionSeasonLabels } from "@/components/ChampionSeasonLabels";
 import { AFL_TEAMS } from "@/lib/afl-teams";
+import { formatAflTeamNameForDisplay } from "@/lib/team-display";
 import {
   editableChampionSeasons,
   normalizeChampionSeasonsByUserId,
@@ -1083,7 +1084,7 @@ export default function PeopleAdminClient({
                               <option value="">—</option>
                               {AFL_TEAMS.map((team) => (
                                 <option key={team} value={team}>
-                                  {team}
+                                  {formatAflTeamNameForDisplay(team, { season: activeSeason })}
                                 </option>
                               ))}
                             </select>
@@ -1287,7 +1288,7 @@ export default function PeopleAdminClient({
                           <option value="">—</option>
                           {AFL_TEAMS.map((team) => (
                             <option key={team} value={team}>
-                              {team}
+                              {formatAflTeamNameForDisplay(team, { season: activeSeason })}
                             </option>
                           ))}
                         </select>

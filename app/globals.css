@@ -591,6 +591,19 @@ button {
   border-top: 0 !important;
 }
 
+.leaderboard-table tbody tr.leaderboard-row--mine td {
+  background: color-mix(in srgb, var(--tone-info-text) 8%, var(--card)) !important;
+}
+
+.leaderboard-table tbody tr.leaderboard-row--mine td:first-child {
+  box-shadow: inset 3px 0 0 var(--tone-info-text);
+}
+
+.leaderboard-find-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .ui-table th,
 .ui-table td,
 .ui-table-shell th,

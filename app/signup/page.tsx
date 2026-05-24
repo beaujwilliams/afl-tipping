@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AFL_TEAMS } from "@/lib/afl-teams";
 import NextSeasonInterestForm from "@/components/NextSeasonInterestForm";
 import { CURRENT_SEASON, NEXT_SEASON, SIGNUPS_OPEN } from "@/lib/season-config";
+import { formatAflTeamNameForDisplay } from "@/lib/team-display";
 
 const SIGNUP_COOLDOWN_MS = 60_000;
 const SIGNUP_COOLDOWN_KEY = "afl_last_signup_attempt_ms";
@@ -182,7 +183,7 @@ export default function SignupPage() {
             <option value="">Select your team</option>
             {AFL_TEAMS.map((team) => (
               <option key={team} value={team}>
-                {team}
+                {formatAflTeamNameForDisplay(team, { season: CURRENT_SEASON })}
               </option>
             ))}
           </select>

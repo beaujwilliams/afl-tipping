@@ -9,9 +9,11 @@ import { useToast } from "@/components/ToastProvider";
 import { AFL_TEAMS } from "@/lib/afl-teams";
 import { waitForSession } from "@/lib/session-client";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { formatAflTeamNameForDisplay } from "@/lib/team-display";
 
 const BUILD_LABEL = process.env.NEXT_PUBLIC_BUILD_LABEL || "local dev";
 const TEAM_PROMPT_ONCE_KEY = "complicatedtips_team_prompt_seen_once_v1";
+const CURRENT_SEASON = 2026;
 
 type MenuKey = "tipping" | "leaderboard" | "info";
 type MenuItem = {
@@ -719,7 +721,7 @@ export default function AppLayoutChrome({
                 <option value="">Select your team</option>
                 {AFL_TEAMS.map((team) => (
                   <option key={team} value={team}>
-                    {team}
+                    {formatAflTeamNameForDisplay(team, { season: CURRENT_SEASON })}
                   </option>
                 ))}
               </select>

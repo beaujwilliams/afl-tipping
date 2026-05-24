@@ -6,6 +6,7 @@ import { UnpaidTag } from "@/components/UnpaidTag";
 import { normalizeChampionSeasonsByUserId } from "@/lib/champion-metadata";
 import { isDrawnMatch, isMatchCompleted } from "@/lib/match-status";
 import { getRoundDisplayName } from "@/lib/round-label";
+import { formatAflMatchupForDisplay, formatAflTeamNameForDisplay } from "@/lib/team-display";
 import { waitForSession } from "@/lib/session-client";
 import type {
   MatchResultRow,
@@ -422,6 +423,10 @@ export default function RoundResultsDetailPageClient({
     if (Number.isNaN(ms)) return false;
     return nowMs >= ms;
   }, [lockTimeUtc, nowMs]);
+  const teamDisplayContext = useMemo(
+    () => ({ season, roundNumber: round }),
+    [season, round]
+  );
 
   const myRoundRow = useMemo(() => {
     if (!currentUserId) return null;
@@ -449,7 +454,7 @@ export default function RoundResultsDetailPageClient({
 
       return {
         match_id: m.id,
-        match_label: `${m.home_team} vs ${m.away_team}`,
+        match_label: formatAflMatchupForDisplay(m.home_team, m.away_team, teamDisplayContext),
         home_team: m.home_team,
         away_team: m.away_team,
         picked,
@@ -457,7 +462,7 @@ export default function RoundResultsDetailPageClient({
         status,
       };
     });
-  }, [matches, myRoundRow]);
+  }, [matches, myRoundRow, teamDisplayContext]);
 
   const myCompletedTipRows = useMemo(
     () => myTipRows.filter((row) => row.status !== "pending"),
@@ -477,10 +482,10 @@ export default function RoundResultsDetailPageClient({
   const matchTitleById = useMemo(() => {
     const out: Record<string, string> = {};
     matches.forEach((m) => {
-      out[m.id] = `${m.home_team} vs ${m.away_team}`;
+      out[m.id] = formatAflMatchupForDisplay(m.home_team, m.away_team, teamDisplayContext);
     });
     return out;
-  }, [matches]);
+  }, [matches, teamDisplayContext]);
 
   const everyoneTipsRows = useMemo(() => {
     const sorted = [...players].sort((a, b) => {
@@ -746,18 +751,22 @@ export default function RoundResultsDetailPageClient({
                             }}
                           >
                             <div style={{ minWidth: 0, lineHeight: 1.35 }}>
-                              {row.picked ? (
-                                <div style={{ display: "grid", gap: 1 }}>
-                                  <div style={{ fontWeight: 800 }}>{row.picked}</div>
-                                  {row.opponent && (
-                                    <div style={{ fontSize: 12, opacity: 0.68 }}>
-                                      vs {row.opponent}
-                                    </div>
-                                  )}
-                                </div>
-                              ) : (
-                                <span style={{ opacity: 0.65 }}>No tip</span>
-                              )}
+                              {(() => {
+                                const pickedLabel = formatAflTeamNameForDisplay(row.picked, teamDisplayContext);
+                                const opponentLabel = formatAflTeamNameForDisplay(row.opponent, teamDisplayContext);
+                                return row.picked ? (
+                                  <div style={{ display: "grid", gap: 1 }}>
+                                    <div style={{ fontWeight: 800 }}>{pickedLabel}</div>
+                                    {row.opponent && (
+                                      <div style={{ fontSize: 12, opacity: 0.68 }}>
+                                        vs {opponentLabel}
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span style={{ opacity: 0.65 }}>No tip</span>
+                                );
+                              })()}
                             </div>
 
                             <span
@@ -789,18 +798,22 @@ export default function RoundResultsDetailPageClient({
                             }}
                           >
                             <div style={{ minWidth: 0, lineHeight: 1.35 }}>
-                              {row.picked ? (
-                                <div style={{ display: "grid", gap: 1 }}>
-                                  <div style={{ fontWeight: 800 }}>{row.picked}</div>
-                                  {row.opponent && (
-                                    <div style={{ fontSize: 12, opacity: 0.68 }}>
-                                      vs {row.opponent}
-                                    </div>
-                                  )}
-                                </div>
-                              ) : (
-                                <span style={{ opacity: 0.65 }}>No tip</span>
-                              )}
+                              {(() => {
+                                const pickedLabel = formatAflTeamNameForDisplay(row.picked, teamDisplayContext);
+                                const opponentLabel = formatAflTeamNameForDisplay(row.opponent, teamDisplayContext);
+                                return row.picked ? (
+                                  <div style={{ display: "grid", gap: 1 }}>
+                                    <div style={{ fontWeight: 800 }}>{pickedLabel}</div>
+                                    {row.opponent && (
+                                      <div style={{ fontSize: 12, opacity: 0.68 }}>
+                                        vs {opponentLabel}
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span style={{ opacity: 0.65 }}>No tip</span>
+                                );
+                              })()}
                             </div>
 
                             <span
@@ -827,7 +840,7 @@ export default function RoundResultsDetailPageClient({
                         {row.match_label} —{" "}
                         {row.picked ? (
                           <span>
-                            tipped <b>{row.picked}</b>
+                            tipped <b>{formatAflTeamNameForDisplay(row.picked, teamDisplayContext)}</b>
                           </span>
                         ) : (
                           <span style={{ opacity: 0.6 }}>Not tipped</span>
@@ -1077,9 +1090,13 @@ export default function RoundResultsDetailPageClient({
           <div className="ui-grid ui-mt-4">
             {matches.map((m) => {
               const winner = String(m.winner_team ?? "").trim();
+              const winnerLabel = formatAflTeamNameForDisplay(winner, teamDisplayContext);
+              const homeTeamLabel = formatAflTeamNameForDisplay(m.home_team, teamDisplayContext);
+              const awayTeamLabel = formatAflTeamNameForDisplay(m.away_team, teamDisplayContext);
+              const matchupLabel = formatAflMatchupForDisplay(m.home_team, m.away_team, teamDisplayContext);
               const finished = isMatchCompleted(m);
               const resultLabel = winner
-                ? `Winner: ${winner}`
+                ? `Winner: ${winnerLabel}`
                 : isDrawnMatch(m)
                   ? "Result: Draw"
                   : "Pending";
@@ -1095,7 +1112,7 @@ export default function RoundResultsDetailPageClient({
 
                   <div className="ui-row-between ui-mt-2">
                     <div style={{ fontWeight: 900, fontSize: 16, lineHeight: 1.2 }}>
-                      {m.home_team} vs {m.away_team}
+                      {matchupLabel}
                     </div>
                     <div
                       style={{
@@ -1125,7 +1142,7 @@ export default function RoundResultsDetailPageClient({
                           }}
                         >
                           <span>
-                            {m.home_team}
+                            {homeTeamLabel}
                             {homeOddsLabel ? ` (${homeOddsLabel})` : ""}
                           </span>
                           <span>
@@ -1161,7 +1178,7 @@ export default function RoundResultsDetailPageClient({
                           }}
                         >
                           <span>
-                            {m.away_team}
+                            {awayTeamLabel}
                             {awayOddsLabel ? ` (${awayOddsLabel})` : ""}
                           </span>
                           <span>
@@ -1210,8 +1227,8 @@ export default function RoundResultsDetailPageClient({
                       }}
                     >
                       {[
-                        { label: m.home_team, names: picksForMatch.home },
-                        { label: m.away_team, names: picksForMatch.away },
+                        { label: homeTeamLabel, names: picksForMatch.home },
+                        { label: awayTeamLabel, names: picksForMatch.away },
                       ].map((bucket) => (
                         <div
                           key={`${m.id}-${bucket.label}`}
@@ -1396,6 +1413,7 @@ export default function RoundResultsDetailPageClient({
                                 ) : (
                                   picksForUser.map((m) => {
                                     const team = String(p.picks?.[m.id] ?? "").trim();
+                                    const teamLabel = formatAflTeamNameForDisplay(team, teamDisplayContext);
                                     const odds =
                                       team === m.home_team
                                         ? m.home_odds
@@ -1426,12 +1444,19 @@ export default function RoundResultsDetailPageClient({
                                             flexWrap: "wrap",
                                           }}
                                         >
-                                          <span>{matchTitleById[m.id] ?? `${m.home_team} vs ${m.away_team}`}</span>
+                                          <span>
+                                            {matchTitleById[m.id] ??
+                                              formatAflMatchupForDisplay(
+                                                m.home_team,
+                                                m.away_team,
+                                                teamDisplayContext
+                                              )}
+                                          </span>
                                         </div>
                                         <div style={{ fontWeight: 800, textAlign: "right" }}>
                                           {team ? (
                                             <>
-                                              {team}
+                                              {teamLabel}
                                               {oddsLabel ? (
                                                 <span style={{ opacity: 0.9 }}> ({oddsLabel})</span>
                                               ) : null}

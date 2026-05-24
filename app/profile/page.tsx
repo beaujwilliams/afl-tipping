@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { AFL_TEAMS } from "@/lib/afl-teams";
+import { formatAflTeamNameForDisplay } from "@/lib/team-display";
 import { normalizeUsername, validateUsername } from "@/lib/username";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { useToast } from "@/components/ToastProvider";
@@ -307,7 +308,7 @@ export default function ProfilePage() {
               <option value="">None selected</option>
               {AFL_TEAMS.map((team) => (
                 <option key={team} value={team}>
-                  {team}
+                  {formatAflTeamNameForDisplay(team, { season: CURRENT_SEASON })}
                 </option>
               ))}
             </select>

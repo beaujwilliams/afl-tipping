@@ -12,6 +12,7 @@ const LIVE_SIGNAL_GRACE_MS = 6 * 60 * 60 * 1000;
 
 type HomeTodayPickRow = {
   match_id: string;
+  round_number?: number;
   commence_time_utc: string;
   home_team: string;
   away_team: string;
@@ -22,6 +23,7 @@ type HomeTodayPickRow = {
 
 type HomeFirstMatchRow = {
   round_id: string;
+  round_number?: number;
   match_id: string;
   commence_time_utc: string;
   home_team: string;
@@ -174,6 +176,7 @@ async function HomePageData({
             firstMatches = [
               {
                 round_id: String(firstMatch.round_id ?? ""),
+                round_number: primaryRound ? Number(primaryRound.round_number ?? 0) : undefined,
                 match_id: String(firstMatch.id ?? ""),
                 commence_time_utc: String(firstMatch.commence_time_utc ?? ""),
                 home_team: String(firstMatch.home_team ?? ""),
@@ -210,6 +213,7 @@ async function HomePageData({
             const picked = String(pickedTeamByMatchId.get(matchId) ?? "").trim();
             return {
               match_id: matchId,
+              round_number: primaryRound ? Number(primaryRound.round_number ?? 0) : undefined,
               commence_time_utc: String(match.commence_time_utc ?? ""),
               home_team: String(match.home_team ?? ""),
               away_team: String(match.away_team ?? ""),

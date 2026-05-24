@@ -917,7 +917,7 @@ export default function LeaderboardPageClient({
   );
   const [isMobile, setIsMobile] = useState(false);
   const [selectedMobileRowId, setSelectedMobileRowId] = useState<string | null>(null);
-  const [isMyMobileRowVisible, setIsMyMobileRowVisible] = useState(true);
+  const [isMyLeaderboardRowVisible, setIsMyLeaderboardRowVisible] = useState(true);
   const [viewMode, setViewMode] = useState<"overall" | "groups">(initialViewMode);
   const [groups, setGroups] = useState<LeaderboardGroup[]>([]);
   const [pendingInvites, setPendingInvites] = useState<GroupInvite[]>([]);
@@ -1561,6 +1561,7 @@ export default function LeaderboardPageClient({
     if (!currentUserId) return null;
     return sortedRows.find((row) => row.user_id === currentUserId) ?? null;
   }, [currentUserId, sortedRows]);
+  const showFindMeButton = !!currentUserLeaderboardRow && !isMyLeaderboardRowVisible;
   const selectedMobileRow = useMemo(() => {
     if (!selectedMobileRowId) return null;
     return sortedRows.find((row) => row.user_id === selectedMobileRowId) ?? null;
@@ -1694,23 +1695,26 @@ export default function LeaderboardPageClient({
   }, [activeSortBy, activeSortDirection, season, selectedGroupId, viewMode]);
 
   useEffect(() => {
-    if (!isMobile || !currentUserId || !currentUserLeaderboardRow) {
-      setIsMyMobileRowVisible(true);
+    if (!currentUserId || !currentUserLeaderboardRow) {
+      setIsMyLeaderboardRowVisible(true);
       return;
     }
 
-    const element = document.getElementById(`leaderboard-mobile-row-${currentUserId}`);
+    const targetRowId = isMobile
+      ? `leaderboard-mobile-row-${currentUserId}`
+      : `leaderboard-row-${currentUserId}`;
+    const element = document.getElementById(targetRowId);
     if (!element || typeof IntersectionObserver === "undefined") {
-      setIsMyMobileRowVisible(false);
+      setIsMyLeaderboardRowVisible(false);
       return;
     }
 
     const observer = new IntersectionObserver(
       ([entry]) => {
-        setIsMyMobileRowVisible(entry?.isIntersecting ?? true);
+        setIsMyLeaderboardRowVisible(entry?.isIntersecting ?? true);
       },
       {
-        threshold: 0.75,
+        threshold: isMobile ? 0.75 : 0.65,
       }
     );
 
@@ -1720,9 +1724,10 @@ export default function LeaderboardPageClient({
 
   function jumpToMyLeaderboardRow() {
     if (!currentUserId || typeof document === "undefined") return;
-    document
-      .getElementById(`leaderboard-mobile-row-${currentUserId}`)
-      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const targetRowId = isMobile
+      ? `leaderboard-mobile-row-${currentUserId}`
+      : `leaderboard-row-${currentUserId}`;
+    document.getElementById(targetRowId)?.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
   function onSort(nextKey: SortKey) {
@@ -2600,7 +2605,15 @@ export default function LeaderboardPageClient({
           )}
 
           {!isTrendPage && (
-            <UiTableShell className={`ui-mt-3 ${isMobile ? "leaderboard-mobile-shell" : ""}`}>
+            <>
+            {showFindMeButton && (
+              <div className="leaderboard-find-row ui-mt-3">
+                <UiButton pill onClick={jumpToMyLeaderboardRow}>
+                  Find me
+                </UiButton>
+              </div>
+            )}
+            <UiTableShell className={`${showFindMeButton ? "ui-mt-2" : "ui-mt-3"} ${isMobile ? "leaderboard-mobile-shell" : ""}`}>
             {scopedRows.length === 0 ? (
               <div style={{ padding: 16 }} className="ui-caption">
                 {viewMode === "groups"
@@ -2611,11 +2624,6 @@ export default function LeaderboardPageClient({
               <>
                 <div className="mobile-standings-toolbar">
                   <span>Tap a row for full detail</span>
-                  {currentUserLeaderboardRow && !isMyMobileRowVisible && (
-                    <button type="button" onClick={jumpToMyLeaderboardRow}>
-                      Jump to me
-                    </button>
-                  )}
                 </div>
                 <div className="mobile-standings-list" role="list">
                   {sortedRows.map((r) => {
@@ -2815,9 +2823,14 @@ export default function LeaderboardPageClient({
                       const scopedBehind =
                         scopeRankMetaByUserId.get(r.user_id)?.behind ?? r.behind_leader;
                       const isChampion = championHighlightSet.has(r.user_id);
+                      const isCurrentUser = currentUserId === r.user_id;
                       const rankSticky = stickyColumnStyle(1, false);
                       return (
-                        <tr key={r.user_id}>
+                        <tr
+                          key={r.user_id}
+                          id={`leaderboard-row-${r.user_id}`}
+                          className={isCurrentUser ? "leaderboard-row--mine" : undefined}
+                        >
                           <UiTableCell
                             style={{
                               fontWeight: 500,
@@ -2942,6 +2955,7 @@ export default function LeaderboardPageClient({
               </UiTableScroll>
             )}
             </UiTableShell>
+            </>
           )}
 
           {trendPanelVisible && (

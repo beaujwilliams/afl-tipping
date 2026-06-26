@@ -115,16 +115,7 @@ export default function LoginPage() {
               Create account
             </UiButtonLink>
           </>
-        ) : (
-          <div className="ui-card ui-stack ui-card-soft" style={{ marginTop: 8 }}>
-            <div className="ui-caption">
-              Season {CURRENT_SEASON} is in progress, so new account creation is paused.
-            </div>
-            <UiButtonLink href="/next-season" prefetch={false} style={{ width: "100%", padding: 12 }}>
-              Register your interest for {NEXT_SEASON} season
-            </UiButtonLink>
-          </div>
-        )}
+        ) : null}
 
         {displayMsg && (
           <p style={{ marginTop: 12 }} className="ui-caption">
@@ -133,7 +124,15 @@ export default function LoginPage() {
         )}
       </form>
 
-      <PublicPreviewTeaser />
+      <PublicPreviewTeaser
+        seasonNote={
+          !SIGNUPS_OPEN
+            ? `Season ${CURRENT_SEASON} is in progress, so new account creation is paused.`
+            : undefined
+        }
+        secondaryButtonLabel={!SIGNUPS_OPEN ? `Register your interest for ${NEXT_SEASON} season` : undefined}
+        secondaryHref={!SIGNUPS_OPEN ? "/next-season" : undefined}
+      />
     </main>
   );
 }

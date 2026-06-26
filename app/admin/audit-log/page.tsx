@@ -161,8 +161,8 @@ export default function AdminAuditLogPage() {
                 <div className="ui-admin-subtitle">What this log shows</div>
                 <div className="ui-admin-summary ui-admin-summary--tight">
                   Manual admin actions that changed comp state: member edits, payment settings,
-                  season winners, fixture syncs, result syncs, leaderboard recalcs, and due-round
-                  odds snapshot checks.
+                  season winners, fixture syncs, result syncs, leaderboard recalcs, late tip
+                  overrides, and due-round odds snapshot checks.
                 </div>
               </div>
               <div className="ui-row-wrap ui-admin-gap-sm">

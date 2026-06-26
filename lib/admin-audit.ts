@@ -3,6 +3,7 @@ export type AdminAuditActionType =
   | "sync_results"
   | "recalc_leaderboard"
   | "snapshot_odds_due"
+  | "late_tip_override"
   | "member_updated"
   | "member_removed"
   | "payment_settings_updated"

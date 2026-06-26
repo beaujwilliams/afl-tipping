@@ -126,8 +126,8 @@ export default function SignupPage() {
         </Link>
 
         <PublicPreviewTeaser
-          title="See a sample ladder while signups are paused"
-          body="If you are deciding whether this comp is for you, the preview page shows the ladder style, the privacy approach, and why value picks matter."
+          title="Want to know how the comp works?"
+          body="See the rules, scoring, and an example ladder while signups are paused."
         />
       </main>
     );

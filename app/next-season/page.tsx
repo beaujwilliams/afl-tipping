@@ -36,8 +36,8 @@ export default function NextSeasonPage() {
       </Link>
 
       <PublicPreviewTeaser
-        title="Want to see the comp before signup opens?"
-        body="The sample page shows an anonymised ladder and a side-by-side round example so visitors can understand why correct tips and points are not the same thing."
+        title="Want to know how the comp works?"
+        body="See the rules, scoring, and an example ladder before signup opens."
       />
     </main>
   );

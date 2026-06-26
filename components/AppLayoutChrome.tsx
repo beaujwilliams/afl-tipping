@@ -323,6 +323,7 @@ export default function AppLayoutChrome({
   const leaderboardActive = pathname.startsWith("/leaderboard/");
   const infoActive =
     pathname.startsWith("/announcements") ||
+    pathname.startsWith("/howitworks") ||
     pathname.startsWith("/info") ||
     pathname.startsWith("/audit") ||
     pathname.startsWith("/admin");
@@ -339,7 +340,7 @@ export default function AppLayoutChrome({
   const infoItems = useMemo<MenuItem[]>(() => {
     const items: MenuItem[] = [
       { href: "/announcements", label: "Announcements", badge: unreadAnnouncements },
-      { href: "/info", label: "How it works" },
+      { href: "/howitworks", label: "How it works" },
       { href: "/audit", label: "Audit" },
     ];
     if (initialIsAdmin) {

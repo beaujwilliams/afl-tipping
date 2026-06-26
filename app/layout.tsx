@@ -27,6 +27,7 @@ const PUBLIC_PATH_PREFIXES = [
   "/forgot-password",
   "/reset-password",
   "/next-season",
+  "/howitworks",
   "/info",
 ] as const;
 

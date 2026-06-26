@@ -340,7 +340,7 @@ export default function AppLayoutChrome({
   const infoItems = useMemo<MenuItem[]>(() => {
     const items: MenuItem[] = [
       { href: "/announcements", label: "Announcements", badge: unreadAnnouncements },
-      { href: "/howitworks", label: "How it works" },
+      { href: "/info", label: "How it works" },
       { href: "/audit", label: "Audit" },
     ];
     if (initialIsAdmin) {

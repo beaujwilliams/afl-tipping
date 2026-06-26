@@ -6,7 +6,7 @@ const SAMPLE_LEADERBOARD = [
   {
     rank: 1,
     name: "Harbour Hounds",
-    blurb: "Climbed three spots after two big underdog hits.",
+    blurb: "Big underdog round.",
     correctTips: 96,
     accuracy: "64.4%",
     totalPoints: "156.42",
@@ -16,7 +16,7 @@ const SAMPLE_LEADERBOARD = [
   {
     rank: 2,
     name: "Boundary Riders",
-    blurb: "More winners overall, but less value in the same round.",
+    blurb: "More winners, less value.",
     correctTips: 99,
     accuracy: "66.0%",
     totalPoints: "155.88",
@@ -26,7 +26,7 @@ const SAMPLE_LEADERBOARD = [
   {
     rank: 3,
     name: "Pocket Press",
-    blurb: "Steady scorer who rarely misses favourites.",
+    blurb: "Heavy on favourites.",
     correctTips: 94,
     accuracy: "62.7%",
     totalPoints: "153.01",
@@ -36,7 +36,7 @@ const SAMPLE_LEADERBOARD = [
   {
     rank: 4,
     name: "Outer Wing Club",
-    blurb: "Lower accuracy, still close thanks to earlier value rounds.",
+    blurb: "Still close on points.",
     correctTips: 90,
     accuracy: "60.0%",
     totalPoints: "151.63",
@@ -46,7 +46,7 @@ const SAMPLE_LEADERBOARD = [
   {
     rank: 5,
     name: "Scarlet Sherrins",
-    blurb: "One rough week away from another jump into the top three.",
+    blurb: "Still in the mix.",
     correctTips: 97,
     accuracy: "64.7%",
     totalPoints: "150.74",
@@ -60,26 +60,26 @@ const ROUND_SHOWDOWN = [
     name: "Boundary Riders",
     badgeTone: "info" as const,
     badgeText: "More correct tips",
-    summary: "Hit 7 of 9 winners, but most were short-priced favourites.",
+    summary: "7 winners, mostly favourites.",
     correctTips: "7/9",
     roundPoints: "8.11",
     notablePicks: [
-      { title: "Cats at $1.27", detail: "Safe favourite", value: "+1.27" },
-      { title: "Blues at $1.42", detail: "Favourite got the job done", value: "+1.42" },
-      { title: "Lions at $1.56", detail: "Another short price", value: "+1.56" },
+      { title: "Cats at 1.27", detail: "Short favourite", value: "+1.27" },
+      { title: "Blues at 1.42", detail: "Another favourite", value: "+1.42" },
+      { title: "Lions at 1.56", detail: "Short price", value: "+1.56" },
     ],
   },
   {
     name: "Harbour Hounds",
     badgeTone: "success" as const,
     badgeText: "Fewer winners, more value",
-    summary: "Finished 6 of 9, but landed the round's biggest scoring swings.",
+    summary: "6 winners, better odds.",
     correctTips: "6/9",
     roundPoints: "9.14",
     notablePicks: [
-      { title: "Dockers at $2.55", detail: "Upset win that changed the ladder", value: "+2.55" },
-      { title: "Saints at $3.20", detail: "Biggest hit of the round", value: "+3.20" },
-      { title: "Dogs at $1.74", detail: "Useful favourite on top", value: "+1.74" },
+      { title: "Dockers at 2.55", detail: "Big upset", value: "+2.55" },
+      { title: "Saints at 3.20", detail: "Best hit", value: "+3.20" },
+      { title: "Dogs at 1.74", detail: "Short favourite", value: "+1.74" },
     ],
   },
 ] as const;
@@ -88,24 +88,24 @@ const SCORE_CASES = [
   {
     badgeTone: "success" as const,
     badgeText: "Favourite",
-    title: "Tip a short-priced winner",
-    body: "You still score, just not as much. Good for staying in touch, not always enough to jump the field.",
+    title: "Short favourite wins",
+    body: "You score, but not much.",
     outcome: "+1.28 pts",
     outcomeClassName: styles.scoreOutcomeGood,
   },
   {
     badgeTone: "warning" as const,
     badgeText: "Value hit",
-    title: "Tip the underdog and be right",
-    body: "This is where the comp gets fun. One brave correct pick can be worth two favourites.",
+    title: "Underdog wins",
+    body: "One good value pick can change a round.",
     outcome: "+2.60 pts",
     outcomeClassName: styles.scoreOutcomeGood,
   },
   {
     badgeTone: "danger" as const,
     badgeText: "Miss",
-    title: "Tip wrong, or do not tip",
-    body: "Wrong tip, missed tip, or a draw all score zero. You still need accuracy over the full season.",
+    title: "Wrong or missed tip",
+    body: "Wrong, missed, or draw = zero.",
     outcome: "0 pts",
     outcomeClassName: styles.scoreOutcomeZero,
   },
@@ -134,10 +134,9 @@ export default function InfoPage() {
               <UiBadge tone="warning">Odds-based scoring</UiBadge>
             </div>
 
-            <h1 className={styles.heroTitle}>A ladder where 6 correct tips can beat 7.</h1>
+            <h1 className={styles.heroTitle}>A tipping comp where 6 tips can beat 7.</h1>
             <p className={styles.heroBody}>
-              This comp rewards picking winners and picking the right winners. Short favourites keep
-              you steady, underdogs create real separation, and the ladder can swing all weekend.
+              Favourites keep you steady. Underdogs make up ground fast.
             </p>
 
             <div className={styles.heroActions}>
@@ -148,43 +147,6 @@ export default function InfoPage() {
                 Log in
               </UiButtonLink>
             </div>
-
-            <p className={styles.heroPrivacy}>
-              Every name and score below is illustrative only. The point is to show the shape of the
-              comp, not expose real members.
-            </p>
-          </div>
-
-          <div className={styles.heroAside}>
-            <UiCard soft className={styles.asideCard}>
-              <div className="ui-kicker">Why the ladder moved</div>
-              <div className={styles.asideHeadline}>
-                Harbour Hounds jumped from 4th to 1st with fewer winning tips.
-              </div>
-              <p className={styles.asideMeta}>
-                Two value hits at $2.55 and $3.20 outweighed one extra favourite from the previous leader.
-              </p>
-
-              <div className={styles.swingList}>
-                <div className={styles.swingRow}>
-                  <div className={styles.swingRank}>1</div>
-                  <div>
-                    <div className={styles.swingName}>Harbour Hounds</div>
-                    <div className={styles.swingNote}>6/9 winners, big underdog return</div>
-                  </div>
-                  <div className={styles.swingPoints}>9.14 pts</div>
-                </div>
-
-                <div className={styles.swingRow}>
-                  <div className={styles.swingRank}>2</div>
-                  <div>
-                    <div className={styles.swingName}>Boundary Riders</div>
-                    <div className={styles.swingNote}>7/9 winners, mostly short favourites</div>
-                  </div>
-                  <div className={styles.swingPoints}>8.11 pts</div>
-                </div>
-              </div>
-            </UiCard>
           </div>
         </div>
       </UiCard>
@@ -194,7 +156,7 @@ export default function InfoPage() {
           <div className="ui-kicker">What makes it different</div>
           <div className={styles.summaryValue}>Points beat raw tip count</div>
           <p className={styles.summaryMeta}>
-            The ladder is ordered by total points earned from winning odds, not just how many games you tipped correctly.
+            Rank is based on points, not tip count.
           </p>
         </UiCard>
 
@@ -202,7 +164,7 @@ export default function InfoPage() {
           <div className="ui-kicker">Why it stays fair</div>
           <div className={styles.summaryValue}>Odds freeze 36 hours early</div>
           <p className={styles.summaryMeta}>
-            Everyone scores against the same locked prices, so late market movement does not distort the round.
+            Everyone gets the same locked odds.
           </p>
         </UiCard>
 
@@ -210,16 +172,72 @@ export default function InfoPage() {
           <div className="ui-kicker">What still matters</div>
           <div className={styles.summaryValue}>Accuracy decides ties</div>
           <p className={styles.summaryMeta}>
-            If total points are tied, ranking falls back to higher accuracy percentage, then more correct tips.
+            Ties go to accuracy, then correct tips.
           </p>
         </UiCard>
       </UiCardGrid>
 
       <section className={styles.sectionStack}>
         <UiSectionHeader
+          kicker="Round Story"
+          title="Same round, different result"
+          subtitle="Why 6 can beat 7."
+        />
+
+        <div className={styles.compareGrid}>
+          {ROUND_SHOWDOWN.map((entry) => (
+            <UiCard key={entry.name} className={styles.compareCard}>
+              <div className={styles.compareHeader}>
+                <div>
+                  <div className={styles.compareName}>{entry.name}</div>
+                  <p className={styles.compareSub}>{entry.summary}</p>
+                </div>
+                <UiBadge tone={entry.badgeTone}>{entry.badgeText}</UiBadge>
+              </div>
+
+              <div className={styles.compareStats}>
+                <div className={styles.compareStat}>
+                  <div className={styles.compareStatLabel}>Correct tips</div>
+                  <div className={styles.compareStatValue}>{entry.correctTips}</div>
+                </div>
+                <div className={styles.compareStat}>
+                  <div className={styles.compareStatLabel}>Round points</div>
+                  <div className={styles.compareStatValue}>{entry.roundPoints}</div>
+                </div>
+              </div>
+
+              <div className={styles.pickList}>
+                {entry.notablePicks.map((pick) => (
+                  <div key={pick.title} className={styles.pickItem}>
+                    <div>
+                      <div className={styles.pickLabel}>{pick.title}</div>
+                      <div className={styles.pickMeta}>{pick.detail}</div>
+                    </div>
+                    <div
+                      className={`${styles.pickValue} ${pick.value.startsWith("+") ? styles.valueHit : ""}`}
+                    >
+                      {pick.value}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </UiCard>
+          ))}
+        </div>
+
+        <UiCard tone="warning" className={styles.explainerCard}>
+          <UiBadge tone="warning">The key idea</UiBadge>
+          <p className={styles.explainerText}>
+            Seven favourites can still lose to six winners with better odds.
+          </p>
+        </UiCard>
+      </section>
+
+      <section className={styles.sectionStack}>
+        <UiSectionHeader
           kicker="Preview"
-          title="Sample ladder"
-          subtitle={`Illustrative data shaped like a live ${CURRENT_SEASON} season leaderboard.`}
+          title="Sample tipping comp"
+          subtitle={`A sample ${CURRENT_SEASON} table.`}
           right={<UiBadge tone="info">Anonymous example</UiBadge>}
         />
 
@@ -299,66 +317,7 @@ export default function InfoPage() {
           </div>
 
           <p className="ui-caption" style={{ marginTop: 14, lineHeight: 1.6 }}>
-            Boundary Riders has more correct tips than Harbour Hounds, but Harbour still leads because
-            this comp ranks by points earned from correct odds, not raw tip count alone.
-          </p>
-        </UiCard>
-      </section>
-
-      <section className={styles.sectionStack}>
-        <UiSectionHeader
-          kicker="Round Story"
-          title="Same round, different result"
-          subtitle="This is the comparison most new visitors need to see."
-        />
-
-        <div className={styles.compareGrid}>
-          {ROUND_SHOWDOWN.map((entry) => (
-            <UiCard key={entry.name} className={styles.compareCard}>
-              <div className={styles.compareHeader}>
-                <div>
-                  <div className={styles.compareName}>{entry.name}</div>
-                  <p className={styles.compareSub}>{entry.summary}</p>
-                </div>
-                <UiBadge tone={entry.badgeTone}>{entry.badgeText}</UiBadge>
-              </div>
-
-              <div className={styles.compareStats}>
-                <div className={styles.compareStat}>
-                  <div className={styles.compareStatLabel}>Correct tips</div>
-                  <div className={styles.compareStatValue}>{entry.correctTips}</div>
-                </div>
-                <div className={styles.compareStat}>
-                  <div className={styles.compareStatLabel}>Round points</div>
-                  <div className={styles.compareStatValue}>{entry.roundPoints}</div>
-                </div>
-              </div>
-
-              <div className={styles.pickList}>
-                {entry.notablePicks.map((pick) => (
-                  <div key={pick.title} className={styles.pickItem}>
-                    <div>
-                      <div className={styles.pickLabel}>{pick.title}</div>
-                      <div className={styles.pickMeta}>{pick.detail}</div>
-                    </div>
-                    <div
-                      className={`${styles.pickValue} ${pick.value.startsWith("+") ? styles.valueHit : ""}`}
-                    >
-                      {pick.value}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </UiCard>
-          ))}
-        </div>
-
-        <UiCard tone="warning" className={styles.explainerCard}>
-          <UiBadge tone="warning">What sells the format</UiBadge>
-          <p className={styles.explainerText}>
-            Harbour Hounds only found six winners, but two of them were genuine price plays. Boundary Riders
-            found seven winners, mostly at short odds, so they still lost the round on points. That tension is
-            the whole hook: you want favourites for stability, but you also need the courage to back value.
+            More winners does not always mean more points.
           </p>
         </UiCard>
       </section>
@@ -366,8 +325,8 @@ export default function InfoPage() {
       <section className={styles.sectionStack}>
         <UiSectionHeader
           kicker="Scoring"
-          title="How scoring works in one glance"
-          subtitle="Simple once you see one round play out."
+          title="How points work"
+          subtitle="Three simple outcomes."
         />
 
         <UiCardGrid columns={3}>
@@ -383,18 +342,16 @@ export default function InfoPage() {
 
         <UiCard soft className={styles.rulesNote}>
           <p className="ui-caption" style={{ lineHeight: 1.65 }}>
-            Tips lock at the first bounce of the round. Odds lock 36 hours earlier and stay fixed.
-            Wrong tips, missed tips, and draws score zero. The comp runs through the regular season and finals.
+            Tips lock at first bounce. Odds lock 36 hours earlier. Wrong, missed, or draw = zero.
           </p>
         </UiCard>
       </section>
 
       <UiCard className={styles.ctaCard}>
         <div className="ui-kicker">Ready to play</div>
-        <div className={styles.ctaTitle}>The best preview page is one that makes the rules feel obvious.</div>
+        <div className={styles.ctaTitle}>Simple idea. Better swings.</div>
         <p className={styles.ctaBody}>
-          For a closed season, this kind of page does the job well: it shows the ladder, explains the scoring
-          tension, keeps member names private, and gives visitors a reason to register interest instead of bouncing.
+          Tip winners. Back value. Climb on points.
         </p>
 
         <div className={styles.ctaActions}>

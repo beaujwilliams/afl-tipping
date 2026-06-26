@@ -48,7 +48,7 @@
 }
 
 .heroTitle {
-  margin-top: 16px;
+  margin-top: 0;
   max-width: 10ch;
   font-size: clamp(2.7rem, 6vw, 4.9rem);
   line-height: 0.96;
@@ -482,45 +482,6 @@
   padding: 16px 18px;
 }
 
-.ctaCard {
-  padding: clamp(22px, 4vw, 28px);
-  border-radius: 22px;
-  background:
-    radial-gradient(circle at top right, rgba(59, 130, 246, 0.14), transparent 34%),
-    linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--card) 90%, #f2f8ff 10%),
-      color-mix(in srgb, var(--card) 92%, #fff1cf 8%)
-    );
-}
-
-.ctaTitle {
-  font-size: clamp(1.6rem, 3vw, 2.2rem);
-  line-height: 1.05;
-  letter-spacing: -0.04em;
-  font-weight: 900;
-}
-
-.ctaBody {
-  margin-top: 10px;
-  max-width: 58ch;
-  font-size: 15px;
-  line-height: 1.65;
-  color: var(--muted);
-}
-
-.ctaActions {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-top: 18px;
-}
-
-.ctaActions a {
-  min-width: 180px;
-  padding: 13px 16px;
-}
-
 @keyframes heroDrift {
   0% {
     transform: translate3d(-1.5%, -1%, 0) scale(1);
@@ -558,8 +519,7 @@
     display: grid;
   }
 
-  .heroActions a,
-  .ctaActions a {
+  .heroActions a {
     width: 100%;
   }
 

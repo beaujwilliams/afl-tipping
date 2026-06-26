@@ -1,5 +1,5 @@
 import { UiBadge, UiButtonLink, UiCard, UiCardGrid, UiSectionHeader } from "@/components/ui";
-import { CURRENT_SEASON, NEXT_SEASON, SIGNUPS_OPEN } from "@/lib/season-config";
+import { CURRENT_SEASON } from "@/lib/season-config";
 import styles from "./page.module.css";
 
 const SAMPLE_LEADERBOARD = [
@@ -118,9 +118,6 @@ function movementClass(value: string) {
 }
 
 export default function InfoPage() {
-  const primaryHref = SIGNUPS_OPEN ? "/signup" : "/next-season";
-  const primaryLabel = SIGNUPS_OPEN ? "Create account" : `Join ${NEXT_SEASON}`;
-
   return (
     <main className={`ui-page ${styles.page}`}>
       <UiCard className={styles.heroCard}>
@@ -128,12 +125,6 @@ export default function InfoPage() {
 
         <div className={styles.heroLayout}>
           <div className={styles.heroCopy}>
-            <div className="ui-row-wrap">
-              <UiBadge tone="info">Sample preview</UiBadge>
-              <UiBadge>Names hidden</UiBadge>
-              <UiBadge tone="warning">Odds-based scoring</UiBadge>
-            </div>
-
             <h1 className={styles.heroTitle}>A tipping comp where 6 tips can beat 7.</h1>
             <p className={styles.heroBody}>
               Favourites keep you steady. Underdogs make up ground fast.
@@ -151,37 +142,9 @@ export default function InfoPage() {
         </div>
       </UiCard>
 
-      <UiCardGrid columns={3}>
-        <UiCard className={styles.summaryCard}>
-          <div className="ui-kicker">What makes it different</div>
-          <div className={styles.summaryValue}>Points beat raw tip count</div>
-          <p className={styles.summaryMeta}>
-            Rank is based on points, not tip count.
-          </p>
-        </UiCard>
-
-        <UiCard className={styles.summaryCard}>
-          <div className="ui-kicker">Why it stays fair</div>
-          <div className={styles.summaryValue}>Odds freeze 36 hours early</div>
-          <p className={styles.summaryMeta}>
-            Everyone gets the same locked odds.
-          </p>
-        </UiCard>
-
-        <UiCard className={styles.summaryCard}>
-          <div className="ui-kicker">What still matters</div>
-          <div className={styles.summaryValue}>Accuracy decides ties</div>
-          <p className={styles.summaryMeta}>
-            Ties go to accuracy, then correct tips.
-          </p>
-        </UiCard>
-      </UiCardGrid>
-
       <section className={styles.sectionStack}>
         <UiSectionHeader
-          kicker="Round Story"
           title="Same round, different result"
-          subtitle="Why 6 can beat 7."
         />
 
         <div className={styles.compareGrid}>
@@ -235,10 +198,7 @@ export default function InfoPage() {
 
       <section className={styles.sectionStack}>
         <UiSectionHeader
-          kicker="Preview"
-          title="Sample tipping comp"
-          subtitle={`A sample ${CURRENT_SEASON} table.`}
-          right={<UiBadge tone="info">Anonymous example</UiBadge>}
+          title={`Example Ladder from ${CURRENT_SEASON}`}
         />
 
         <UiCard className={styles.sectionCard}>
@@ -346,23 +306,6 @@ export default function InfoPage() {
           </p>
         </UiCard>
       </section>
-
-      <UiCard className={styles.ctaCard}>
-        <div className="ui-kicker">Ready to play</div>
-        <div className={styles.ctaTitle}>Simple idea. Better swings.</div>
-        <p className={styles.ctaBody}>
-          Tip winners. Back value. Climb on points.
-        </p>
-
-        <div className={styles.ctaActions}>
-          <UiButtonLink href={primaryHref} prefetch={false}>
-            {primaryLabel}
-          </UiButtonLink>
-          <UiButtonLink href="/login" prefetch={false}>
-            Back to login
-          </UiButtonLink>
-        </div>
-      </UiCard>
     </main>
   );
 }

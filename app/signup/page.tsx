@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { AFL_TEAMS } from "@/lib/afl-teams";
 import NextSeasonInterestForm from "@/components/NextSeasonInterestForm";
+import PublicPreviewTeaser from "@/components/PublicPreviewTeaser";
 import { CURRENT_SEASON, NEXT_SEASON, SIGNUPS_OPEN } from "@/lib/season-config";
 import { formatAflTeamNameForDisplay } from "@/lib/team-display";
 
@@ -123,6 +124,11 @@ export default function SignupPage() {
         >
           Back to login
         </Link>
+
+        <PublicPreviewTeaser
+          title="See a sample ladder while signups are paused"
+          body="If you are deciding whether this comp is for you, the preview page shows the ladder style, the privacy approach, and why value picks matter."
+        />
       </main>
     );
   }

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import PublicPreviewTeaser from "@/components/PublicPreviewTeaser";
 import { UiButton, UiButtonLink } from "@/components/ui";
 import { CURRENT_SEASON, NEXT_SEASON, SIGNUPS_OPEN } from "@/lib/season-config";
 
@@ -131,6 +132,8 @@ export default function LoginPage() {
           </p>
         )}
       </form>
+
+      <PublicPreviewTeaser />
     </main>
   );
 }

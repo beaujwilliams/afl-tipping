@@ -27,6 +27,7 @@ const PUBLIC_PATH_PREFIXES = [
   "/forgot-password",
   "/reset-password",
   "/next-season",
+  "/info",
 ] as const;
 
 function isPublicPath(pathname: string) {

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import NextSeasonInterestForm from "@/components/NextSeasonInterestForm";
+import PublicPreviewTeaser from "@/components/PublicPreviewTeaser";
 import { CURRENT_SEASON, NEXT_SEASON, SIGNUPS_OPEN } from "@/lib/season-config";
 
 export default function NextSeasonPage() {
@@ -33,6 +34,11 @@ export default function NextSeasonPage() {
       <Link href="/login" prefetch={false} className="ui-btn" style={{ width: "100%", padding: 12, marginTop: 12 }}>
         Back to login
       </Link>
+
+      <PublicPreviewTeaser
+        title="Want to see the comp before signup opens?"
+        body="The sample page shows an anonymised ladder and a side-by-side round example so visitors can understand why correct tips and points are not the same thing."
+      />
     </main>
   );
 }

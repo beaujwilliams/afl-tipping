@@ -21,8 +21,6 @@ export default function PublicPreviewTeaser({
 }: PublicPreviewTeaserProps) {
   return (
     <UiCard soft className="ui-stack" style={{ marginTop: 14, gap: 10 }}>
-      <div className="ui-kicker">What this is</div>
-
       <div>
         <h2 className="ui-title--section">{title}</h2>
         <p className="ui-caption" style={{ marginTop: 8, lineHeight: 1.55 }}>

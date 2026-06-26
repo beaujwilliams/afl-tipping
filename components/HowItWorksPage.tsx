@@ -1,5 +1,5 @@
-import { UiBadge, UiButtonLink, UiCard, UiCardGrid, UiSectionHeader } from "@/components/ui";
-import { CURRENT_SEASON, NEXT_SEASON, SIGNUPS_OPEN } from "@/lib/season-config";
+import { UiBadge, UiCard, UiCardGrid, UiSectionHeader } from "@/components/ui";
+import { CURRENT_SEASON } from "@/lib/season-config";
 import styles from "@/app/info/page.module.css";
 
 const SAMPLE_LEADERBOARD = [
@@ -118,9 +118,6 @@ function movementClass(value: string) {
 }
 
 export default function HowItWorksPage() {
-  const primaryHref = SIGNUPS_OPEN ? "/signup" : "/next-season";
-  const primaryLabel = SIGNUPS_OPEN ? "Create account" : `Join ${NEXT_SEASON}`;
-
   return (
     <main className={`ui-page ${styles.page}`}>
       <UiCard className={styles.heroCard}>
@@ -129,18 +126,17 @@ export default function HowItWorksPage() {
         <div className={styles.heroLayout}>
           <div className={styles.heroCopy}>
             <h1 className={styles.heroTitle}>A tipping comp where 6 tips can beat 7.</h1>
-            <p className={styles.heroBody}>
-              Favourites keep you steady. Underdogs make up ground fast.
-            </p>
+          </div>
 
-            <div className={styles.heroActions}>
-              <UiButtonLink href={primaryHref} prefetch={false}>
-                {primaryLabel}
-              </UiButtonLink>
-              <UiButtonLink href="/login" prefetch={false}>
-                Log in
-              </UiButtonLink>
-            </div>
+          <div className={styles.heroAside}>
+            <UiCard soft className={styles.asideCard}>
+              <div className="ui-kicker">How scoring works</div>
+              <div className={styles.asideHeadline}>Correct tips earn that team&apos;s odds as points.</div>
+              <p className={styles.asideMeta}>
+                Odds are pulled before the round and locked 36 hours before first bounce. Tip a winner
+                and you get those odds as points. Tip wrong, miss, or land on a draw and you get zero.
+              </p>
+            </UiCard>
           </div>
         </div>
       </UiCard>
@@ -188,13 +184,6 @@ export default function HowItWorksPage() {
             </UiCard>
           ))}
         </div>
-
-        <UiCard tone="warning" className={styles.explainerCard}>
-          <UiBadge tone="warning">The key idea</UiBadge>
-          <p className={styles.explainerText}>
-            Seven favourites can still lose to six winners with better odds.
-          </p>
-        </UiCard>
       </section>
 
       <section className={styles.sectionStack}>

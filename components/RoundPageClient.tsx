@@ -102,6 +102,21 @@ function pluralize(count: number, single: string, plural: string) {
   return count === 1 ? single : plural;
 }
 
+function getUnderdogTeam(
+  match: Pick<MatchRow, "home_team" | "away_team">,
+  odds: OddsRow | undefined
+) {
+  if (!odds) return null;
+
+  const homeOdds = Number(odds.home_odds ?? Number.NaN);
+  const awayOdds = Number(odds.away_odds ?? Number.NaN);
+
+  if (!Number.isFinite(homeOdds) || !Number.isFinite(awayOdds)) return null;
+  if (homeOdds <= 0 || awayOdds <= 0 || homeOdds === awayOdds) return null;
+
+  return homeOdds > awayOdds ? match.home_team : match.away_team;
+}
+
 function pickRandomTeamSecure(match: Pick<MatchRow, "home_team" | "away_team">) {
   const cryptoApi = globalThis.crypto;
   if (!cryptoApi?.getRandomValues) return null;
@@ -274,6 +289,28 @@ export default function RoundPageClient({
   const tippedProgressPct = matches.length
     ? Math.round((tippedCount / matches.length) * 100)
     : 0;
+  const pickedOddsCount = useMemo(() => {
+    if (!matches.length) return 0;
+    return matches.filter((m) => !!tipsByMatchId[m.id] && !!oddsByMatchId[m.id]).length;
+  }, [matches, tipsByMatchId, oddsByMatchId]);
+
+  const underdogMatchIds = useMemo(() => {
+    const ids = new Set<string>();
+
+    for (const match of matches) {
+      const picked = tipsByMatchId[match.id];
+      if (!picked) continue;
+
+      const underdogTeam = getUnderdogTeam(match, oddsByMatchId[match.id]);
+      if (underdogTeam && picked === underdogTeam) {
+        ids.add(match.id);
+      }
+    }
+
+    return ids;
+  }, [matches, tipsByMatchId, oddsByMatchId]);
+  const underdogCount = underdogMatchIds.size;
+  const canCountUnderdogs = tippedCount === 0 || pickedOddsCount === tippedCount;
 
   const potentialScore = useMemo(() => {
     if (!matches.length) return 0;
@@ -833,16 +870,32 @@ export default function RoundPageClient({
 
       {!!matches.length && (
         <div className="ui-card ui-card-soft ui-mt-5">
-          <div className="ui-row-between-start">
-            <div>
-              <div style={{ fontWeight: 700 }}>
-                Your tips: {tippedCount} / {matches.length}{" "}
-                <span style={{ fontWeight: 600, opacity: 0.85 }}>
-                  (Potential score: {potentialScore.toFixed(2)})
-                </span>
-              </div>
-              <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
-                Selected tips are highlighted in green and marked selected.
+          <div className="round-summary-header">
+            <div className="round-summary-heading">
+              <div className="round-summary-title">Your tips</div>
+              <div className="round-summary-stats" aria-label="Round tip summary">
+                <div className="round-summary-stat">
+                  <span className="round-summary-stat-value">
+                    {tippedCount}/{matches.length}
+                  </span>
+                  <span className="round-summary-stat-label">picked</span>
+                </div>
+                <div className="round-summary-stat">
+                  <span className="round-summary-stat-value">
+                    {canCountUnderdogs ? underdogCount : "—"}
+                  </span>
+                  <span className="round-summary-stat-label">
+                    {canCountUnderdogs
+                      ? pluralize(underdogCount, "underdog", "underdogs")
+                      : "underdogs"}
+                  </span>
+                </div>
+                <div className="round-summary-stat">
+                  <span className="round-summary-stat-value">
+                    {potentialScore.toFixed(2)}
+                  </span>
+                  <span className="round-summary-stat-label">potential</span>
+                </div>
               </div>
             </div>
 
@@ -864,6 +917,7 @@ export default function RoundPageClient({
               const awayTeamLabel = formatAflTeamNameForDisplay(m.away_team, teamDisplayContext);
               const resultLabel =
                 picked && completed ? (picked === winner ? "Correct" : "Incorrect") : null;
+              const pickedUnderdog = underdogMatchIds.has(m.id);
               const resultClassName =
                 picked && completed
                   ? picked === winner
@@ -872,19 +926,8 @@ export default function RoundPageClient({
                   : "";
 
               return (
-                <div
-                  key={m.id}
-                  style={{
-                    fontSize: 13,
-                    opacity: 0.9,
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: 10,
-                    flexWrap: "wrap",
-                    alignItems: "center",
-                  }}
-                >
-                  <div>
+                <div key={m.id} className="round-summary-row">
+                  <div className="round-summary-row-text">
                     {picked ? (
                       <>
                         {picked === m.home_team ? (
@@ -907,10 +950,13 @@ export default function RoundPageClient({
                     )}
                   </div>
 
-                  {resultLabel && (
-                    <span className={resultClassName}>
-                      {resultLabel}
-                    </span>
+                  {(pickedUnderdog || resultLabel) && (
+                    <div className="round-summary-row-tags">
+                      {pickedUnderdog && (
+                        <span className="round-summary-flag">Underdog</span>
+                      )}
+                      {resultLabel && <span className={resultClassName}>{resultLabel}</span>}
+                    </div>
                   )}
                 </div>
               );

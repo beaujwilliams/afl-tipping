@@ -122,10 +122,6 @@ type PlayerRoundStat = {
   correct_tips: number;
   total_tips: number;
   round_score: number;
-  accuracy_pct: number;
-  avg_correct_odds: number;
-  avg_picked_odds: number;
-  underdog_points: number;
 };
 
 type RoundAggregateStat = {
@@ -345,8 +341,8 @@ function fmt2(n: number) {
   return round2(Number(n) || 0).toFixed(2);
 }
 
-function fmt1(n: number) {
-  return (Math.round((Number(n) || 0) * 10) / 10).toFixed(1);
+function fmtPct(n: number) {
+  return `${Math.round(Number(n) || 0)}%`;
 }
 
 function ordinal(n: number) {
@@ -476,6 +472,72 @@ function pickStoryLines(candidates: StoryCandidate[], limit: number, excludeIds 
 function formatHookSuffix(lines: string[]) {
   const first = lines.map((x) => String(x).trim()).find(Boolean);
   return first ? ` (${first})` : "";
+}
+
+function buildRoundLeadLines(params: {
+  roundNumber: number;
+  gameCount: number;
+  roundDifficultyPct: number;
+  roundAverage: number;
+  biggestUpsetOdds: number | null;
+  minorityWinnerCount: number;
+  majorityPickWins: number;
+  biggestRise: number;
+  perfectRoundNames: string[];
+}) {
+  const opener =
+    params.perfectRoundNames.length > 0
+      ? pickByRound(params.roundNumber, [
+          "Phew. What a round.",
+          "Well, that was fun.",
+          "That had a bit of everything.",
+        ])
+      : params.minorityWinnerCount >= 3 || Number(params.biggestUpsetOdds ?? 0) >= 3.5
+        ? pickByRound(params.roundNumber, [
+            "That was a proper chaos round.",
+            "That one had a few twists in it.",
+            "That did not exactly go to script.",
+          ])
+        : params.roundDifficultyPct <= 52
+          ? pickByRound(params.roundNumber, [
+              "Points were not easy to find there.",
+              "That was a grind of a round.",
+              "Not much came easy that round.",
+            ])
+          : params.roundAverage >= 9
+            ? pickByRound(params.roundNumber, [
+                "There were some serious scores flying around there.",
+                "If you were on the right sides, there was plenty on offer.",
+                "A good round to cash in if you were reading it right.",
+              ])
+            : params.biggestRise >= 6
+              ? pickByRound(params.roundNumber, [
+                  "The ladder got a decent shake there.",
+                  "That one moved the ladder around a fair bit.",
+                  "A few people gave the ladder a real nudge there.",
+                ])
+              : pickByRound(params.roundNumber, [
+                  `Round ${params.roundNumber} is complete.`,
+                  `Round ${params.roundNumber} is done.`,
+                  `Another round in the books.`,
+                ]);
+
+  const followUp =
+    params.perfectRoundNames.length > 0
+      ? `${humanList(params.perfectRoundNames)} barely put a foot wrong.`
+      : params.minorityWinnerCount >= 3
+        ? "A few rough results were enough to throw plenty of people off."
+        : Number(params.biggestUpsetOdds ?? 0) >= 3.5
+          ? "One or two results really opened the round up."
+          : params.majorityPickWins === params.gameCount
+            ? "The favourites mostly did the job, but there was still enough movement to matter."
+            : params.roundDifficultyPct <= 52
+              ? "There were not many easy winners sitting there."
+              : params.biggestRise >= 8
+                ? "A couple of big jumps came with it too."
+                : null;
+
+  return [opener, followUp].filter((line): line is string => Boolean(line));
 }
 
 export async function GET(req: Request) {
@@ -889,7 +951,7 @@ export async function GET(req: Request) {
 
     const { data: profiles, error: pErr } = await supabase
       .from("profiles")
-      .select("id, display_name, favorite_team")
+      .select("id, display_name")
       .in("id", profileIds);
 
     if (pErr) {
@@ -900,16 +962,12 @@ export async function GET(req: Request) {
     }
 
     const nameByUserId: Record<string, string> = {};
-    const favoriteTeamByUserId: Record<string, string> = {};
     ((profiles ?? []) as Array<{
       id: string;
       display_name: string | null;
-      favorite_team?: string | null;
     }>).forEach((p) => {
       const uid = String(p.id);
       nameByUserId[uid] = safeDisplayName(p.display_name, uid);
-      const favoriteTeam = String(p.favorite_team ?? "").trim();
-      if (favoriteTeam) favoriteTeamByUserId[uid] = favoriteTeam;
     });
 
     const roundResultsUrl = `${url.origin}/api/round-results?season=${encodeURIComponent(
@@ -1088,60 +1146,13 @@ export async function GET(req: Request) {
       roundTipCountByTeam[team] = (roundTipCountByTeam[team] ?? 0) + 1;
     }
 
-    const playerStats: PlayerRoundStat[] = rrPlayers.map((p) => {
-      let correctOddsSum = 0;
-      let pickedOddsSum = 0;
-      let pickedOddsCount = 0;
-      let underdogPoints = 0;
-
-      for (const m of roundMatches) {
-        const mid = String(m.id);
-        const winner = String(m.winner_team ?? "").trim();
-        if (!winner) continue;
-
-        const picked = p.picks?.[mid] ?? null;
-        if (picked) {
-          const odds = oddsByMatch[mid] ?? null;
-          if (odds) {
-            if (picked === m.home_team) {
-              pickedOddsSum += Number(odds.home);
-              pickedOddsCount += 1;
-            } else if (picked === m.away_team) {
-              pickedOddsSum += Number(odds.away);
-              pickedOddsCount += 1;
-            }
-          }
-        }
-        if (!picked || picked !== winner) continue;
-
-        const winnerOdds = winnerOddsByMatch[mid] ?? null;
-        const loserOdds = loserOddsByMatch[mid] ?? null;
-        if (winnerOdds !== null) correctOddsSum += Number(winnerOdds);
-        if (
-          winnerOdds !== null &&
-          loserOdds !== null &&
-          Number(winnerOdds) > Number(loserOdds)
-        ) {
-          underdogPoints += Number(winnerOdds);
-        }
-      }
-
-      const accuracy = p.total_tips > 0 ? (p.correct_tips / p.total_tips) * 100 : 0;
-      const avgCorrectOdds = p.correct_tips > 0 ? correctOddsSum / p.correct_tips : 0;
-      const avgPickedOdds = pickedOddsCount > 0 ? pickedOddsSum / pickedOddsCount : 0;
-
-      return {
-        user_id: p.user_id,
-        display_name: p.display_name,
-        correct_tips: Number(p.correct_tips ?? 0),
-        total_tips: Number(p.total_tips ?? 0),
-        round_score: Number(p.round_score ?? 0),
-        accuracy_pct: accuracy,
-        avg_correct_odds: avgCorrectOdds,
-        avg_picked_odds: avgPickedOdds,
-        underdog_points: underdogPoints,
-      };
-    });
+    const playerStats: PlayerRoundStat[] = rrPlayers.map((p) => ({
+      user_id: p.user_id,
+      display_name: p.display_name,
+      correct_tips: Number(p.correct_tips ?? 0),
+      total_tips: Number(p.total_tips ?? 0),
+      round_score: Number(p.round_score ?? 0),
+    }));
 
     const roundDifficultyPct = computeDifficultyPct(playerStats);
     const roundAvg = computeRoundAverage(playerStats);
@@ -1162,18 +1173,29 @@ export async function GET(req: Request) {
       }
       return a.display_name.localeCompare(b.display_name);
     });
-    const topRoundScorers = topN(sortedRoundScorers, 5);
-    const tiedAtFifth =
-      topRoundScorers.length < 5
-        ? []
-        : sortedRoundScorers
-            .slice(5)
-            .filter(
-              (p) =>
-                Math.abs(
-                  Number(p.round_score) - Number(topRoundScorers[4].round_score)
-                ) < 0.0001
-            );
+    const topRoundScoreGroups: Array<{
+      rank: number;
+      score: number;
+      players: PlayerRoundStat[];
+    }> = [];
+    let topRoundPlayersSeen = 0;
+    for (const scorer of sortedRoundScorers) {
+      const currentScore = Number(scorer.round_score);
+      const lastGroup = topRoundScoreGroups[topRoundScoreGroups.length - 1] ?? null;
+      if (lastGroup && Math.abs(Number(lastGroup.score) - currentScore) < 0.0001) {
+        lastGroup.players.push(scorer);
+        topRoundPlayersSeen += 1;
+        continue;
+      }
+      const nextRank = topRoundPlayersSeen + 1;
+      if (nextRank > 5) break;
+      topRoundScoreGroups.push({
+        rank: nextRank,
+        score: currentScore,
+        players: [scorer],
+      });
+      topRoundPlayersSeen += 1;
+    }
 
     const previousRoundDifficulty =
       previousRoundNumber !== null && prevRoundPlayers.length > 0
@@ -1413,8 +1435,6 @@ export async function GET(req: Request) {
 
     const seasonBiggestUpset = seasonUpsetRows[0] ?? null;
     const seasonBiggestUpsetOdds = seasonBiggestUpset ? Number(seasonBiggestUpset.winner_odds) : null;
-    const topSeasonUpsets = topN(seasonUpsetRows, 5);
-
     const oneTipSwapRows = lbRows
       .map((r) => {
         const uid = String(r.user_id);
@@ -1502,7 +1522,7 @@ export async function GET(req: Request) {
         )} pts)`
       );
     }
-    headlineBits.push(`Round difficulty: ${fmt2(roundDifficultyPct)}% correct`);
+    headlineBits.push(`Round difficulty: ${fmtPct(roundDifficultyPct)} correct`);
     if (biggestUpset) {
       headlineBits.push(`Biggest upset: ${biggestUpset.winner} at ${fmt2(biggestUpset.winnerOdds)}`);
     }
@@ -1512,9 +1532,7 @@ export async function GET(req: Request) {
 
     const textLines: string[] = [];
     const lbByUserId = new Map(lbRows.map((r) => [String(r.user_id), r]));
-    const topScorerUserIds = new Set(topRoundScorers.map((p) => String(p.user_id)));
     const top3Rows = topN(lbRows, 3);
-    const extraClimber = topRises.find((r) => !topScorerUserIds.has(String(r.user_id))) ?? null;
     const seasonSecondBiggestUpset =
       seasonBiggestUpsetOdds === null
         ? null
@@ -1889,9 +1907,9 @@ export async function GET(req: Request) {
         historicalContextCandidates.push({
           id: "difficulty-hardest",
           priority: 100,
-          line: `Hardest tipping round so far: ${fmt2(
+          line: `Hardest tipping round so far: ${fmtPct(
             Number(currentRoundAggregate.difficulty_pct)
-          )}% is the lowest of ${roundCount} completed rounds.`,
+          )} is the lowest of ${roundCount} completed rounds.`,
         });
       } else if (hardRank <= 2) {
         historicalContextCandidates.push({
@@ -1905,9 +1923,9 @@ export async function GET(req: Request) {
         historicalContextCandidates.push({
           id: "difficulty-easiest",
           priority: 72,
-          line: `This was the easiest round to tip so far (${fmt2(
+          line: `This was the easiest round to tip so far (${fmtPct(
             Number(currentRoundAggregate.difficulty_pct)
-          )}% correct).`,
+          )} correct).`,
         });
       }
 
@@ -1960,17 +1978,17 @@ export async function GET(req: Request) {
         historicalContextCandidates.push({
           id: "majority-lowest",
           priority: 86,
-          line: `Consensus struggled: majority picks won only ${fmt1(
+          line: `Consensus struggled: majority picks won only ${fmtPct(
             majorityRateCurrent
-          )}% of games, the lowest hit rate this season.`,
+          )} of games, the lowest hit rate this season.`,
         });
       } else if (majorityRateHighRank === 1) {
         historicalContextCandidates.push({
           id: "majority-highest",
           priority: 66,
-          line: `Consensus nailed it this week: majority picks had the best hit rate of the season (${fmt1(
+          line: `Consensus nailed it this week: majority picks had the best hit rate of the season (${fmtPct(
             majorityRateCurrent
-          )}%).`,
+          )}).`,
         });
       }
 
@@ -2010,17 +2028,17 @@ export async function GET(req: Request) {
           historicalContextCandidates.push({
             id: "most-picked-highest",
             priority: 58,
-            line: `${currentRoundAggregate.most_picked_team} drew the strongest single-game consensus of the season (${fmt1(
+            line: `${currentRoundAggregate.most_picked_team} drew the strongest single-game consensus of the season (${fmtPct(
               Number(currentRoundAggregate.most_picked_pct)
-            )}%).`,
+            )}).`,
           });
         } else if (consensusLowRank === 1 && currentRoundAggregate.most_picked_team) {
           historicalContextCandidates.push({
             id: "most-picked-lowest",
             priority: 58,
-            line: `Even the most-picked side (${currentRoundAggregate.most_picked_team}) had the lowest top-consensus share of the season (${fmt1(
+            line: `Even the most-picked side (${currentRoundAggregate.most_picked_team}) had the lowest top-consensus share of the season (${fmtPct(
               Number(currentRoundAggregate.most_picked_pct)
-            )}%).`,
+            )}).`,
           });
         }
       }
@@ -2044,7 +2062,7 @@ export async function GET(req: Request) {
           priority: 96,
           line: `${biggestUpset.winner} at ${fmt2(
             Number(biggestUpset.winnerOdds)
-          )} matches the biggest upset of 2026, alongside Round ${
+          )} matches the biggest upset of ${season}, alongside Round ${
             tiedSeasonHighUpset.round_number
           } - ${tiedSeasonHighUpset.home_team} vs ${tiedSeasonHighUpset.away_team} (${
             tiedSeasonHighUpset.winner_team
@@ -2056,7 +2074,7 @@ export async function GET(req: Request) {
           priority: 96,
           line: `${biggestUpset.winner} at ${fmt2(
             Number(biggestUpset.winnerOdds)
-          )} is now the biggest upset of 2026, passing Round ${
+          )} is now the biggest upset of ${season}, passing Round ${
             seasonSecondBiggestUpset.round_number
           } - ${seasonSecondBiggestUpset.home_team} vs ${
             seasonSecondBiggestUpset.away_team
@@ -2155,214 +2173,50 @@ export async function GET(req: Request) {
       difficultyContextIds
     );
 
-    const pickedOddsValues = playerStats
-      .map((p) => Number(p.avg_picked_odds ?? 0))
-      .filter((x) => Number.isFinite(x) && x > 0);
-    const compAvgPickedOdds =
-      pickedOddsValues.length > 0
-        ? pickedOddsValues.reduce((sum, x) => sum + x, 0) / pickedOddsValues.length
-        : 0;
-    const upsetMerchantRows = playerStats
-      .map((p) => {
-        let upsetPoints = 0;
-        let upsetCount = 0;
-        let bestUpset:
-          | {
-              team: string;
-              odds: number;
-            }
-          | null = null;
-
-        for (const m of roundMatches) {
-          const mid = String(m.id);
-          const winner = String(m.winner_team ?? "").trim();
-          const picked = String(picksByUserMatch.get(String(p.user_id))?.get(mid) ?? "").trim();
-          if (!winner || picked !== winner) continue;
-
-          const winnerOdds = winnerOddsByMatch[mid] ?? null;
-          const loserOdds = loserOddsByMatch[mid] ?? null;
-          if (
-            winnerOdds === null ||
-            loserOdds === null ||
-            Number(winnerOdds) < 2.5 ||
-            Number(winnerOdds) <= Number(loserOdds)
-          ) {
-            continue;
-          }
-
-          upsetCount += 1;
-          upsetPoints += Number(winnerOdds);
-          if (!bestUpset || Number(winnerOdds) > Number(bestUpset.odds)) {
-            bestUpset = { team: winner, odds: Number(winnerOdds) };
-          }
-        }
-
-        return { player: p, upsetPoints, upsetCount, bestUpset };
-      })
-      .filter((x) => Number(x.upsetPoints) > 0)
-      .sort((a, b) => {
-        if (Number(b.upsetPoints) !== Number(a.upsetPoints)) {
-          return Number(b.upsetPoints) - Number(a.upsetPoints);
-        }
-        return Number(b.player.round_score) - Number(a.player.round_score);
-      });
-    const safeHandsCorrectThreshold = Math.ceil(fullRoundTips * 0.75);
-    const safeHandsRows = playerStats
-      .filter(
-        (p) =>
-          Number(p.total_tips) === Number(fullRoundTips) &&
-          Number(p.correct_tips) >= Number(safeHandsCorrectThreshold) &&
-          Number(p.avg_picked_odds) > 0 &&
-          Number(p.avg_picked_odds) < Number(compAvgPickedOdds)
-      )
-      .sort((a, b) => {
-        if (Number(b.correct_tips) !== Number(a.correct_tips)) {
-          return Number(b.correct_tips) - Number(a.correct_tips);
-        }
-        return Number(a.avg_picked_odds) - Number(b.avg_picked_odds);
-      });
-    const loyalFanRows = playerStats
-      .map((p) => {
-        const favoriteTeam = favoriteTeamByUserId[String(p.user_id)] ?? "";
-        if (!favoriteTeam) return null;
-
-        let games = 0;
-        let tipped = 0;
-        let correct = 0;
-
-        for (const result of historicalRoundResults) {
-          if (!result) continue;
-          const player = ((result.data.players ?? []) as RoundResultsPlayer[]).find(
-            (x) => String(x.user_id) === String(p.user_id)
-          );
-          if (!player) continue;
-
-          for (const m of (result.data.matches ?? []) as RoundResultsMatch[]) {
-            if (m.home_team !== favoriteTeam && m.away_team !== favoriteTeam) continue;
-            games += 1;
-            const picked = String(player.picks?.[String(m.id)] ?? "").trim();
-            if (picked === favoriteTeam) tipped += 1;
-            if (picked === favoriteTeam && String(m.winner_team ?? "") === favoriteTeam) {
-              correct += 1;
-            }
-          }
-        }
-
-        const tipRate = games > 0 ? tipped / games : 0;
-        if (games < 3 || (tipRate < 0.75 && correct < 3)) return null;
-        return { player: p, favoriteTeam, games, tipped, correct, tipRate };
-      })
-      .filter(
-        (
-          x
-        ): x is {
-          player: PlayerRoundStat;
-          favoriteTeam: string;
-          games: number;
-          tipped: number;
-          correct: number;
-          tipRate: number;
-        } => !!x
-      )
-      .sort((a, b) => {
-        if (Number(b.tipRate) !== Number(a.tipRate)) return Number(b.tipRate) - Number(a.tipRate);
-        return Number(b.correct) - Number(a.correct);
-      });
-    const comebackRows = topRises
-      .map((r) => {
-        const history = playerRoundHistoryByUserId.get(String(r.user_id)) ?? [];
-        const previous = history
-          .filter((p) => Number(p.round_number) < Number(roundNumber))
-          .sort((a, b) => Number(b.round_number) - Number(a.round_number))[0];
-        const previousRoundStat =
-          previous === undefined
-            ? null
-            : seasonRoundStats.find((x) => Number(x.round_number) === Number(previous.round_number)) ??
-              null;
-        const bouncedFromBadRound =
-          previous &&
-          previousRoundStat &&
-          Number(previous.round_score) < Number(previousRoundStat.average_score) - 1;
-
-        return {
-          row: r,
-          previous,
-          previousRoundStat,
-          bouncedFromBadRound,
-        };
-      })
-      .filter((x) => Number(x.row.movement) >= 6 || x.bouncedFromBadRound)
-      .sort((a, b) => Number(b.row.movement) - Number(a.row.movement));
-    const badgeCandidateLines: string[] = [];
-    const upsetMerchant = upsetMerchantRows[0] ?? null;
-    if (upsetMerchant?.bestUpset) {
-      badgeCandidateLines.push(
-        `Upset Merchant: ${atHandle(upsetMerchant.player.display_name)} (${fmt2(
-          Number(upsetMerchant.upsetPoints)
-        )} upset points, best hit ${upsetMerchant.bestUpset.team} @ ${fmt2(
-          Number(upsetMerchant.bestUpset.odds)
-        )})`
-      );
+    const climbSummary = topN(topRises, 3).map((row) => {
+      const hook = moverContextHooks(row, "climber")[0];
+      return `${atHandle(row.display_name)} (${fmtSigned(Number(row.movement))}${
+        hook ? `, ${hook}` : ""
+      })`;
+    });
+    const dropSummary = topN(topDrops, 3).map((row) => {
+      const hook = moverContextHooks(row, "faller")[0];
+      return `${atHandle(row.display_name)} (${fmtSigned(Number(row.movement))}${
+        hook ? `, ${hook}` : ""
+      })`;
+    });
+    const leadLines = buildRoundLeadLines({
+      roundNumber,
+      gameCount: rrMatches.length,
+      roundDifficultyPct,
+      roundAverage: roundAvg,
+      biggestUpsetOdds: biggestUpset ? Number(biggestUpset.winnerOdds) : null,
+      minorityWinnerCount: minorityBackedWinners.length,
+      majorityPickWins,
+      biggestRise: topRises[0] ? Math.abs(Number(topRises[0].movement)) : 0,
+      perfectRoundNames: perfectRoundPlayers.map((p) => atHandle(p.display_name)),
+    });
+    leadLines.forEach((line) => textLines.push(line));
+    if (leadLines.length > 0) {
+      textLines.push("");
     }
-    const safeHands = safeHandsRows[0] ?? null;
-    if (safeHands) {
-      badgeCandidateLines.push(
-        `Safe Hands: ${atHandle(safeHands.display_name)} (${safeHands.correct_tips}/${fullRoundTips}, avg tipped odds ${fmt2(
-          Number(safeHands.avg_picked_odds)
-        )} vs comp ${fmt2(compAvgPickedOdds)})`
-      );
-    }
-    if (perfectRoundPlayers.length > 0) {
-      badgeCandidateLines.push(
-        `Perfect Round: ${humanList(
-          perfectRoundPlayers.map((p) => atHandle(p.display_name))
-        )} (${fullRoundTips}/${fullRoundTips})`
-      );
-    }
-    const loyalFan = loyalFanRows[0] ?? null;
-    if (loyalFan) {
-      badgeCandidateLines.push(
-        `Loyal Fan: ${atHandle(loyalFan.player.display_name)} (${loyalFan.favoriteTeam}, tipped them ${loyalFan.tipped}/${loyalFan.games} times, ${loyalFan.correct} correct)`
-      );
-    }
-    const comeback = comebackRows[0] ?? null;
-    if (comeback) {
-      const previousNote =
-        comeback.previous && comeback.previousRoundStat
-          ? ` after ${fmt2(Number(comeback.previous.round_score))} last round`
-          : "";
-      badgeCandidateLines.push(
-        `Comeback King: ${atHandle(comeback.row.display_name)} (${fmtSigned(
-          Number(comeback.row.movement)
-        )}${previousNote})`
-      );
-    }
-    const unsupportedBadgeLines = [
-      "Heartbreak Specialist: needs match margin data before we can award this properly.",
-    ];
-
-    const sillyHeading = pickByRound(roundNumber, [
-      "Some more silly data.",
-      "More stat nonsense for the group chat.",
-      "Extra stat chaos.",
-      "A few bonus numbers for the stat sickos.",
-    ]);
 
     if (roundWinners.length === 1) {
       const winner = roundWinners[0];
       const winnerLb = lbByUserId.get(String(winner.user_id)) ?? null;
       const winnerContext = formatHookSuffix(playerContextHooks(winner, 1));
-      const winnerMove =
-        winnerLb && Number(winnerLb.movement) !== 0
-          ? ` This shifts ${atHandle(winner.display_name)} ${fmtSigned(
-              Number(winnerLb.movement)
-            )} and into ${ordinal(Number(winnerLb.rank))} overall.`
-          : "";
       textLines.push(
         `Round ${roundNumber} is complete, with ${atHandle(
           winner.display_name
-        )} top-scoring on ${fmt2(maxRoundScore)} points${winnerContext}.${winnerMove}`
+        )} top-scoring on ${fmt2(maxRoundScore)} points${winnerContext}.`
       );
+      if (winnerLb && Number(winnerLb.movement) !== 0) {
+        textLines.push(
+          `This shifts ${atHandle(winner.display_name)} ${fmtSigned(Number(winnerLb.movement))} and into ${ordinal(
+            Number(winnerLb.rank)
+          )} overall.`
+        );
+      }
     } else {
       textLines.push(
         `Round ${roundNumber} is complete, with ${humanList(
@@ -2371,47 +2225,21 @@ export async function GET(req: Request) {
       );
     }
 
-    textLines.push("");
-    textLines.push("Next highest scorers:");
-    for (let idx = 1; idx <= 4; idx += 1) {
-      const scorer = topRoundScorers[idx];
-      if (!scorer) {
-        textLines.push(`${idx + 1}. n/a`);
-        continue;
-      }
-      const lbRow = lbByUserId.get(String(scorer.user_id)) ?? null;
-      const movementSuffix =
-        lbRow && Number(lbRow.movement) !== 0 ? ` (${fmtSigned(Number(lbRow.movement))})` : "";
-      const rankSuffix = lbRow ? ` now ${ordinal(Number(lbRow.rank))} overall` : "";
-      const contextSuffix = formatHookSuffix(playerContextHooks(scorer, 1));
-      textLines.push(
-        `${idx + 1}. ${atHandle(scorer.display_name)} - ${fmt2(
-          Number(scorer.round_score)
-        )}${movementSuffix}${rankSuffix}${contextSuffix}`
-      );
-    }
-    if (tiedAtFifth.length > 0 && topRoundScorers.length >= 5) {
-      textLines.push(
-        `Also on ${fmt2(Number(topRoundScorers[4].round_score))}: ${humanList(
-          tiedAtFifth.map((p) => atHandle(p.display_name))
-        )}.`
-      );
-    }
-
-    if (extraClimber) {
-      const extraClimberContext = formatHookSuffix(moverContextHooks(extraClimber, "climber"));
+    const nextHighestScoreGroups = topRoundScoreGroups.slice(1);
+    if (nextHighestScoreGroups.length > 0) {
       textLines.push("");
-      textLines.push(
-        `Outside the top scorers, biggest mover was ${atHandle(
-          extraClimber.display_name
-        )} (${fmtSigned(Number(extraClimber.movement))}) and into ${ordinal(
-          Number(extraClimber.rank)
-        )} overall${extraClimberContext}.`
-      );
+      textLines.push("Next highest scorers:");
+      nextHighestScoreGroups.forEach((group) => {
+        textLines.push(
+          `${group.rank}. ${humanList(group.players.map((player) => atHandle(player.display_name)))} - ${fmt2(
+            group.score
+          )}`
+        );
+      });
     }
 
     textLines.push("");
-    textLines.push(`Leaderboard after Round ${roundNumber}:`);
+    textLines.push(`Top 3 overall after Round ${roundNumber}:`);
     if (top3Rows.length > 0) {
       textLines.push(`1. ${atHandle(top3Rows[0].display_name)}`);
     }
@@ -2429,73 +2257,56 @@ export async function GET(req: Request) {
 
     textLines.push("");
     textLines.push(
-      `${pickByRound(roundNumber, [
-        "Round difficulty was",
-        "This week's difficulty came in at",
-        "Round difficulty landed at",
-      ])} ${fmt2(roundDifficultyPct)}% correct tips, with an average score of ${fmt2(roundAvg)}.`
+      `This week's difficulty came in at ${fmtPct(roundDifficultyPct)} correct tips, with an average score of ${fmt2(
+        roundAvg
+      )}.`
     );
     if (previousRoundNumber !== null && previousRoundDifficulty !== null && difficultyDelta !== null) {
       textLines.push(
-        `Compared to Round ${previousRoundNumber} (${fmt2(previousRoundDifficulty)}%), Round ${roundNumber} was ${fmt2(
-          Math.abs(difficultyDelta)
-        )} percentage points ${difficultyDelta >= 0 ? "easier" : "harder"}.`
+        `Compared to Round ${previousRoundNumber} (${fmtPct(
+          previousRoundDifficulty
+        )}), this one was ${Math.round(Math.abs(difficultyDelta))} percentage points ${
+          difficultyDelta >= 0 ? "easier" : "harder"
+        }.`
       );
-    } else {
-      textLines.push("No previous completed round baseline was available for comparison.");
     }
     difficultyContextLines.forEach((line) => textLines.push(line));
 
     textLines.push("");
-    textLines.push("Biggest climbers:");
-    topN(topRises, 5).forEach((r, idx) => {
-      const contextSuffix = formatHookSuffix(moverContextHooks(r, "climber"));
-      textLines.push(
-        `${idx + 1}. ${atHandle(r.display_name)} (${fmtSigned(
-          Number(r.movement)
-        )})${contextSuffix}`
-      );
-    });
-    if (topRises.length === 0) textLines.push("1. n/a");
+    textLines.push(
+      climbSummary.length > 0
+        ? `Biggest climbers: ${humanList(climbSummary)}.`
+        : "Biggest climbers: n/a."
+    );
+    textLines.push(
+      dropSummary.length > 0
+        ? `Biggest fallers: ${humanList(dropSummary)}.`
+        : "Biggest fallers: n/a."
+    );
 
-    textLines.push("");
-    textLines.push("Biggest fallers:");
-    topN(topDrops, 5).forEach((r, idx) => {
-      const contextSuffix = formatHookSuffix(moverContextHooks(r, "faller"));
-      textLines.push(
-        `${idx + 1}. ${atHandle(r.display_name)} (${fmtSigned(
-          Number(r.movement)
-        )})${contextSuffix}`
-      );
-    });
-    if (topDrops.length === 0) textLines.push("1. n/a");
-
-    textLines.push("");
+    const roundNoteCandidates: StoryCandidate[] = [];
     if (biggestUpset) {
-      textLines.push(
-        `Biggest upset this week: ${biggestUpset.winner} at ${fmt2(
+      pushStoryCandidate(roundNoteCandidates, {
+        id: "biggest-upset",
+        priority: 94,
+        line: `Biggest upset was ${biggestUpset.winner} at ${fmt2(
           biggestUpset.winnerOdds
-        )} (backed by ${fmt1(biggestUpset.winnerTipShare)}%).`
-      );
-    } else {
-      textLines.push("Biggest upset this week: n/a.");
+        )}, backed by ${fmtPct(biggestUpset.winnerTipShare)} of the comp.`,
+      });
     }
     if (mostPickedTeam) {
       const mostPickedPct =
         roundTipsTotal > 0 ? (Number(mostPickedTeam[1]) / Number(roundTipsTotal)) * 100 : 0;
-      textLines.push(
-        `Most-picked side: ${mostPickedTeam[0]} (${mostPickedTeam[1]} picks, ${fmt1(
+      pushStoryCandidate(roundNoteCandidates, {
+        id: "most-picked-side",
+        priority: 76,
+        line: `Most tipped side was ${mostPickedTeam[0]} with ${mostPickedTeam[1]} picks (${fmtPct(
           mostPickedPct
-        )}%).`
-      );
-    } else {
-      textLines.push("Most-picked side: n/a.");
+        )}).`,
+      });
     }
 
-    textLines.push("");
-    textLines.push(sillyHeading);
-    const sillyStatCandidates: StoryCandidate[] = [];
-    pushStoryCandidate(sillyStatCandidates, {
+    pushStoryCandidate(roundNoteCandidates, {
       id: "majority-picks",
       priority:
         majorityPickWins === 0 || majorityPickWins === rrMatches.length || majorityPickWins <= 3 ? 74 : 52,
@@ -2506,7 +2317,7 @@ export async function GET(req: Request) {
       ])} ${majorityPickWins} of ${rrMatches.length} games.`,
     });
     if (minorityBackedWinners.length > 0) {
-      pushStoryCandidate(sillyStatCandidates, {
+      pushStoryCandidate(roundNoteCandidates, {
         id: "minority-winners",
         priority: minorityBackedWinners.length >= 3 ? 88 : 68,
         line: `${
@@ -2514,18 +2325,18 @@ export async function GET(req: Request) {
             ? "Only 1 winner was"
             : `${minorityBackedWinners.length} winners were`
         } backed by fewer than half the comp: ${humanList(
-          minorityBackedWinners.map((x) => `${x.winner} (${fmt1(x.winnerPct)}%)`)
+          minorityBackedWinners.map((x) => `${x.winner} (${fmtPct(x.winnerPct)})`)
         )}.`,
       });
     } else {
-      pushStoryCandidate(sillyStatCandidates, {
+      pushStoryCandidate(roundNoteCandidates, {
         id: "no-minority-winners",
         priority: 42,
         line: "Every winner was backed by at least half the comp.",
       });
     }
     if (perfectRoundPlayers.length > 0) {
-      pushStoryCandidate(sillyStatCandidates, {
+      pushStoryCandidate(roundNoteCandidates, {
         id: "perfect-round",
         priority: 96,
         line: `${humanList(
@@ -2534,7 +2345,7 @@ export async function GET(req: Request) {
       });
     }
     if (zeroAfterTippingAllPlayers.length > 0) {
-      pushStoryCandidate(sillyStatCandidates, {
+      pushStoryCandidate(roundNoteCandidates, {
         id: "zero-after-tipping",
         priority: 90,
         line: `${humanList(
@@ -2543,14 +2354,14 @@ export async function GET(req: Request) {
       });
     }
     historicalContextLines.forEach((line, idx) =>
-      pushStoryCandidate(sillyStatCandidates, {
+      pushStoryCandidate(roundNoteCandidates, {
         id: `historical-context-${idx}`,
         priority: 86 - idx,
         line,
       })
     );
     if (historicalContextLines.length === 0 && seasonBiggestUpset) {
-      pushStoryCandidate(sillyStatCandidates, {
+      pushStoryCandidate(roundNoteCandidates, {
         id: "season-high-upset",
         priority: 50,
         line: `Season-high upset remains ${seasonBiggestUpset.winner_team} @ ${fmt2(
@@ -2559,52 +2370,36 @@ export async function GET(req: Request) {
       });
     }
     if (fivePlusWinners > 0) {
-      pushStoryCandidate(sillyStatCandidates, {
+      pushStoryCandidate(roundNoteCandidates, {
         id: "five-plus-winners",
         priority: sixPlusWinners > 0 ? 48 : 38,
         line: `${fivePlusWinners} tippers hit 5+ winners; ${sixPlusWinners} hit 6+.`,
       });
     }
 
-    const sillyStatLines = pickStoryLines(sillyStatCandidates, 5);
-    if (sillyStatLines.length > 0) {
-      sillyStatLines.forEach((line) => textLines.push(`* ${line}`));
-    } else {
-      textLines.push("* Season context is still building as more rounds complete.");
-    }
-
-    if (badgeCandidateLines.length > 0) {
+    const roundNoteLines = pickStoryLines(roundNoteCandidates, 5);
+    if (roundNoteLines.length > 0) {
       textLines.push("");
-      textLines.push("Badge watch:");
-      badgeCandidateLines.forEach((line) => textLines.push(`* ${line}`));
-    }
-
-    if (topSeasonUpsets.length > 0) {
-      textLines.push("");
-      textLines.push("Top 5 biggest upsets so far:");
-      topSeasonUpsets.forEach((x, idx) =>
-        textLines.push(
-          `${idx + 1}. Round ${x.round_number} - ${x.home_team} vs ${x.away_team} (${x.winner_team} @ ${fmt2(
-            Number(x.winner_odds)
-          )})`
-        )
-      );
+      textLines.push("A few bonus numbers:");
+      roundNoteLines.forEach((line) => textLines.push(`- ${line}`));
     }
 
     textLines.push("");
     if (bestOneTipSwap) {
       textLines.push(
-        `And \"Why oh why did I pick them\" this round goes to: ${atHandle(
+        `And "Why oh why did I pick them" this round goes to: ${atHandle(
           bestOneTipSwap.display_name
-        )}!!`
+        )}.`
       );
       textLines.push(
         `They would have gone from ${ordinal(bestOneTipSwap.old_rank)} to ${ordinal(
           bestOneTipSwap.new_rank
-        )} (${fmtSigned(bestOneTipSwap.climbed)} places) had they changed ${bestOneTipSwap.swap.fromTeam} to ${bestOneTipSwap.swap.toTeam}.`
+        )} (${fmtSigned(bestOneTipSwap.climbed)} places) by changing ${
+          bestOneTipSwap.swap.fromTeam
+        } to ${bestOneTipSwap.swap.toTeam}.`
       );
     } else {
-      textLines.push(`And \"Why oh why did I pick them\" had no winner this round.`);
+      textLines.push(`And "Why oh why did I pick them" had no clear winner this round.`);
     }
     if (nextBestOneTipSwaps.length > 0) {
       textLines.push(
@@ -2623,11 +2418,9 @@ export async function GET(req: Request) {
     const narrativeText = text;
     const rawStatsText = JSON.stringify(
       {
-        badge_candidates: badgeCandidateLines,
-        badge_notes: unsupportedBadgeLines,
         difficulty_context: difficultyContextLines,
         leaderboard_story: leaderboardStoryLines,
-        silly_stats: sillyStatLines,
+        round_notes: roundNoteLines,
       },
       null,
       2
@@ -2648,7 +2441,6 @@ export async function GET(req: Request) {
         player_count: playerStats.length,
         match_count: rrMatches.length,
         round_difficulty_pct: round2(roundDifficultyPct),
-        badge_candidates: badgeCandidateLines,
       },
       headline_bits: headlineBits,
     };

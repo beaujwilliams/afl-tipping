@@ -1,4 +1,9 @@
 import { NextResponse } from "next/server";
+import {
+  countConsecutiveMissedRounds,
+  getCurrentMelbourneMondayCheckpointMs,
+  pickActivityCutoffRoundNumber,
+} from "@/lib/leaderboard-activity";
 import { isMatchCompleted } from "@/lib/match-status";
 import { createServiceClient } from "@/lib/supabase-server";
 import { resolveReigningChampion } from "@/lib/reigning-champion";
@@ -12,6 +17,7 @@ type RoundRow = {
   competition_id: string;
   round_number: number;
   odds_snapshot_for_time_utc: string | null;
+  lock_time_utc: string | null;
 };
 
 type MatchRow = {
@@ -97,6 +103,8 @@ export type LeaderboardRow = {
   behind_leader: number;
   current_streak: number;
   avg_winning_odds: number;
+  consecutive_rounds_missed: number;
+  inactive_due_to_missed_rounds: boolean;
 };
 
 export type LeaderboardTrendPoint = {
@@ -211,7 +219,7 @@ async function resolveCompetitionIdForSeason(params: {
 
   const { data: seasonRounds, error: rErr } = await supabase
     .from("rounds")
-    .select("id, competition_id, round_number, odds_snapshot_for_time_utc")
+    .select("id, competition_id, round_number, odds_snapshot_for_time_utc, lock_time_utc")
     .eq("season", params.season)
     .order("round_number", { ascending: true });
 
@@ -242,12 +250,12 @@ async function resolveCompetitionIdForSeason(params: {
   };
 }
 
-async function readTipsForScoredMatches(params: {
+async function readTipsForMatches(params: {
   supabase: ReturnType<typeof createServiceClient>;
   competitionId: string;
-  scoredMatchIds: string[];
+  matchIds: string[];
 }) {
-  if (!params.scoredMatchIds.length) return [] as TipRow[];
+  if (!params.matchIds.length) return [] as TipRow[];
 
   const out: TipRow[] = [];
   let from = 0;
@@ -259,7 +267,7 @@ async function readTipsForScoredMatches(params: {
       .from("tips")
       .select("user_id, match_id, picked_team")
       .eq("competition_id", params.competitionId)
-      .in("match_id", params.scoredMatchIds)
+      .in("match_id", params.matchIds)
       .order("id", { ascending: true })
       .range(from, to);
 
@@ -418,11 +426,12 @@ export async function computeLeaderboardSnapshot(params: {
   });
 
   const scoredMatchIds = scoredMatches.map((m) => m.id);
+  const scoredMatchIdSet = new Set<string>(scoredMatchIds);
 
-  const tipRows = await readTipsForScoredMatches({
+  const tipRows = await readTipsForMatches({
     supabase,
     competitionId,
-    scoredMatchIds,
+    matchIds: matchRows.map((match) => String(match.id)),
   });
 
   let memberships: MembershipRow[] = [];
@@ -481,6 +490,17 @@ export async function computeLeaderboardSnapshot(params: {
 
   const tipUserIds = new Set<string>();
   const picksByUser = new Map<string, Map<string, string>>();
+  const tippedRoundNumbersByUserId = new Map<string, Set<number>>();
+  const matchCountByRoundNumber = new Map<number, number>();
+  const roundNumberByMatchId = new Map<string, number>();
+
+  for (const match of matchRows) {
+    const round = roundById.get(String(match.round_id));
+    if (!round) continue;
+    const roundNumber = Number(round.round_number);
+    roundNumberByMatchId.set(String(match.id), roundNumber);
+    matchCountByRoundNumber.set(roundNumber, (matchCountByRoundNumber.get(roundNumber) ?? 0) + 1);
+  }
 
   for (const tip of tipRows) {
     const userId = String(tip.user_id);
@@ -490,6 +510,17 @@ export async function computeLeaderboardSnapshot(params: {
     if (!pickedTeam) continue;
 
     tipUserIds.add(userId);
+    const roundNumber = roundNumberByMatchId.get(matchId) ?? null;
+
+    if (roundNumber !== null) {
+      if (!tippedRoundNumbersByUserId.has(userId)) {
+        tippedRoundNumbersByUserId.set(userId, new Set<number>());
+      }
+      tippedRoundNumbersByUserId.get(userId)!.add(roundNumber);
+    }
+
+    if (!scoredMatchIdSet.has(matchId)) continue;
+
     if (!picksByUser.has(userId)) picksByUser.set(userId, new Map<string, string>());
     picksByUser.get(userId)!.set(matchId, pickedTeam);
   }
@@ -539,6 +570,18 @@ export async function computeLeaderboardSnapshot(params: {
 
   const previousRoundForMovement =
     roundsWithScores.length >= 2 ? roundsWithScores[roundsWithScores.length - 2] : null;
+  const orderedRoundNumbersWithMatches = Array.from(matchCountByRoundNumber.keys()).sort(
+    (a, b) => a - b
+  );
+  const mondayCheckpointMs = getCurrentMelbourneMondayCheckpointMs();
+  const activityCutoffRoundNumber = pickActivityCutoffRoundNumber({
+    rounds: roundRows.map((round) => ({
+      round_number: Number(round.round_number),
+      lock_time_utc: round.lock_time_utc ?? null,
+    })),
+    roundNumbersWithMatches: orderedRoundNumbersWithMatches,
+    checkTimeMs: mondayCheckpointMs,
+  });
   const latestRoundMatchCount =
     latestScoredRound === null
       ? 0
@@ -611,6 +654,11 @@ export async function computeLeaderboardSnapshot(params: {
     const previousCorrect = sumUpTo(stats.correct_by_round, previousRoundForMovement);
     const previousTips = sumUpTo(stats.tips_by_round, previousRoundForMovement);
     const previousAccuracy = previousTips ? (previousCorrect / previousTips) * 100 : 0;
+    const consecutiveRoundsMissed = countConsecutiveMissedRounds({
+      orderedRoundNumbers: orderedRoundNumbersWithMatches,
+      tippedRoundNumbers: tippedRoundNumbersByUserId.get(stats.user_id) ?? [],
+      cutoffRoundNumber: activityCutoffRoundNumber,
+    });
 
     return {
       user_id: stats.user_id,
@@ -628,6 +676,8 @@ export async function computeLeaderboardSnapshot(params: {
       previous_points: Number(previousPoints),
       previous_correct: Number(previousCorrect),
       previous_accuracy_pct: Number(previousAccuracy),
+      consecutive_rounds_missed: consecutiveRoundsMissed,
+      inactive_due_to_missed_rounds: consecutiveRoundsMissed >= 5,
     };
   });
 
@@ -699,6 +749,8 @@ export async function computeLeaderboardSnapshot(params: {
       behind_leader: round2(Math.max(0, leaderPoints - row.total_points)),
       current_streak: row.current_streak,
       avg_winning_odds: round2(row.avg_winning_odds),
+      consecutive_rounds_missed: row.consecutive_rounds_missed,
+      inactive_due_to_missed_rounds: row.inactive_due_to_missed_rounds,
     };
   });
 
@@ -941,8 +993,13 @@ export async function getLeaderboardSnapshot(params: {
     const missingRoundStatusFlag =
       enrichedCachedPayload.latest_scored_round !== null &&
       typeof enrichedCachedPayload.latest_scored_round_in_progress !== "boolean";
+    const missingInactiveFlag = enrichedCachedPayload.rows.some(
+      (row) =>
+        typeof row?.inactive_due_to_missed_rounds !== "boolean" ||
+        !Number.isFinite(Number(row?.consecutive_rounds_missed))
+    );
 
-    if (params.preferCached && !needsTrendBackfill && !missingRoundStatusFlag) {
+    if (params.preferCached && !needsTrendBackfill && !missingRoundStatusFlag && !missingInactiveFlag) {
       return payload;
     }
 
@@ -951,7 +1008,7 @@ export async function getLeaderboardSnapshot(params: {
       Number.isFinite(computedAtMs) &&
       computedAtMs > 0 &&
       Date.now() - computedAtMs <= LEADERBOARD_CACHE_MAX_AGE_MS;
-    if (fresh && !needsTrendBackfill && !missingRoundStatusFlag) {
+    if (fresh && !needsTrendBackfill && !missingRoundStatusFlag && !missingInactiveFlag) {
       return payload;
     }
   }

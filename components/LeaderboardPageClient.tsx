@@ -47,6 +47,8 @@ type LeaderboardRow = {
   behind_leader: number;
   current_streak: number;
   avg_winning_odds: number;
+  consecutive_rounds_missed: number;
+  inactive_due_to_missed_rounds: boolean;
 };
 
 type LeaderboardResponse = {
@@ -233,7 +235,15 @@ function buildNiceNumberTicks(maxValue: number, targetTickCount = 6) {
 }
 
 function normalizeLeaderboardState(json: LeaderboardResponse | null | undefined) {
-  const rows = Array.isArray(json?.rows) ? json.rows : [];
+  const rows = Array.isArray(json?.rows)
+    ? json.rows.map((row) => ({
+        ...row,
+        consecutive_rounds_missed: Number.isFinite(Number(row?.consecutive_rounds_missed))
+          ? Number(row.consecutive_rounds_missed)
+          : 0,
+        inactive_due_to_missed_rounds: Boolean(row?.inactive_due_to_missed_rounds),
+      }))
+    : [];
   const latestScoredRound =
     json?.latest_scored_round !== null && Number.isFinite(Number(json?.latest_scored_round))
       ? Number(json?.latest_scored_round)
@@ -2644,6 +2654,7 @@ export default function LeaderboardPageClient({
                         className={`mobile-standings-row${isCurrentUser ? " mobile-standings-row--mine" : ""}`}
                         onClick={() => setSelectedMobileRowId(r.user_id)}
                         aria-label={`Open leaderboard detail for ${r.display_name}`}
+                        style={r.inactive_due_to_missed_rounds ? { fontStyle: "italic" } : undefined}
                       >
                         <span className="mobile-standings-rank">#{scopedRank}</span>
                         <span className="mobile-standings-person">
@@ -2830,6 +2841,11 @@ export default function LeaderboardPageClient({
                           key={r.user_id}
                           id={`leaderboard-row-${r.user_id}`}
                           className={isCurrentUser ? "leaderboard-row--mine" : undefined}
+                          style={
+                            r.inactive_due_to_missed_rounds
+                              ? { fontStyle: "italic" }
+                              : undefined
+                          }
                         >
                           <UiTableCell
                             style={{

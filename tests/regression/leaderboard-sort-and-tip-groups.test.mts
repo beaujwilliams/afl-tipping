@@ -5,6 +5,11 @@ import {
   DEFAULT_LEADERBOARD_SORT_KEY,
   sortLeaderboardRows,
 } from "../../lib/leaderboard-sort.ts";
+import {
+  countConsecutiveMissedRounds,
+  getCurrentMelbourneMondayCheckpointMs,
+  pickActivityCutoffRoundNumber,
+} from "../../lib/leaderboard-activity.ts";
 import { buildRoundTipStatusPlayerLists } from "../../lib/round-tip-status-rules.ts";
 
 test("leaderboard defaults to total points descending", () => {
@@ -157,5 +162,50 @@ test("round tip lists keep everyone in missing when a round has zero matches", (
       ["u-a", 0],
       ["u-b", 0],
     ]
+  );
+});
+
+test("monday checkpoint anchors the weekly activity run to Melbourne Monday", () => {
+  const checkpoint = getCurrentMelbourneMondayCheckpointMs(
+    new Date("2026-08-07T12:00:00+10:00").getTime()
+  );
+
+  assert.equal(new Date(checkpoint).toISOString(), "2026-08-02T14:00:00.000Z");
+});
+
+test("activity cutoff uses the latest round locked before the Melbourne Monday checkpoint", () => {
+  const cutoff = pickActivityCutoffRoundNumber({
+    rounds: [
+      { round_number: 21, lock_time_utc: "2026-07-30T09:30:00+00:00" },
+      { round_number: 22, lock_time_utc: "2026-08-06T09:30:00+00:00" },
+      { round_number: 23, lock_time_utc: "2026-08-10T02:00:00+00:00" },
+      { round_number: 24, lock_time_utc: "2026-08-17T02:00:00+00:00" },
+    ],
+    roundNumbersWithMatches: [21, 22, 23],
+    checkTimeMs: getCurrentMelbourneMondayCheckpointMs(
+      new Date("2026-08-07T12:00:00+10:00").getTime()
+    ),
+  });
+
+  assert.equal(cutoff, 21);
+});
+
+test("consecutive missed rounds counts only trailing untipped rounds up to the activity cutoff", () => {
+  assert.equal(
+    countConsecutiveMissedRounds({
+      orderedRoundNumbers: [18, 19, 20, 21, 22, 23],
+      tippedRoundNumbers: [18, 19, 20, 21],
+      cutoffRoundNumber: 23,
+    }),
+    2
+  );
+
+  assert.equal(
+    countConsecutiveMissedRounds({
+      orderedRoundNumbers: [18, 19, 20, 21, 22, 23],
+      tippedRoundNumbers: [18, 19, 20, 21, 23],
+      cutoffRoundNumber: 23,
+    }),
+    0
   );
 });

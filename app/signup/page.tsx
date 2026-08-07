@@ -53,7 +53,7 @@ export default function SignupPage() {
       return;
     }
     if (!favoriteTeam) {
-      setMsg("Please select your AFL team.");
+      setMsg("Please choose a team, or pick no AFL team.");
       return;
     }
 
@@ -139,7 +139,7 @@ export default function SignupPage() {
         Create account
       </h1>
       <div className="ui-caption" style={{ marginTop: 6 }}>
-        Enter your email, password and AFL team to join the comp.
+        Enter your email, password, and team to join the comp. Choose no AFL team if you do not support one.
       </div>
 
       <form onSubmit={createAccount} className="ui-card ui-stack" style={{ marginTop: 16 }}>
@@ -177,7 +177,7 @@ export default function SignupPage() {
 
         <label>
           <div className="ui-caption" style={{ marginBottom: 6 }}>
-            AFL team
+            Team
           </div>
           <select
             className="ui-input"

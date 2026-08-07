@@ -1,15 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { AFL_TEAMS } from "@/lib/afl-teams";
 import { formatAflTeamNameForDisplay } from "@/lib/team-display";
-import { normalizeUsername, validateUsername } from "@/lib/username";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { useToast } from "@/components/ToastProvider";
 import { UiBadge, UiCard } from "@/components/ui";
 
 const CURRENT_SEASON = 2026;
+const NO_TEAM_VALUE = "no AFL team";
 
 type ProfileApiResponse = {
   ok?: boolean;
@@ -23,28 +23,15 @@ type ProfileApiResponse = {
   };
 };
 
-type UsernameCheckState =
-  | { status: "idle"; text: string | null }
-  | { status: "checking"; text: string }
-  | { status: "ok"; text: string }
-  | { status: "error"; text: string };
-
 export default function ProfilePage() {
   const toast = useToast();
   const [email, setEmail] = useState<string | null>(null);
-  const [username, setUsername] = useState("");
-  const [initialUsername, setInitialUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
-  const [favoriteTeam, setFavoriteTeam] = useState("");
+  const [favoriteTeam, setFavoriteTeam] = useState(NO_TEAM_VALUE);
 
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-
-  const [usernameCheck, setUsernameCheck] = useState<UsernameCheckState>({
-    status: "idle",
-    text: "Use lowercase letters, numbers, and underscores.",
-  });
 
   async function getAccessToken() {
     const { data } = await supabaseBrowser.auth.getSession();
@@ -87,11 +74,8 @@ export default function ProfilePage() {
         return;
       }
 
-      const nextUsername = body?.profile?.username ?? "";
       setDisplayName(body?.profile?.display_name ?? "");
-      setUsername(nextUsername);
-      setInitialUsername(nextUsername);
-      setFavoriteTeam(body?.profile?.favorite_team ?? "");
+      setFavoriteTeam(body?.profile?.favorite_team ?? NO_TEAM_VALUE);
       setEmail(body?.profile?.email ?? user.email ?? null);
       setLoadingProfile(false);
     }
@@ -102,86 +86,9 @@ export default function ProfilePage() {
     };
   }, []);
 
-  useEffect(() => {
-    if (loadingProfile) return;
-
-    const normalized = normalizeUsername(username);
-    const normalizedInitial = normalizeUsername(initialUsername);
-
-    let canceled = false;
-    const t = setTimeout(async () => {
-      if (!normalized) {
-        setUsernameCheck({
-          status: "idle",
-          text: "Username can be left blank, but a unique username helps mentions in chat.",
-        });
-        return;
-      }
-
-      if (normalized === normalizedInitial) {
-        setUsernameCheck({ status: "ok", text: "This is your current username." });
-        return;
-      }
-
-      const validation = validateUsername(normalized);
-      if (!validation.ok) {
-        setUsernameCheck({ status: "error", text: validation.error });
-        return;
-      }
-
-      setUsernameCheck({ status: "checking", text: "Checking username…" });
-
-      try {
-        const res = await fetch(
-          `/api/username-check?username=${encodeURIComponent(validation.value)}`,
-          { cache: "no-store" }
-        );
-        const body = (await res.json().catch(() => null)) as
-          | { ok?: boolean; available?: boolean; error?: string }
-          | null;
-
-        if (canceled) return;
-
-        if (!res.ok || !body?.ok) {
-          setUsernameCheck({
-            status: "error",
-            text: body?.error ?? "Could not validate username right now.",
-          });
-          return;
-        }
-
-        setUsernameCheck(
-          body.available
-            ? { status: "ok", text: "Username is available." }
-            : { status: "error", text: "Username is already taken." }
-        );
-      } catch {
-        if (canceled) return;
-        setUsernameCheck({
-          status: "error",
-          text: "Could not validate username right now.",
-        });
-      }
-    }, 150);
-
-    return () => {
-      canceled = true;
-      clearTimeout(t);
-    };
-  }, [username, initialUsername, loadingProfile]);
-
-  const usernameHelpColor = useMemo(() => {
-    if (usernameCheck.status === "ok") return "rgb(22, 163, 74)";
-    if (usernameCheck.status === "error") return "rgb(220, 38, 38)";
-    return "var(--muted)";
-  }, [usernameCheck.status]);
-
-  const blockSaveForUsername =
-    usernameCheck.status === "checking" || usernameCheck.status === "error";
-
   async function saveProfile(e: React.FormEvent) {
     e.preventDefault();
-    if (saving || blockSaveForUsername) return;
+    if (saving) return;
 
     setSaving(true);
     setMsg(null);
@@ -194,7 +101,6 @@ export default function ProfilePage() {
       return;
     }
 
-    const normalizedUsername = normalizeUsername(username);
     const res = await fetch("/api/profile", {
       method: "PATCH",
       headers: {
@@ -202,9 +108,8 @@ export default function ProfilePage() {
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
-        username: normalizedUsername || null,
         display_name: displayName,
-        favorite_team: favoriteTeam || null,
+        favorite_team: favoriteTeam,
       }),
     });
 
@@ -217,11 +122,8 @@ export default function ProfilePage() {
       return;
     }
 
-    const nextUsername = body?.profile?.username ?? "";
-    setUsername(nextUsername);
-    setInitialUsername(nextUsername);
     setDisplayName(body?.profile?.display_name ?? "");
-    setFavoriteTeam(body?.profile?.favorite_team ?? "");
+    setFavoriteTeam(body?.profile?.favorite_team ?? NO_TEAM_VALUE);
     toast.success("Profile saved.");
   }
 
@@ -249,7 +151,7 @@ export default function ProfilePage() {
       <UiCard soft style={{ marginTop: 16 }}>
         <div className="ui-title--section">Profile settings</div>
         <div className="ui-caption" style={{ marginTop: 6 }}>
-          Update your display name, username and favourite team.
+          Update your display name and team. Choose no AFL team if you do not support one.
         </div>
 
         <form onSubmit={saveProfile} className="ui-stack" style={{ marginTop: 14 }}>
@@ -279,33 +181,13 @@ export default function ProfilePage() {
           </label>
 
           <label className="ui-stack">
-            <div className="ui-caption">Username</div>
-            <input
-              className="ui-input"
-              style={{ width: "100%" }}
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              type="text"
-              maxLength={24}
-              autoComplete="username"
-              placeholder="lowercase, numbers, underscores"
-            />
-            {usernameCheck.text && (
-              <div className="ui-caption" style={{ color: usernameHelpColor }}>
-                {usernameCheck.text}
-              </div>
-            )}
-          </label>
-
-          <label className="ui-stack">
-            <div className="ui-caption">Favourite team</div>
+            <div className="ui-caption">Team</div>
             <select
               className="ui-input"
               style={{ width: "100%" }}
               value={favoriteTeam}
               onChange={(e) => setFavoriteTeam(e.target.value)}
             >
-              <option value="">None selected</option>
               {AFL_TEAMS.map((team) => (
                 <option key={team} value={team}>
                   {formatAflTeamNameForDisplay(team, { season: CURRENT_SEASON })}
@@ -316,7 +198,7 @@ export default function ProfilePage() {
 
           <button
             type="submit"
-            disabled={saving || blockSaveForUsername}
+            disabled={saving}
             className="ui-btn"
             style={{ width: "100%", padding: "12px 14px", fontSize: 16 }}
           >

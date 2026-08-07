@@ -2,6 +2,14 @@
 
 Last updated: 2026-04-09
 
+## Update Note
+
+For the current preferred direction, see the simplified draft:
+
+- [docs/BL-033-simplified-next-season-invite-flow.md](/Users/beauwilliams/Desktop/afl-tipping/docs/BL-033-simplified-next-season-invite-flow.md)
+
+This document remains useful as the fuller original workflow proposal, but the simplified draft is the better starting point for the next pass.
+
 ## Goal
 
 Create a clear admin workflow that moves a person from:

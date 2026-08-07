@@ -7,6 +7,7 @@ import { normalizeChampionSeasonsByUserId } from "@/lib/champion-metadata";
 import { isDrawnMatch, isMatchCompleted } from "@/lib/match-status";
 import { getRoundDisplayName } from "@/lib/round-label";
 import { formatAflMatchupForDisplay, formatAflTeamNameForDisplay } from "@/lib/team-display";
+import { normalizeVenue } from "@/lib/venue-display";
 import { waitForSession } from "@/lib/session-client";
 import type {
   MatchResultRow,
@@ -81,40 +82,6 @@ const DEFAULT_SORT_DIR: Record<RoundSortKey, SortDirection> = {
   accuracy_pct: "desc",
   potential_score: "desc",
 };
-
-const VENUE_MAP: Record<string, string> = {
-  "Sydney Showground": "ENGIE Stadium",
-  "Sydney Showground Stadium": "ENGIE Stadium",
-  "S.C.G.": "SCG",
-  SCG: "SCG",
-  Docklands: "Marvel Stadium",
-  "Etihad Stadium": "Marvel Stadium",
-  "Marvel Stadium": "Marvel Stadium",
-  "M.C.G.": "MCG",
-  MCG: "MCG",
-  "Kardinia Park": "GMHBA Stadium",
-  "G.M.H.B.A. Stadium": "GMHBA Stadium",
-  "GMHBA Stadium": "GMHBA Stadium",
-  "Adelaide Oval": "Adelaide Oval",
-  "Perth Stadium": "Optus Stadium",
-  "Optus Stadium": "Optus Stadium",
-  "Brisbane Cricket Ground": "The Gabba",
-  Gabba: "The Gabba",
-  Carrara: "Heritage Bank Stadium",
-  "Metricon Stadium": "Heritage Bank Stadium",
-  "Heritage Bank Stadium": "Heritage Bank Stadium",
-  "Bellerive Oval": "Blundstone Arena",
-  "Blundstone Arena": "Blundstone Arena",
-  "York Park": "UTAS Stadium",
-  "UTAS Stadium": "UTAS Stadium",
-  "TIO Stadium": "TIO Stadium",
-};
-
-function normalizeVenue(v: string | null) {
-  if (!v) return "TBC";
-  const key = v.trim();
-  return VENUE_MAP[key] ?? key;
-}
 
 function formatMelbourne(isoUtc: string | null) {
   if (!isoUtc) return "";

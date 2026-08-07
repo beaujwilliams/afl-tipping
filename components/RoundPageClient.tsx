@@ -16,56 +16,9 @@ import {
 import { isMatchCompleted } from "@/lib/match-status";
 import { getRoundDisplayName } from "@/lib/round-label";
 import { formatAflTeamNameForDisplay } from "@/lib/team-display";
+import { formatVenueWithCity } from "@/lib/venue-display";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { UiSkeleton } from "@/components/ui";
-
-// Starter AFL venue mapping (brand / friendly names)
-const VENUE_MAP: Record<string, string> = {
-  // NSW
-  "Sydney Showground": "ENGIE Stadium",
-  "Sydney Showground Stadium": "ENGIE Stadium",
-  "S.C.G.": "SCG",
-  SCG: "SCG",
-
-  // VIC
-  Docklands: "Marvel Stadium",
-  "Etihad Stadium": "Marvel Stadium",
-  "Marvel Stadium": "Marvel Stadium",
-  "M.C.G.": "MCG",
-  MCG: "MCG",
-  "Kardinia Park": "GMHBA Stadium",
-  "G.M.H.B.A. Stadium": "GMHBA Stadium",
-  "GMHBA Stadium": "GMHBA Stadium",
-
-  // SA
-  "Adelaide Oval": "Adelaide Oval",
-
-  // WA
-  "Perth Stadium": "Optus Stadium",
-  "Optus Stadium": "Optus Stadium",
-
-  // QLD
-  "Brisbane Cricket Ground": "The Gabba",
-  Gabba: "The Gabba",
-  Carrara: "Heritage Bank Stadium",
-  "Metricon Stadium": "Heritage Bank Stadium",
-  "Heritage Bank Stadium": "Heritage Bank Stadium",
-
-  // TAS
-  "Bellerive Oval": "Blundstone Arena",
-  "Blundstone Arena": "Blundstone Arena",
-  "York Park": "UTAS Stadium",
-  "UTAS Stadium": "UTAS Stadium",
-
-  // NT
-  "TIO Stadium": "TIO Stadium",
-};
-
-function normalizeVenue(v: string | null) {
-  if (!v) return "TBC";
-  const key = v.trim();
-  return VENUE_MAP[key] ?? key;
-}
 
 function formatMelbourne(isoUtc: string) {
   const d = new Date(isoUtc);
@@ -1076,7 +1029,7 @@ export default function RoundPageClient({
               style={{ opacity: isLocked ? 0.98 : 1 }}
             >
               <div className="round-match-meta">
-                {formatMelbourne(g.commence_time_utc)} • {normalizeVenue(g.venue)}
+                {formatMelbourne(g.commence_time_utc)} • {formatVenueWithCity(g.venue)}
               </div>
 
               <div className="round-tip-options">

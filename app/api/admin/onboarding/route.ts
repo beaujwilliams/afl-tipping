@@ -11,6 +11,10 @@ import {
   type OnboardingLinkCandidate,
   type OnboardingPipelineStage,
 } from "@/lib/onboarding-workflow";
+import {
+  parseQuickReminderNames,
+  reminderNameKey,
+} from "@/lib/onboarding-reminders";
 import { NEXT_SEASON } from "@/lib/season-config";
 
 type InterestStatus = "pending" | "notified" | "unsubscribed";
@@ -18,7 +22,7 @@ type InterestStatus = "pending" | "notified" | "unsubscribed";
 type InterestRow = {
   id: string;
   target_season: number;
-  email: string;
+  email: string | null;
   full_name: string | null;
   status: InterestStatus;
   source: string;
@@ -319,6 +323,113 @@ export async function GET(req: Request) {
         season,
       })
     );
+  } catch (e: unknown) {
+    const details = e instanceof Error ? e.message : String(e);
+    return NextResponse.json({ ok: false, error: "Unexpected error", details }, { status: 500 });
+  }
+}
+
+export async function POST(req: Request) {
+  try {
+    const adminCheck = await assertAdmin(req);
+    if (!adminCheck.ok) return adminCheck.res;
+
+    const body = (await req.json().catch(() => null)) as
+      | null
+      | {
+          season?: number;
+          names?: unknown;
+        };
+    const season = parseSeason(String(body?.season ?? ""), NEXT_SEASON);
+    const parsed = parseQuickReminderNames(body?.names);
+
+    if (parsed.names.length === 0) {
+      return NextResponse.json(
+        { ok: false, error: "Enter at least one name, with one person per line." },
+        { status: 400 }
+      );
+    }
+
+    const existingResult = await adminCheck.supabase
+      .from("next_season_interest")
+      .select("full_name")
+      .eq("target_season", season)
+      .is("email_normalized", null)
+      .limit(1000);
+
+    if (existingResult.error) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Failed to check existing manual reminders",
+          details: existingResult.error.message,
+        },
+        { status: 500 }
+      );
+    }
+
+    const existingNameKeys = new Set(
+      (existingResult.data ?? [])
+        .map((row) => reminderNameKey(String(row.full_name ?? "")))
+        .filter(Boolean)
+    );
+    const namesToAdd = parsed.names.filter((name) => !existingNameKeys.has(reminderNameKey(name)));
+    const skippedExistingCount = parsed.names.length - namesToAdd.length;
+
+    if (namesToAdd.length === 0) {
+      return NextResponse.json({
+        ok: true,
+        season,
+        added_count: 0,
+        skipped_existing_count: skippedExistingCount,
+        duplicate_input_count: parsed.duplicateCount,
+        overflow_count: parsed.overflowCount,
+      });
+    }
+
+    const nowIso = new Date().toISOString();
+    const insert = await adminCheck.supabase
+      .from("next_season_interest")
+      .insert(
+        namesToAdd.map((fullName) => ({
+          target_season: season,
+          email: null,
+          email_normalized: null,
+          full_name: fullName,
+          source: "admin_added",
+          status: "pending",
+          pipeline_stage: "new",
+          submitted_at_utc: nowIso,
+          updated_at: nowIso,
+        }))
+      )
+      .select("id");
+
+    if (insert.error) {
+      const migrationHint =
+        insert.error.code === "23502" ||
+        (insert.error.message.toLowerCase().includes("email") &&
+          insert.error.message.toLowerCase().includes("null"));
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Failed to add manual reminders",
+          details: migrationHint
+            ? "Run db/migrations/20260808_name_only_onboarding_reminders.sql and redeploy."
+            : insert.error.message,
+        },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      ok: true,
+      season,
+      added_count: insert.data?.length ?? namesToAdd.length,
+      skipped_existing_count: skippedExistingCount,
+      duplicate_input_count: parsed.duplicateCount,
+      overflow_count: parsed.overflowCount,
+    });
   } catch (e: unknown) {
     const details = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ ok: false, error: "Unexpected error", details }, { status: 500 });

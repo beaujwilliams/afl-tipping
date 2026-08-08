@@ -8,7 +8,7 @@ type InterestStatus = "pending" | "notified" | "unsubscribed";
 type InterestRow = {
   id: string;
   target_season: number;
-  email: string;
+  email: string | null;
   full_name: string | null;
   status: InterestStatus;
   source: string;

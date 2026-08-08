@@ -12,7 +12,7 @@ type InterestStatus = "pending" | "notified" | "unsubscribed";
 type InterestRow = {
   id: string;
   target_season: number;
-  email: string;
+  email: string | null;
   full_name: string | null;
   status: InterestStatus;
   source: string;
@@ -245,17 +245,22 @@ export default function AdminInterestedMembersPage() {
 
   const counts = useMemo(() => {
     let pending = 0;
+    let emailPending = 0;
     let notified = 0;
     let unsubscribed = 0;
     rows.forEach((row) => {
       const status = normalizeStatus(row.status);
-      if (status === "pending") pending += 1;
+      if (status === "pending") {
+        pending += 1;
+        if (row.email?.trim()) emailPending += 1;
+      }
       else if (status === "notified") notified += 1;
       else unsubscribed += 1;
     });
     return {
       total: rows.length,
       pending,
+      emailPending,
       notified,
       unsubscribed,
     };
@@ -343,7 +348,7 @@ export default function AdminInterestedMembersPage() {
   async function sendSeasonOpenBulkEmail() {
     if (!sessionToken) return;
     const ok = confirm(
-      `Send season-open email to all pending interested members for season ${season}? Successful sends will be marked as notified.`
+      `Send season-open email to all pending interested members with an email for season ${season}? Name-only manual reminders will be skipped.`
     );
     if (!ok) return;
 
@@ -435,11 +440,11 @@ export default function AdminInterestedMembersPage() {
 
           <UiButton onClick={exportCsv}>Export CSV</UiButton>
           <UiButton
-            disabled={sendingBulk || loading || counts.pending === 0}
+            disabled={sendingBulk || loading || counts.emailPending === 0}
             onClick={sendSeasonOpenBulkEmail}
             tone="activeSuccess"
           >
-            {sendingBulk ? "Sending..." : `Email Pending (${counts.pending})`}
+            {sendingBulk ? "Sending..." : `Email Pending (${counts.emailPending})`}
           </UiButton>
         </div>
 
@@ -492,7 +497,7 @@ export default function AdminInterestedMembersPage() {
                   return (
                     <tr key={row.id}>
                       <UiTableCell>
-                        <div style={{ fontWeight: 700 }}>{row.email}</div>
+                        <div style={{ fontWeight: 700 }}>{row.email || "No email · manual follow-up"}</div>
                       </UiTableCell>
                       <UiTableCell>{row.full_name || "—"}</UiTableCell>
                       <UiTableCell>

@@ -35,7 +35,7 @@ type DerivedStage =
 type OnboardingRow = {
   id: string;
   target_season: number;
-  email: string;
+  email: string | null;
   full_name: string | null;
   status: InterestStatus;
   source: string;
@@ -88,6 +88,16 @@ type OnboardingInviteResponse = {
   row?: Partial<OnboardingRow> | null;
   invite_status?: string;
   provider_message_id?: string | null;
+  error?: string;
+  details?: string;
+};
+
+type QuickAddResponse = {
+  ok?: boolean;
+  added_count?: number;
+  skipped_existing_count?: number;
+  duplicate_input_count?: number;
+  overflow_count?: number;
   error?: string;
   details?: string;
 };
@@ -188,6 +198,8 @@ export default function AdminOnboardingPage() {
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState<StageFilter>("needs_action");
   const [msg, setMsg] = useState("");
+  const [quickNames, setQuickNames] = useState("");
+  const [addingQuickNames, setAddingQuickNames] = useState(false);
 
   async function load(targetSeason = season) {
     setLoading(true);
@@ -233,6 +245,49 @@ export default function AdminOnboardingPage() {
   useEffect(() => {
     void load();
   }, [season]);
+
+  async function addQuickReminders(e: React.FormEvent) {
+    e.preventDefault();
+    if (!sessionToken || !quickNames.trim() || addingQuickNames) return;
+
+    setAddingQuickNames(true);
+    try {
+      const res = await fetch("/api/admin/onboarding", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${sessionToken}`,
+        },
+        body: JSON.stringify({ season, names: quickNames }),
+      });
+      const json = (await res.json().catch(() => null)) as QuickAddResponse | null;
+      if (!res.ok || !json?.ok) {
+        const detail = json?.details ? `: ${json.details}` : "";
+        throw new Error((json?.error ?? "Failed to add reminder names") + detail);
+      }
+
+      const addedCount = Number(json.added_count ?? 0);
+      const skippedCount =
+        Number(json.skipped_existing_count ?? 0) + Number(json.duplicate_input_count ?? 0);
+      const overflowCount = Number(json.overflow_count ?? 0);
+      const details = [
+        skippedCount > 0 ? `${skippedCount} duplicate${skippedCount === 1 ? "" : "s"} skipped` : "",
+        overflowCount > 0 ? `${overflowCount} over the 100-name limit skipped` : "",
+      ].filter(Boolean);
+
+      setQuickNames("");
+      await load(season);
+      toast.success(
+        `${addedCount} ${addedCount === 1 ? "person" : "people"} added to season ${season} reminders${
+          details.length ? `; ${details.join("; ")}` : ""
+        }.`
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to add reminder names");
+    } finally {
+      setAddingQuickNames(false);
+    }
+  }
 
   function setDraftField(id: string, patch: Partial<RowDraft>) {
     setDraftById((prev) => ({
@@ -459,6 +514,33 @@ export default function AdminOnboardingPage() {
         />
       </UiCard>
 
+      <UiCard soft style={{ marginTop: 12 }}>
+        <UiSectionHeader
+          title="Quick add people"
+          subtitle={`Add name-only reminders to the existing season ${season} onboarding flow.`}
+        />
+        <form onSubmit={addQuickReminders} className="ui-stack" style={{ marginTop: 12 }}>
+          <textarea
+            className="ui-input"
+            value={quickNames}
+            onChange={(e) => setQuickNames(e.target.value)}
+            placeholder={"Alex Smith\nPriya Jones\nSam Lee"}
+            rows={5}
+            maxLength={14000}
+            style={{ width: "100%", resize: "vertical" }}
+          />
+          <div className="ui-row-wrap" style={{ justifyContent: "space-between" }}>
+            <span className="ui-caption">
+              One person per line. Existing name-only entries are skipped. Add a qualifier if two
+              people share a name.
+            </span>
+            <UiButton type="submit" disabled={!quickNames.trim() || addingQuickNames || !sessionToken}>
+              {addingQuickNames ? "Adding..." : "Add to reminders"}
+            </UiButton>
+          </div>
+        </form>
+      </UiCard>
+
       <div
         style={{
           marginTop: 12,
@@ -564,6 +646,7 @@ export default function AdminOnboardingPage() {
                   const linked = !!row.linked_member;
                   const canInvite =
                     !linked &&
+                    Boolean(row.email?.trim()) &&
                     row.status !== "unsubscribed" &&
                     row.pipeline_stage !== "archived" &&
                     !row.archived_at_utc;
@@ -580,10 +663,16 @@ export default function AdminOnboardingPage() {
                   return (
                     <tr key={row.id}>
                       <UiTableCell style={{ verticalAlign: "top" }}>
-                        <div style={{ fontWeight: 800 }}>{row.full_name || row.email}</div>
-                        <div className="ui-caption" style={{ marginTop: 4 }}>
-                          {row.email}
-                        </div>
+                        <div style={{ fontWeight: 800 }}>{row.full_name || row.email || "Unnamed person"}</div>
+                        {row.email ? (
+                          <div className="ui-caption" style={{ marginTop: 4 }}>
+                            {row.email}
+                          </div>
+                        ) : (
+                          <div className="ui-caption" style={{ marginTop: 4 }}>
+                            No email · manual follow-up
+                          </div>
+                        )}
                         <div className="ui-caption" style={{ marginTop: 4 }}>
                           Source: {row.source} · Legacy status: {row.status}
                         </div>

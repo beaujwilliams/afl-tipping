@@ -15,7 +15,7 @@ type InterestStatus = "pending" | "notified" | "unsubscribed";
 type InterestRecipientRow = {
   id: string;
   target_season: number;
-  email: string;
+  email: string | null;
   full_name: string | null;
   status: InterestStatus;
 };
@@ -76,6 +76,7 @@ export async function POST(req: Request) {
       .select("id,target_season,email,full_name,status")
       .eq("target_season", season)
       .in("status", allowedStatuses)
+      .not("email", "is", null)
       .order("submitted_at_utc", { ascending: true });
 
     if (recipientsQuery.error) {

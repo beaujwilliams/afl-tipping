@@ -9,6 +9,10 @@ import {
   normalizeOnboardingPipelineStage,
   summarizeOnboardingStages,
 } from "../../lib/onboarding-workflow.ts";
+import {
+  parseQuickReminderNames,
+  reminderNameKey,
+} from "../../lib/onboarding-reminders.ts";
 
 test("onboarding workflow infers invited and archived from legacy interest statuses", () => {
   assert.equal(inferInitialOnboardingStageFromInterestStatus("notified"), "invited");
@@ -158,4 +162,19 @@ test("onboarding workflow does not suggest the already linked member again", () 
   });
 
   assert.equal(candidate, null);
+});
+
+test("quick reminder names are trimmed, normalized, and deduplicated", () => {
+  const parsed = parseQuickReminderNames("  Alex Smith  \nPriya   Jones\nalex smith\n\n");
+
+  assert.deepEqual(parsed.names, ["Alex Smith", "Priya Jones"]);
+  assert.equal(parsed.duplicateCount, 1);
+  assert.equal(parsed.overflowCount, 0);
+  assert.equal(reminderNameKey("  PRIYA Jones "), "priya jones");
+});
+
+test("quick reminder names accept arrays containing pasted lines", () => {
+  const parsed = parseQuickReminderNames(["Sam Lee\nTaylor Ng", null, "Jordan Patel"]);
+
+  assert.deepEqual(parsed.names, ["Sam Lee", "Taylor Ng", "Jordan Patel"]);
 });

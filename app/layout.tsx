@@ -62,7 +62,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           }}
         >
           <WebVitalsReporter />
-          {children}
+          <ToastProvider>{children}</ToastProvider>
         </body>
       </html>
     );

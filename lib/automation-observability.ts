@@ -70,6 +70,13 @@ export function classifySnapshotRun(body: unknown, httpStatus: number): Automati
     };
   }
 
+  if (obj.ok === false) {
+    return {
+      runStatus: "failed",
+      summary: readString(obj.error) || "Snapshot request reported a failure.",
+    };
+  }
+
   const capturedRounds = Math.max(0, Math.trunc(readNumber(obj.capturedRounds)));
   const processedDueRounds = Math.max(0, Math.trunc(readNumber(obj.processedDueRounds)));
   const next = asObject(obj.next);
@@ -108,6 +115,12 @@ export function classifySnapshotRun(body: unknown, httpStatus: number): Automati
       return {
         runStatus: "skipped",
         summary: `Next due round is ${nextRound || "?"}, but its snapshot window is not open yet.`,
+      };
+    }
+    if (skippedReason === "completed_rounds_are_read_only") {
+      return {
+        runStatus: "skipped",
+        summary: "Completed rounds with missing odds were left unchanged.",
       };
     }
     return {

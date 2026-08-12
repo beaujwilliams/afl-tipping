@@ -34,6 +34,36 @@ test("snapshot classification treats no due rounds as skipped", () => {
   assert.equal(result.runStatus, "skipped");
 });
 
+test("snapshot classification treats ok false responses as failed", () => {
+  const result = classifySnapshotRun(
+    {
+      ok: false,
+      error: "Odds snapshot ran but did not capture any odds for the target round.",
+      processedDueRounds: 1,
+      capturedRounds: 0,
+    },
+    200
+  );
+
+  assert.equal(result.runStatus, "failed");
+  assert.match(result.summary, /did not capture/i);
+});
+
+test("snapshot classification explains completed read-only skips", () => {
+  const result = classifySnapshotRun(
+    {
+      ok: true,
+      capturedRounds: 0,
+      processedDueRounds: 0,
+      skipped_reason: "completed_rounds_are_read_only",
+    },
+    200
+  );
+
+  assert.equal(result.runStatus, "skipped");
+  assert.match(result.summary, /left unchanged/i);
+});
+
 test("prelock reminder classification marks delivery failures as failed", () => {
   const result = classifyPrelockReminderRun(
     {

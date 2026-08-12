@@ -1,16 +1,17 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase-server";
 import { requireAdminOrCron, resolveCompetitionIdForAdminRequest } from "@/lib/admin-auth";
+import {
+  computeOddsSnapshotDueTimeUtc,
+  ODDS_SNAPSHOT_HOURS_BEFORE_LOCK,
+} from "@/lib/odds-snapshot-scheduler";
+import { isMatchCompleted } from "@/lib/match-status";
 import { isSameInstant } from "@/lib/snapshot-time";
 
 const SPORT_KEY = "aussierules_afl";
 const REGIONS = "au";
 const MARKETS = "h2h";
 const BOOKMAKER = "sportsbet";
-
-// ✅ Snapshot timing rule:
-// Capture odds exactly 36 hours before the first match of the round starts (lock_time_utc).
-const SNAPSHOT_HOURS_BEFORE_LOCK = 36;
 
 type OddsApiOutcome = { name: string; price: number };
 type OddsApiMarket = { key: string; outcomes: OddsApiOutcome[] };
@@ -35,6 +36,15 @@ type RoundSnapshotRow = {
   odds_snapshot_for_time_utc: string | null;
   odds_captured_at_utc: string | null;
   competition_id?: string;
+};
+
+type SnapshotMatchRow = {
+  id: string;
+  commence_time_utc: string;
+  home_team: string;
+  away_team: string;
+  status: string | null;
+  winner_team: string | null;
 };
 
 /* ---------------- TEAM NORMALISATION ---------------- */
@@ -123,18 +133,6 @@ function sameMatch(
   return (ah === bh && aa === ba) || (ah === ba && aa === bh);
 }
 
-/* ---------------- SNAPSHOT TIME ---------------- */
-/**
- * Snapshot time = lock_time_utc - 36 hours
- * (i.e. capture odds 36 hours before the first match begins).
- */
-function computeSnapshotForTimeUtc(lockTimeUtcIso: string) {
-  const lockMs = new Date(lockTimeUtcIso).getTime();
-  if (Number.isNaN(lockMs)) throw new Error("Invalid lock_time_utc");
-  const snapMs = lockMs - SNAPSHOT_HOURS_BEFORE_LOCK * 60 * 60 * 1000;
-  return new Date(snapMs).toISOString();
-}
-
 /* ---------------- HELPERS ---------------- */
 
 function safeJsonParse(text: string) {
@@ -212,19 +210,36 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Round lock_time_utc is missing" }, { status: 400 });
     }
 
-    const snapshotForTimeUtc = computeSnapshotForTimeUtc(roundRow.lock_time_utc);
+    const snapshotForTimeUtc = computeOddsSnapshotDueTimeUtc(roundRow.lock_time_utc);
 
     const { data: matches } = await supabase
       .from("matches")
-      .select("id, commence_time_utc, home_team, away_team")
+      .select("id, commence_time_utc, home_team, away_team, status, winner_team")
       .eq("round_id", roundRow.id);
 
     if (!matches?.length) {
       return NextResponse.json({ error: "No matches found" }, { status: 404 });
     }
+    const roundMatches = matches as SnapshotMatchRow[];
+    const completedMatches = roundMatches.filter((match) => isMatchCompleted(match));
+    if (completedMatches.length > 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Round has completed matches; locked odds are read-only once results exist.",
+          season,
+          round,
+          competition_id: competitionId,
+          force,
+          snapshotForTimeUtc,
+          completedMatches: completedMatches.length,
+        },
+        { status: 409 }
+      );
+    }
 
     // date window (UTC) around match times
-    const times = matches
+    const times = roundMatches
       .map((m) => new Date(m.commence_time_utc).getTime())
       .filter((t) => !Number.isNaN(t))
       .sort((a, b) => a - b);
@@ -276,7 +291,7 @@ export async function GET(req: Request) {
     const events = parsed as OddsApiEvent[];
 
     // ✅ Non-force rule: pre-check existing snapshot rows so we ONLY insert missing
-    const matchIds = matches.map((m) => m.id);
+    const matchIds = roundMatches.map((m) => m.id);
 
     const existingSet = new Set<string>();
     if (!force && matchIds.length) {
@@ -296,7 +311,7 @@ export async function GET(req: Request) {
         );
       }
 
-      (existing ?? []).forEach((r: any) => {
+      (existing ?? []).forEach((r: { match_id?: string | null }) => {
         if (r?.match_id) existingSet.add(String(r.match_id));
       });
     }
@@ -306,7 +321,7 @@ export async function GET(req: Request) {
     let skippedExisting = 0;
     let updated = 0;
 
-    for (const match of matches) {
+    for (const match of roundMatches) {
       // ✅ non-force NEVER overwrites: skip if exists
       if (!force && existingSet.has(match.id)) {
         skippedExisting++;
@@ -373,7 +388,7 @@ export async function GET(req: Request) {
 
         if (error) {
           // If a race/duplicate happens, treat as "already exists"
-          if ((error as any).code === "23505") {
+          if (error.code === "23505") {
             skippedExisting++;
             continue;
           }
@@ -427,9 +442,9 @@ export async function GET(req: Request) {
       competition_id: competitionId,
       force,
       snapshotForTimeUtc,
-      snapshotHoursBeforeLock: SNAPSHOT_HOURS_BEFORE_LOCK,
+      snapshotHoursBeforeLock: ODDS_SNAPSHOT_HOURS_BEFORE_LOCK,
       lockTimeUtc: roundRow.lock_time_utc,
-      matches: matches.length,
+      matches: roundMatches.length,
       eventsCount: events.length,
       matched,
       inserted,
@@ -446,9 +461,10 @@ export async function GET(req: Request) {
         : inserted > 0 || skippedExisting > 0,
       roundSnapshotLocked,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
+    const details = e instanceof Error ? e.message : String(e);
     return NextResponse.json(
-      { error: "Unexpected error", details: e?.message ?? String(e) },
+      { error: "Unexpected error", details },
       { status: 500 }
     );
   }

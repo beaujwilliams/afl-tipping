@@ -6,26 +6,23 @@ import {
   classifySnapshotRun,
   recordAutomationJobRun,
 } from "@/lib/automation-observability";
-import { isSameInstant } from "@/lib/snapshot-time";
+import {
+  enrichOddsSnapshotRounds,
+  findNextUpcomingPendingOddsSnapshotRound,
+  ODDS_SNAPSHOT_HOURS_BEFORE_LOCK,
+  selectOddsSnapshotTarget,
+  type OddsSnapshotRoundRow,
+} from "@/lib/odds-snapshot-scheduler";
+import { isMatchCompleted } from "@/lib/match-status";
 
-// ✅ Must match snapshot-odds/route.ts
-const SNAPSHOT_HOURS_BEFORE_LOCK = 36;
+type SnapshotSchedulerRoundRow = OddsSnapshotRoundRow & {
+  id: string;
+};
 
-/**
- * Due time = lock_time_utc - 36 hours
- */
-function computeSnapshotDueTimeUtc(lockTimeUtcIso: string): string {
-  const lockMs = new Date(lockTimeUtcIso).getTime();
-  if (Number.isNaN(lockMs)) throw new Error("Invalid lock_time_utc");
-
-  const dueMs = lockMs - SNAPSHOT_HOURS_BEFORE_LOCK * 60 * 60 * 1000;
-  return new Date(dueMs).toISOString();
-}
-
-type RoundRow = {
-  round_number: number;
-  lock_time_utc: string;
-  odds_snapshot_for_time_utc: string | null;
+type SnapshotSchedulerMatchRow = {
+  round_id: string;
+  status: string | null;
+  winner_team: string | null;
 };
 
 export async function GET(req: Request) {
@@ -62,7 +59,7 @@ export async function GET(req: Request) {
     if (!competitionId) {
       return NextResponse.json({ error: "No competition" }, { status: 404 });
     }
-    const resolvedCompetitionId = competitionId;
+    let resolvedCompetitionId = competitionId;
     logContext = {
       competitionId: resolvedCompetitionId,
       season,
@@ -130,14 +127,23 @@ export async function GET(req: Request) {
           .limit(500);
 
         const fallbackComp = (seasonRounds ?? []).find((r) => !!r.competition_id)?.competition_id ?? null;
-        if (fallbackComp) competitionId = String(fallbackComp);
+        if (fallbackComp) {
+          competitionId = String(fallbackComp);
+          resolvedCompetitionId = competitionId;
+          logContext = {
+            competitionId: resolvedCompetitionId,
+            season,
+            triggerMode,
+            requestPath,
+          };
+        }
       }
     }
 
     // Fetch rounds
     let q = supabase
       .from("rounds")
-      .select("round_number, lock_time_utc, odds_snapshot_for_time_utc")
+      .select("id, round_number, lock_time_utc, odds_snapshot_for_time_utc")
       .eq("competition_id", competitionId)
       .eq("season", season)
       .order("round_number", { ascending: true });
@@ -166,55 +172,66 @@ export async function GET(req: Request) {
       });
     }
 
-    const now = new Date();
+    const roundRows = rounds as SnapshotSchedulerRoundRow[];
+    const roundIds = roundRows.map((roundRow) => String(roundRow.id)).filter(Boolean);
+    const completedRoundIds = new Set<string>();
+
+    if (roundIds.length > 0) {
+      const { data: matchRows, error: matchErr } = await supabase
+        .from("matches")
+        .select("round_id, status, winner_team")
+        .in("round_id", roundIds);
+
+      if (matchErr) {
+        return respond(500, {
+          error: "Failed to read matches for odds snapshot safety check",
+          details: matchErr.message,
+        });
+      }
+
+      for (const match of (matchRows ?? []) as SnapshotSchedulerMatchRow[]) {
+        if (isMatchCompleted(match)) {
+          completedRoundIds.add(String(match.round_id));
+        }
+      }
+    }
 
     // Build enriched list (rounds already ordered by round_number)
-    const enriched = (rounds as RoundRow[]).map((r) => {
-      const snapshotForTimeUtc = computeSnapshotDueTimeUtc(r.lock_time_utc);
-      const due = now >= new Date(snapshotForTimeUtc);
-      const alreadyCaptured = isSameInstant(r.odds_snapshot_for_time_utc, snapshotForTimeUtc);
-      return {
-        round_number: r.round_number,
-        lock_time_utc: r.lock_time_utc,
-        storedSnapshotForTimeUtc: r.odds_snapshot_for_time_utc,
-        snapshotForTimeUtc,
-        due,
-        alreadyCaptured,
-      };
-    });
+    const enriched = enrichOddsSnapshotRounds(
+      roundRows.map((roundRow) => ({
+        ...roundRow,
+        has_completed_matches: completedRoundIds.has(String(roundRow.id)),
+      }))
+    );
 
     const nextUpcomingPendingRound =
-      enriched.find((r) => !r.due && !r.alreadyCaptured) ?? null;
-    const firstDuePendingRound =
-      enriched.find((r) => r.due && !r.alreadyCaptured) ?? null;
+      findNextUpcomingPendingOddsSnapshotRound(enriched);
 
     // Decide which single round to act on
     // - If ?round= is provided, list is already restricted to that one.
     // - Otherwise:
     //    * normal mode: pick first due round that has not already been captured
-    //    * force mode: pick next upcoming round (first not-due); if none, fall back to last
-    let target: (typeof enriched)[number] | null = null;
-
-    if (onlyRoundParam !== null) {
-      target = enriched[0] ?? null;
-    } else if (force) {
-      target =
-        nextUpcomingPendingRound ??
-        enriched.find((r) => !r.due) ??
-        enriched[enriched.length - 1] ??
-        null;
-    } else {
-      target = firstDuePendingRound;
-    }
+    //    * force mode: backfill first due pending round before future/test snapshots
+    const target = selectOddsSnapshotTarget({
+      rounds: enriched,
+      force,
+      onlyRoundRequested: onlyRoundParam !== null,
+    });
 
     if (!target) {
+      const blockedCompletedRounds = enriched.filter(
+        (round) => !round.alreadyCaptured && round.hasCompletedMatches
+      );
       return respond(200, {
         ok: true,
         season,
         competition_id: resolvedCompetitionId,
         processedDueRounds: 0,
         capturedRounds: 0,
-        skipped_reason: "no_due_rounds_pending_capture",
+        skipped_reason:
+          blockedCompletedRounds.length > 0
+            ? "completed_rounds_are_read_only"
+            : "no_due_rounds_pending_capture",
         next: nextUpcomingPendingRound
           ? {
               round: nextUpcomingPendingRound.round_number,
@@ -224,6 +241,11 @@ export async function GET(req: Request) {
               lockTimeUtc: nextUpcomingPendingRound.lock_time_utc,
             }
           : null,
+        blockedCompletedRounds: blockedCompletedRounds.map((round) => ({
+          round: round.round_number,
+          snapshotForTimeUtc: round.snapshotForTimeUtc,
+          lockTimeUtc: round.lock_time_utc,
+        })),
         results: [],
       });
     }
@@ -245,16 +267,18 @@ export async function GET(req: Request) {
         next: {
           round: target.round_number,
           due: target.due,
-          alreadyCaptured: target.alreadyCaptured,
-          storedSnapshotForTimeUtc: target.storedSnapshotForTimeUtc,
-          snapshotForTimeUtc: target.snapshotForTimeUtc,
-          lockTimeUtc: target.lock_time_utc,
+        alreadyCaptured: target.alreadyCaptured,
+        hasCompletedMatches: target.hasCompletedMatches,
+        storedSnapshotForTimeUtc: target.storedSnapshotForTimeUtc,
+        snapshotForTimeUtc: target.snapshotForTimeUtc,
+        lockTimeUtc: target.lock_time_utc,
         },
         results: [
           {
             round: target.round_number,
             due: target.due,
             alreadyCaptured: target.alreadyCaptured,
+            hasCompletedMatches: target.hasCompletedMatches,
             snapshotForTimeUtc: target.snapshotForTimeUtc,
             note:
               skippedReason === "already_captured_for_due_snapshot"
@@ -301,12 +325,13 @@ export async function GET(req: Request) {
       json !== null &&
       "ok" in json &&
       (json as { ok?: unknown }).ok === true;
-    const capturedRounds = res.status === 200 && jsonOk ? 1 : 0;
     const oddsCapturedForRound =
       typeof json === "object" &&
       json !== null &&
       "oddsCapturedForRound" in json &&
       (json as { oddsCapturedForRound?: unknown }).oddsCapturedForRound === true;
+    const snapshotRequestOk = res.status === 200 && jsonOk;
+    const capturedRounds = snapshotRequestOk && oddsCapturedForRound ? 1 : 0;
 
     let oddsAddedEmailNotice:
       | {
@@ -347,25 +372,26 @@ export async function GET(req: Request) {
     } else {
       oddsAddedEmailNotice = {
         triggered: false,
-        reason: force
-          ? "skipped_on_force_snapshot"
-          : capturedRounds <= 0
+        reason: capturedRounds <= 0
             ? "snapshot_not_captured"
-            : "odds_not_marked_as_captured",
+            : force
+              ? "skipped_on_force_snapshot"
+              : "odds_not_marked_as_captured",
       };
     }
 
-    return respond(200, {
-      ok: true,
+    const responseBody = {
+      ok: capturedRounds > 0,
       season,
       competition_id: resolvedCompetitionId,
       processedDueRounds: 1,
       capturedRounds,
-      snapshotHoursBeforeLock: SNAPSHOT_HOURS_BEFORE_LOCK,
+      snapshotHoursBeforeLock: ODDS_SNAPSHOT_HOURS_BEFORE_LOCK,
       next: {
         round: target.round_number,
         due: target.due,
         alreadyCaptured: target.alreadyCaptured,
+        hasCompletedMatches: target.hasCompletedMatches,
         snapshotForTimeUtc: target.snapshotForTimeUtc,
         lockTimeUtc: target.lock_time_utc,
       },
@@ -374,6 +400,7 @@ export async function GET(req: Request) {
           round: target.round_number,
           due: target.due,
           alreadyCaptured: target.alreadyCaptured,
+          hasCompletedMatches: target.hasCompletedMatches,
           snapshotForTimeUtc: target.snapshotForTimeUtc,
           status: res.status,
           snapshotResult: json,
@@ -381,7 +408,18 @@ export async function GET(req: Request) {
         },
       ],
       oddsAddedEmailNotice,
-    });
+    };
+
+    if (capturedRounds === 0) {
+      return respond(snapshotRequestOk ? 502 : Math.max(502, res.status), {
+        ...responseBody,
+        error: snapshotRequestOk
+          ? "Odds snapshot ran but did not capture any odds for the target round."
+          : "Odds snapshot request failed.",
+      });
+    }
+
+    return respond(200, responseBody);
   } catch (e: unknown) {
     const details = e instanceof Error ? e.message : String(e);
     if (logContext) {

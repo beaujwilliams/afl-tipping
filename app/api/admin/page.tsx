@@ -192,10 +192,10 @@ export default function AdminPage() {
               style={btnStyle}
               disabled={!!running}
               onClick={() =>
-                run(`/api/admin/snapshot-odds-all-due?season=${season}&force=1`)
+                run(`/api/admin/snapshot-odds-all-due?season=${season}`)
               }
             >
-              Snapshot Odds (ALL DUE - Force)
+              Snapshot Next Due Round
               <div style={smallStyle}>
                 Captures Sportsbet decimal odds for rounds that are due.
               </div>

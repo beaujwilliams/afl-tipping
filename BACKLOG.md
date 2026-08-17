@@ -1,6 +1,6 @@
 # AFL Tipping Backlog
 
-Last updated: 2026-04-09
+Last updated: 2026-08-07
 
 This is the canonical planning view for the project.
 
@@ -24,10 +24,11 @@ Supporting docs remain available for track-specific detail:
 | 9 | `BL-033` Payment and onboarding workflow | Initiative | You already manage payment status and next-season interest. | Cleaner conversion from waitlist to invite to paid to active member. Simplified draft: [docs/BL-033-simplified-next-season-invite-flow.md](/Users/beauwilliams/Desktop/afl-tipping/docs/BL-033-simplified-next-season-invite-flow.md). Legacy spec: [docs/BL-033-payment-and-onboarding-workflow.md](/Users/beauwilliams/Desktop/afl-tipping/docs/BL-033-payment-and-onboarding-workflow.md) | `Idea` |
 | 10 | `BL-034` Chat structure improvements | Feature | Chat is already rich with mentions, reactions, quoting, and admin context. | Pinned messages, round-specific threads or channels, a “mentions only” view, and round-day moderation tools. | `Idea` |
 | 11 | `BL-035` Invocation/cost monitoring and route split | Initiative | `BL-022` improved feel but may increase dynamic render cost. | Better visibility into invocations and an escape hatch to split public static routes from authenticated dynamic shell if needed. | `Idea` |
-| 12 | `UI-001` Add season switcher and remove hardcoded `2026` in nav/routes | UI | Current season is still hardcoded in user-facing navigation and routes. | Prevents yearly friction and confusion. | `Deferred` |
-| 13 | `BL-011` Season archive selector and year-over-year comparison page | Feature | You already preserve season-scoped results, leaderboard, champions, and recaps. | Keeps the site useful across seasons. | `Deferred` |
-| 14 | `BL-017` Optional SMS tipping reminders | Feature | Email reminders already exist and can be extended selectively. | Another reminder channel for members who ignore email. | `Deferred` |
-| 15 | `BL-013` True multi-competition support | Initiative | The app is deep enough now that hosting multiple comps is plausible, but the data model still assumes one main comp. | Unlocks multiple separate tipping groups. | `Deferred` |
+| 12 | `BL-036` Production schema baseline and disaster recovery hardening | Initiative | The repo is not yet a full source of truth for the live Supabase schema, RLS, and recovery workflow. | Versioned schema baseline, backup/recovery runbook, and lower risk of losing site config or data fidelity. | `Deferred` |
+| 13 | `UI-001` Add season switcher and remove hardcoded `2026` in nav/routes | UI | Current season is still hardcoded in user-facing navigation and routes. | Prevents yearly friction and confusion. | `Deferred` |
+| 14 | `BL-011` Season archive selector and year-over-year comparison page | Feature | You already preserve season-scoped results, leaderboard, champions, and recaps. | Keeps the site useful across seasons. | `Deferred` |
+| 15 | `BL-017` Optional SMS tipping reminders | Feature | Email reminders already exist and can be extended selectively. | Another reminder channel for members who ignore email. | `Deferred` |
+| 16 | `BL-013` True multi-competition support | Initiative | The app is deep enough now that hosting multiple comps is plausible, but the data model still assumes one main comp. | Unlocks multiple separate tipping groups. | `Deferred` |
 
 ## Shipped / Complete
 

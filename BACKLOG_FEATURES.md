@@ -1,6 +1,6 @@
 # Feature Backlog
 
-Last updated: 2026-04-09
+Last updated: 2026-08-07
 
 ## Prioritized Features
 
@@ -19,6 +19,7 @@ Last updated: 2026-04-09
 | BL-033 | P2 | Idea | Payment and onboarding workflow | You already manage payment status and next-season interest | M | Make the path from waitlist to invite to paid to active member cleaner and easier to run. Simplified draft: [docs/BL-033-simplified-next-season-invite-flow.md](/Users/beauwilliams/Desktop/afl-tipping/docs/BL-033-simplified-next-season-invite-flow.md). Legacy spec: [docs/BL-033-payment-and-onboarding-workflow.md](/Users/beauwilliams/Desktop/afl-tipping/docs/BL-033-payment-and-onboarding-workflow.md) |
 | BL-034 | P2 | Idea | Chat structure improvements | Chat is already rich with mentions, reactions, quoting, and admin context | M | Add pinned messages, round-specific threads/channels, a mentions-only view, and better round-day moderation |
 | BL-035 | P2 | Idea | Invocation/cost monitoring and route split | BL-022 improved feel but may increase dynamic render cost | M | Monitor invocations and split public static routes from the authenticated dynamic shell if the free-plan cost needs tightening |
+| BL-036 | P1 | Deferred | Production schema baseline and disaster recovery hardening | The repo is not yet a full source of truth for the live Supabase schema, RLS, and recovery workflow | M | Post-season only. Capture the live Supabase schema, policies, functions, and triggers into versioned migrations, add a recovery runbook, verify backup/PITR posture, and reduce secret-handling risk in automation flows |
 | BL-026 | P2 | Done | Add an admin anomaly inbox for issues that need action now | Turns logs, automation health, and member state into a clear admin action list | M | Shipped on 2026-04-08. Added a shared admin anomaly rules layer, a season-scoped admin anomalies API, regression tests for the anomaly thresholds, and a new “Needs attention” inbox on the admin home covering due snapshots, failed runs, stale results, due recaps, pending paid-lock members, and pending next-season interest. |
 | BL-027 | P2 | Done | Upgrade private group leaderboard UX into a clearer mini-league experience | Makes groups feel social, useful, and worth coming back to | M | Shipped on 2026-04-09. Added richer private-group cards, a selected-group summary panel, creator invite status counts, and copyable group links so mini-leagues have stronger identity without changing leaderboard rules. |
 | BL-011 | P1 | Deferred | Season archive selector and year-over-year comparison page | Keeps site useful across seasons | M | Post-season only |

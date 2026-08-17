@@ -38,6 +38,8 @@ export default function NextSeasonPage() {
       <PublicPreviewTeaser
         title="Want to know how the comp works?"
         body="See the rules, scoring, and an example ladder before signup opens."
+        secondaryButtonLabel="See design samples"
+        secondaryHref="/next-season/samples"
       />
     </main>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import CopyToClipboardButton from "@/components/CopyToClipboardButton";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { UiButton, UiButtonLink, UiCard, UiSectionHeader } from "@/components/ui";
 import { useToast } from "@/components/ToastProvider";
@@ -424,7 +425,14 @@ export default function AdminRecapsPage() {
                         padding: 14,
                       }}
                     >
-                      <h2 style={{ margin: 0, fontSize: 18 }}>Narrative</h2>
+                      <div className="ui-recap-section-head">
+                        <h2 style={{ margin: 0, fontSize: 18 }}>Narrative</h2>
+                        <CopyToClipboardButton
+                          value={r.narrative_text}
+                          label={`Copy Round ${r.round_number} recap`}
+                          failureMessage={`Could not copy the Round ${r.round_number} recap.`}
+                        />
+                      </div>
                       <pre
                         style={{
                           marginTop: 10,

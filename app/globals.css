@@ -1704,6 +1704,24 @@ button {
   color: var(--muted);
 }
 
+.ui-recap-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ui-recap-copy-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ui-recap-copy-btn {
+  border-radius: 10px;
+}
+
 @media (max-width: 980px) {
   .ui-scoring-filter-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

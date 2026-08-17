@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import CopyToClipboardButton from "@/components/CopyToClipboardButton";
 import { waitForSession } from "@/lib/session-client";
 
 type RecapRow = {
@@ -301,7 +302,14 @@ export default function SeasonRecapsPage() {
                         padding: 14,
                       }}
                     >
-                      <h2 style={{ margin: 0, fontSize: 18 }}>Narrative</h2>
+                      <div className="ui-recap-section-head">
+                        <h2 style={{ margin: 0, fontSize: 18 }}>Narrative</h2>
+                        <CopyToClipboardButton
+                          value={r.narrative_text}
+                          label={`Copy Round ${r.round_number} recap`}
+                          failureMessage={`Could not copy the Round ${r.round_number} recap.`}
+                        />
+                      </div>
                       <pre
                         style={{
                           marginTop: 10,

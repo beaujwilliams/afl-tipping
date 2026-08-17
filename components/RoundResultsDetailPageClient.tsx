@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChampionSeasonLabels } from "@/components/ChampionSeasonLabels";
+import CopyToClipboardButton from "@/components/CopyToClipboardButton";
 import { UnpaidTag } from "@/components/UnpaidTag";
 import { normalizeChampionSeasonsByUserId } from "@/lib/champion-metadata";
 import { isDrawnMatch, isMatchCompleted } from "@/lib/match-status";
@@ -1493,7 +1494,14 @@ export default function RoundResultsDetailPageClient({
                       background: "var(--card)",
                     }}
                   >
-                    <div style={{ fontWeight: 800, fontSize: 15 }}>Narrative</div>
+                    <div className="ui-recap-section-head">
+                      <div style={{ fontWeight: 800, fontSize: 15 }}>Narrative</div>
+                      <CopyToClipboardButton
+                        value={roundRecap.narrative_text}
+                        label={`Copy ${getRoundDisplayName(round)} recap`}
+                        failureMessage={`Could not copy the ${getRoundDisplayName(round)} recap.`}
+                      />
+                    </div>
                     <pre
                       style={{
                         marginTop: 10,

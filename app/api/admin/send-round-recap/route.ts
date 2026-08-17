@@ -394,7 +394,7 @@ function summarizeRoundAggregateStat(params: {
 
   let majorityWins = 0;
   const minorityBackedWinners: Array<{ winner: string; winnerPct: number }> = [];
-  const teamPickCounts: Record<string, number> = {};
+  const teamPickRows: Array<{ team: string; count: number; pct: number }> = [];
 
   for (const m of matches) {
     const winner = String(m.winner_team ?? "").trim();
@@ -413,14 +413,30 @@ function summarizeRoundAggregateStat(params: {
 
     const homeTeam = String(m.home_team ?? "").trim();
     const awayTeam = String(m.away_team ?? "").trim();
-    if (homeTeam) teamPickCounts[homeTeam] = (teamPickCounts[homeTeam] ?? 0) + homeCount;
-    if (awayTeam) teamPickCounts[awayTeam] = (teamPickCounts[awayTeam] ?? 0) + awayCount;
+    if (homeTeam) {
+      teamPickRows.push({
+        team: homeTeam,
+        count: homeCount,
+        pct: totalTips > 0 ? (homeCount / totalTips) * 100 : 0,
+      });
+    }
+    if (awayTeam) {
+      teamPickRows.push({
+        team: awayTeam,
+        count: awayCount,
+        pct: totalTips > 0 ? (awayCount / totalTips) * 100 : 0,
+      });
+    }
   }
 
-  const roundTipsTotal = matches.reduce((sum, m) => sum + Number(m.total_tips ?? 0), 0);
-  const mostPicked = Object.entries(teamPickCounts).sort((a, b) => b[1] - a[1])[0] ?? null;
-  const mostPickedCount = mostPicked ? Number(mostPicked[1]) : 0;
-  const mostPickedPct = roundTipsTotal > 0 ? (mostPickedCount / roundTipsTotal) * 100 : 0;
+  const mostPicked =
+    [...teamPickRows].sort((a, b) => {
+      if (Number(b.count) !== Number(a.count)) return Number(b.count) - Number(a.count);
+      if (Number(b.pct) !== Number(a.pct)) return Number(b.pct) - Number(a.pct);
+      return a.team.localeCompare(b.team);
+    })[0] ?? null;
+  const mostPickedCount = mostPicked ? Number(mostPicked.count) : 0;
+  const mostPickedPct = mostPicked ? Number(mostPicked.pct) : 0;
 
   return {
     round_number: roundNumber,
@@ -429,7 +445,7 @@ function summarizeRoundAggregateStat(params: {
     majority_wins: majorityWins,
     game_count: matches.length,
     minority_winner_count: minorityBackedWinners.length,
-    most_picked_team: mostPicked ? mostPicked[0] : null,
+    most_picked_team: mostPicked ? mostPicked.team : null,
     most_picked_count: mostPickedCount,
     most_picked_pct: mostPickedPct,
   };
@@ -1139,13 +1155,6 @@ export async function GET(req: Request) {
       picksByUserMatch.get(uid)!.set(String(t.match_id), String(t.picked_team ?? ""));
     }
 
-    const roundTipCountByTeam: Record<string, number> = {};
-    for (const t of roundTips) {
-      const team = String(t.picked_team ?? "").trim();
-      if (!team) continue;
-      roundTipCountByTeam[team] = (roundTipCountByTeam[team] ?? 0) + 1;
-    }
-
     const playerStats: PlayerRoundStat[] = rrPlayers.map((p) => ({
       user_id: p.user_id,
       display_name: p.display_name,
@@ -1221,10 +1230,6 @@ export async function GET(req: Request) {
         .sort((a, b) => Number(a.movement) - Number(b.movement)),
       5
     );
-
-    const roundTipsTotal = roundTips.length;
-    const mostPickedTeam =
-      Object.entries(roundTipCountByTeam).sort((a, b) => b[1] - a[1])[0] ?? null;
 
     const rrMatchById = new Map<string, RoundResultsMatch>();
     rrMatches.forEach((m) => rrMatchById.set(String(m.id), m));
@@ -2294,14 +2299,12 @@ export async function GET(req: Request) {
         )}, backed by ${fmtPct(biggestUpset.winnerTipShare)} of the comp.`,
       });
     }
-    if (mostPickedTeam) {
-      const mostPickedPct =
-        roundTipsTotal > 0 ? (Number(mostPickedTeam[1]) / Number(roundTipsTotal)) * 100 : 0;
+    if (currentRoundAggregate.most_picked_team && Number(currentRoundAggregate.most_picked_count) > 0) {
       pushStoryCandidate(roundNoteCandidates, {
         id: "most-picked-side",
         priority: 76,
-        line: `Most tipped side was ${mostPickedTeam[0]} with ${mostPickedTeam[1]} picks (${fmtPct(
-          mostPickedPct
+        line: `Most tipped side was ${currentRoundAggregate.most_picked_team} with ${currentRoundAggregate.most_picked_count} picks (${fmtPct(
+          Number(currentRoundAggregate.most_picked_pct)
         )}).`,
       });
     }

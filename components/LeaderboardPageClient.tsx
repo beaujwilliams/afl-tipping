@@ -2971,6 +2971,11 @@ export default function LeaderboardPageClient({
               </UiTableScroll>
             )}
             </UiTableShell>
+            {scopedRows.length > 0 ? (
+              <p className="ui-caption" style={{ margin: "8px 2px 0" }}>
+                Names in italics haven&apos;t submitted tips for 5 straight rounds.
+              </p>
+            ) : null}
             </>
           )}
 

@@ -214,24 +214,57 @@ function normalizeUserIdList(value: unknown) {
   return out;
 }
 
-function buildNiceNumberTicks(maxValue: number, targetTickCount = 6) {
-  const safeMax = Number.isFinite(maxValue) ? Math.max(0, maxValue) : 0;
-  if (safeMax <= 0) return { ticks: [0, 1], axisMax: 1 };
+function roundAxisNumber(value: number) {
+  return Number(value.toFixed(6));
+}
 
-  const roughStep = safeMax / Math.max(2, targetTickCount - 1);
+function buildNiceStep(roughStep: number) {
   const magnitude = 10 ** Math.floor(Math.log10(roughStep));
   const residual = roughStep / magnitude;
   let niceResidual = 1;
   if (residual > 1) niceResidual = 2;
-  if (residual > 2) niceResidual = 5;
+  if (residual > 2) niceResidual = 2.5;
+  if (residual > 2.5) niceResidual = 5;
   if (residual > 5) niceResidual = 10;
-  const step = niceResidual * magnitude;
-  const axisMax = Math.ceil(safeMax / step) * step;
-  const ticks: number[] = [];
-  for (let value = 0; value <= axisMax + step * 0.5; value += step) {
-    ticks.push(Number(value.toFixed(2)));
+  return niceResidual * magnitude;
+}
+
+function buildNiceNumberDomain(minValue: number, maxValue: number, targetTickCount = 6) {
+  const safeMin = Number.isFinite(minValue) ? minValue : 0;
+  const safeMax = Number.isFinite(maxValue) ? maxValue : 0;
+  const dataMin = Math.min(safeMin, safeMax);
+  const dataMax = Math.max(safeMin, safeMax);
+
+  if (dataMin <= 0 && dataMax <= 0) {
+    return { ticks: [0, 1], axisMin: 0, axisMax: 1 };
   }
-  return { ticks, axisMax };
+
+  const dataRange = dataMax - dataMin;
+  const paddedRange =
+    dataRange > 0
+      ? dataRange * 1.16
+      : Math.max(1, Math.abs(dataMax || dataMin || 1) * 0.16);
+  const roughStep = paddedRange / Math.max(2, targetTickCount - 1);
+  const step = buildNiceStep(roughStep);
+  const padding = Math.max(step * 0.25, dataRange * 0.08);
+  const paddedMin = dataMin - padding;
+  const paddedMax = dataMax + padding;
+  let axisMin = Math.floor(paddedMin / step) * step;
+  let axisMax = Math.ceil(paddedMax / step) * step;
+
+  if (dataMin >= 0) {
+    axisMin = Math.max(0, axisMin);
+  }
+
+  if (axisMax <= axisMin) {
+    axisMax = axisMin + step;
+  }
+
+  const ticks: number[] = [];
+  for (let value = axisMin; value <= axisMax + step * 0.5; value += step) {
+    ticks.push(roundAxisNumber(value));
+  }
+  return { ticks, axisMin: roundAxisNumber(axisMin), axisMax: roundAxisNumber(axisMax) };
 }
 
 function normalizeLeaderboardState(json: LeaderboardResponse | null | undefined) {
@@ -383,11 +416,13 @@ function TrendChart(props: {
     ...seriesWithPoints.flatMap((series) => series.points.map((point) => point.rank))
   );
   const rankMax = Math.max(1, totalParticipants, maxRankInSeries);
-  const maxPointsInSeries = Math.max(
-    0,
-    ...seriesWithPoints.flatMap((series) => series.points.map((point) => point.total_points))
+  const pointsInSeries = seriesWithPoints.flatMap((series) =>
+    series.points.map((point) => point.total_points)
   );
-  const pointTicksData = buildNiceNumberTicks(maxPointsInSeries);
+  const pointAxis = buildNiceNumberDomain(
+    Math.min(...pointsInSeries),
+    Math.max(...pointsInSeries)
+  );
 
   const chartWidth = 980;
   const previewChartHeight = 360;
@@ -396,7 +431,7 @@ function TrendChart(props: {
   const maxRound = rounds[rounds.length - 1];
   const roundRange = Math.max(1, maxRound - minRound);
   const rankRange = Math.max(1, rankMax - 1);
-  const pointsRange = Math.max(1, pointTicksData.axisMax);
+  const pointsRange = Math.max(1, pointAxis.axisMax - pointAxis.axisMin);
 
   const maxRoundTicks = 9;
   const roundTickStep = Math.max(1, Math.ceil(rounds.length / maxRoundTicks));
@@ -404,7 +439,7 @@ function TrendChart(props: {
     (_roundNumber, index) => index % roundTickStep === 0 || index === rounds.length - 1
   );
 
-  const yTicksSet = new Set<number>(isRankMode ? [1, rankMax] : pointTicksData.ticks);
+  const yTicksSet = new Set<number>(isRankMode ? [1, rankMax] : pointAxis.ticks);
   if (isRankMode) {
     const yTickStep = rankMax <= 12 ? 2 : rankMax <= 24 ? 4 : 5;
     for (let rank = yTickStep; rank < rankMax; rank += yTickStep) {
@@ -428,7 +463,7 @@ function TrendChart(props: {
       if (isRankMode) {
         return margin.top + ((value - 1) / rankRange) * innerHeight;
       }
-      return margin.top + (1 - value / pointsRange) * innerHeight;
+      return margin.top + (1 - (value - pointAxis.axisMin) / pointsRange) * innerHeight;
     };
 
     return (

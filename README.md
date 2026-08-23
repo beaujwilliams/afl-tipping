@@ -70,10 +70,27 @@ Required GitHub settings:
 - Secret: `CRON_SECRET` (must match production `CRON_SECRET`)
 - Optional repository variable: `SITE_URL` (defaults to `https://www.complicatedtips.com`)
 
+## Scheduled Fixture Sync
+
+The 2026 finals fixture sync runs through `.github/workflows/fixture-sync-finals-2026.yml` and calls:
+
+`/api/admin/sync-fixture?season=2026`
+
+Scheduled 2026 runs are 10:00am Australia/Melbourne on:
+
+- Monday 24 August, after Round 24
+- Monday 31 August, after Wildcard Round
+- Monday 7 September, after Finals Week 1
+- Monday 14 September, after Semi Finals
+- Monday 21 September, after Preliminary Finals
+
+For 2027, replace this finals-only schedule with a weekly Monday 10:00am Australia/Melbourne fixture sync covering the AFL season window only, not the full calendar year.
+
 ## Manual GitHub Workflow Overrides
 
 These workflows remain available for manual runs from GitHub Actions:
 
+- `.github/workflows/fixture-sync-finals-2026.yml`
 - `.github/workflows/prelock-reminders.yml`
 - `.github/workflows/scoring-sync-15m.yml`
 - `.github/workflows/scoring-sync-daily-full.yml`

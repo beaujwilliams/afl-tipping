@@ -154,6 +154,20 @@ export default function AdminPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [season]);
 
+  useEffect(() => {
+    function openTargetDetails() {
+      if (typeof window === "undefined") return;
+      const targetHash = window.location.hash;
+      if (targetHash !== "#admin-maintenance" && targetHash !== "#admin-recovery") return;
+      const target = document.querySelector<HTMLDetailsElement>(targetHash);
+      if (target?.tagName === "DETAILS") target.open = true;
+    }
+
+    openTargetDetails();
+    window.addEventListener("hashchange", openTargetDetails);
+    return () => window.removeEventListener("hashchange", openTargetDetails);
+  }, []);
+
   const resultSummary = useMemo(() => summarizeResult(result), [result]);
   const runningLabel = useMemo(() => describeRunningAction(loading), [loading]);
   const healthFailureCount = healthData?.recent_failures?.length ?? 0;
@@ -454,21 +468,73 @@ export default function AdminPage() {
     await run(path);
   }
 
+  const dominantAnomalySeverity: AdminAnomalyRow["severity"] =
+    (anomalyData?.counts?.critical ?? 0) > 0
+      ? "critical"
+      : (anomalyData?.counts?.warning ?? 0) > 0
+        ? "warning"
+        : "info";
+  const anomalyStatusStyle =
+    anomalyTotal > 0
+      ? anomalyBadgeStyle(dominantAnomalySeverity)
+      : {
+          background: "var(--tone-success-bg)",
+          color: "var(--tone-success-text)",
+          border: "1px solid rgba(16, 185, 129, 0.22)",
+        };
+  const anomalyStatusLabel = anomalyLoading
+    ? "CHECKING"
+    : anomalyTotal > 0
+      ? `${anomalyTotal} OPEN`
+      : "ALL CLEAR";
+  const healthStatusLabel = healthLoading
+    ? "CHECKING"
+    : healthData?.healthy === false
+      ? "ATTENTION NEEDED"
+      : "ALL CLEAR";
+  const healthStatusStyle = {
+    background: healthData?.healthy === false ? "var(--tone-danger-bg)" : "var(--tone-success-bg)",
+    color: healthData?.healthy === false ? "var(--tone-danger-text)" : "var(--tone-success-text)",
+    border: "1px solid rgba(0,0,0,0.08)",
+  };
+  const healthSummary = healthMsg
+    ? healthMsg
+    : healthData?.healthy === false
+      ? `${healthFailureCount} failed automation run${
+          healthFailureCount === 1 ? "" : "s"
+        } in the last ${healthData?.failure_window_hours ?? 72} hours.`
+      : `No failed automation runs in the last ${healthData?.failure_window_hours ?? 72} hours.`;
+  const healthDotClass =
+    healthData?.healthy === false
+      ? "ui-admin-status-dot--danger"
+      : healthLoading
+        ? "ui-admin-status-dot--warning"
+        : "ui-admin-status-dot--success";
+  const latestActionSummary =
+    result === null
+      ? "No admin action has run in this browser session."
+      : resultSummary;
+
   return (
-    <main className="ui-page ui-page--narrow ui-admin-page">
+    <main className="ui-page ui-page--wide ui-admin-page">
       <div className="ui-page-header">
-        <h1 className="ui-title">Admin Centre</h1>
-        <div className="ui-caption">
-          Weekly actions first. Settings, logs, and rare recovery stay behind expansion.
+        <div>
+          <h1 className="ui-title">Admin Centre</h1>
+          <div className="ui-caption ui-mt-1">
+            Current issues, routine operations, settings, and rare recovery each have their own lane.
+          </div>
         </div>
+        <span className="ui-badge" style={anomalyStatusStyle}>
+          {anomalyStatusLabel}
+        </span>
       </div>
 
-      <UiCard soft className="ui-admin-section ui-admin-section--wide">
+      <UiCard soft className="ui-admin-control-bar">
         <div className="ui-row-wrap" style={{ justifyContent: "space-between", gap: 12 }}>
           <div className="ui-admin-stack-tight">
             <div className="ui-admin-kicker">{seasonScopeLabel}</div>
             <div className="ui-admin-summary ui-admin-summary--tight">
-              Scoring, health, logs, recaps, and recovery actions use this season.
+              Scoring, health, logs, recaps, and recovery actions are scoped to this season.
             </div>
           </div>
           <div className="ui-row-wrap ui-admin-gap-sm" style={{ alignItems: "center" }}>
@@ -486,34 +552,17 @@ export default function AdminPage() {
         </div>
       </UiCard>
 
-      <div className="ui-admin-grid">
-        <UiCard soft className="ui-admin-section ui-admin-section--wide">
+      <section className="ui-admin-control-grid" aria-label="Admin control room">
+        <UiCard soft className="ui-admin-section">
           <div className="ui-row-wrap" style={{ justifyContent: "space-between", gap: 10 }}>
             <div>
               <h2 className="ui-admin-section-title">Today</h2>
               <div className="ui-admin-summary ui-admin-summary--tight">
-                Start here for anything that needs action now.
+                This is the only queue that should feel urgent.
               </div>
             </div>
-            <span
-              className="ui-badge"
-              style={
-                anomalyTotal > 0
-                  ? anomalyBadgeStyle(
-                      (anomalyData?.counts?.critical ?? 0) > 0
-                        ? "critical"
-                        : (anomalyData?.counts?.warning ?? 0) > 0
-                          ? "warning"
-                          : "info"
-                    )
-                  : {
-                      background: "var(--tone-success-bg)",
-                      color: "var(--tone-success-text)",
-                      border: "1px solid rgba(16, 185, 129, 0.22)",
-                    }
-              }
-            >
-              {anomalyLoading ? "CHECKING" : anomalyTotal > 0 ? `${anomalyTotal} OPEN` : "ALL CLEAR"}
+            <span className="ui-badge" style={anomalyStatusStyle}>
+              {anomalyStatusLabel}
             </span>
           </div>
 
@@ -522,16 +571,16 @@ export default function AdminPage() {
               {anomalyMsg}
             </div>
           ) : anomalyTotal === 0 && !anomalyLoading ? (
-            <UiCard className="ui-admin-tool">
+            <div className="ui-admin-action-item">
               <div className="ui-admin-subtitle">Nothing urgent right now</div>
               <div className="ui-admin-summary ui-admin-summary--tight">
                 No current issues for this season.
               </div>
-            </UiCard>
+            </div>
           ) : (
             <div className="ui-admin-anomaly-list">
               {(anomalyData?.anomalies ?? []).map((anomaly) => (
-                <UiCard key={anomaly.id} className="ui-admin-tool ui-admin-anomaly-item">
+                <div key={anomaly.id} className="ui-admin-action-item ui-admin-anomaly-item">
                   <div className="ui-admin-anomaly-top">
                     <div className="ui-admin-stack-tight">
                       <div className="ui-admin-subtitle">{anomaly.title}</div>
@@ -553,7 +602,7 @@ export default function AdminPage() {
                       {dismissingAnomalyId === anomaly.id ? "Dismissing..." : "Dismiss (24h)"}
                     </UiButton>
                   </div>
-                </UiCard>
+                </div>
               ))}
             </div>
           )}
@@ -579,26 +628,125 @@ export default function AdminPage() {
           </div>
         </UiCard>
 
-        <UiCard soft className="ui-admin-section ui-admin-section--wide">
-          <div className="ui-row-wrap" style={{ justifyContent: "space-between", gap: 10 }}>
-            <div>
-              <h2 className="ui-admin-section-title">Main Actions</h2>
-              <div className="ui-admin-summary ui-admin-summary--tight">
-                Keep the weekly admin rhythm here: recovery first, then roster, money, comms, and health.
+        <div className="ui-admin-status-column">
+          <UiCard soft className="ui-admin-section">
+            <div className="ui-row-wrap" style={{ justifyContent: "space-between", gap: 10 }}>
+              <div>
+                <h2 className="ui-admin-section-title">Status</h2>
+                <div className="ui-admin-summary ui-admin-summary--tight">
+                  Quick read before touching anything.
+                </div>
+              </div>
+              <span className="ui-badge" style={healthStatusStyle}>
+                {healthStatusLabel}
+              </span>
+            </div>
+
+            <div className="ui-admin-status-list">
+              <div className="ui-admin-status-row">
+                <span
+                  className={`ui-admin-status-dot ${
+                    anomalyTotal > 0 ? "ui-admin-status-dot--warning" : "ui-admin-status-dot--success"
+                  }`}
+                  aria-hidden="true"
+                />
+                <div>
+                  <div className="ui-admin-subtitle">Needs attention</div>
+                  <div className="ui-admin-summary ui-admin-summary--tight">
+                    {anomalyStatusLabel}
+                  </div>
+                </div>
+              </div>
+              <div className="ui-admin-status-row">
+                <span className={`ui-admin-status-dot ${healthDotClass}`} aria-hidden="true" />
+                <div>
+                  <div className="ui-admin-subtitle">Automation</div>
+                  <div className="ui-admin-summary ui-admin-summary--tight">{healthSummary}</div>
+                  {healthWarning && (
+                    <div
+                      className="ui-admin-summary ui-admin-summary--tight"
+                      style={{ color: "var(--tone-warning-text)" }}
+                    >
+                      {healthWarning}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="ui-admin-status-row">
+                <span className="ui-admin-status-dot ui-admin-status-dot--success" aria-hidden="true" />
+                <div>
+                  <div className="ui-admin-subtitle">Latest action</div>
+                  <div className="ui-admin-summary ui-admin-summary--tight">{latestActionSummary}</div>
+                </div>
               </div>
             </div>
-            <span className="ui-badge">Visible weekly tools</span>
-          </div>
 
-          <div className="ui-admin-maintenance-grid">
-            <UiCard className="ui-admin-tool">
-              <div className="ui-row-wrap" style={{ justifyContent: "space-between", gap: 8 }}>
-                <div className="ui-admin-subtitle">Results recovery</div>
-                <span className="ui-badge">Primary</span>
+            <div className="ui-row-wrap ui-admin-gap-sm">
+              <UiButton
+                disabled={healthLoading}
+                onClick={() => void loadAutomationHealth()}
+                className="ui-admin-btn"
+              >
+                {healthLoading ? "Refreshing..." : "Refresh Health"}
+              </UiButton>
+              <UiButtonLink
+                href={`/admin/automation-health?season=${encodeURIComponent(String(season))}`}
+                className="ui-admin-btn"
+              >
+                Open Runs
+              </UiButtonLink>
+            </div>
+          </UiCard>
+
+          <UiCard soft className="ui-admin-section">
+            <h2 className="ui-admin-section-title">Weekly Rhythm</h2>
+            <div className="ui-admin-rhythm-list">
+              <div className="ui-admin-rhythm-item">
+                <div className="ui-admin-kicker">Before lock</div>
+                <div className="ui-admin-summary ui-admin-summary--tight">
+                  Check automation health, payment locks, and due odds snapshots.
+                </div>
               </div>
-              <div className="ui-admin-summary ui-admin-summary--tight">
-                Run the full recovery flow before reaching for single-step tools.
+              <div className="ui-admin-rhythm-item">
+                <div className="ui-admin-kicker">After round</div>
+                <div className="ui-admin-summary ui-admin-summary--tight">
+                  Sync results, recalculate the leaderboard, then generate or review the recap.
+                </div>
               </div>
+              <div className="ui-admin-rhythm-item">
+                <div className="ui-admin-kicker">Season admin</div>
+                <div className="ui-admin-summary ui-admin-summary--tight">
+                  Keep roster, payments, and onboarding in the member lifecycle lane.
+                </div>
+              </div>
+            </div>
+          </UiCard>
+        </div>
+      </section>
+
+      <section className="ui-admin-operation-section" aria-labelledby="admin-routine-heading">
+        <div className="ui-row-wrap" style={{ justifyContent: "space-between", gap: 10 }}>
+          <div>
+            <h2 id="admin-routine-heading" className="ui-admin-section-title">
+              Routine Operations
+            </h2>
+            <div className="ui-admin-summary ui-admin-summary--tight">
+              These are the normal places to work during the week.
+            </div>
+          </div>
+          <span className="ui-badge">Common tools</span>
+        </div>
+
+        <div className="ui-admin-operation-grid">
+          <UiCard className="ui-admin-operation-card ui-admin-operation-card--primary">
+            <div className="ui-row-wrap" style={{ justifyContent: "space-between", gap: 8 }}>
+              <div className="ui-admin-subtitle">Results recovery</div>
+              <span className="ui-badge">Primary</span>
+            </div>
+            <div className="ui-admin-summary ui-admin-summary--tight">
+              Run the full scoring repair flow first. Single-step tools live in rare recovery.
+            </div>
+            <div className="ui-admin-operation-actions">
               <UiButton
                 disabled={isRunning}
                 onClick={runSyncAndRecalc}
@@ -606,263 +754,179 @@ export default function AdminPage() {
               >
                 Sync Results + Recalculate Leaderboard
               </UiButton>
-            </UiCard>
-
-            <UiCard className="ui-admin-tool">
-              <div className="ui-admin-subtitle">Season roster</div>
-              <div className="ui-admin-summary ui-admin-summary--tight">
-                Day-to-day roster management for the live season.
-              </div>
-              <UiButtonLink
-                href={`/admin/roster/${CURRENT_SEASON}`}
-                className="ui-admin-btn ui-admin-btn--full"
-              >
-                Open Season Roster
-              </UiButtonLink>
-            </UiCard>
-
-            <UiCard className="ui-admin-tool">
-              <div className="ui-admin-subtitle">Payments</div>
-              <div className="ui-admin-summary ui-admin-summary--tight">
-                Record transfers, match them to members, and chase anything still pending.
-              </div>
-              <UiButtonLink href="/admin/payments" className="ui-admin-btn ui-admin-btn--full">
-                Open Payments
-              </UiButtonLink>
-            </UiCard>
-
-            <UiCard className="ui-admin-tool">
-              <div className="ui-admin-subtitle">Round recaps</div>
-              <div className="ui-admin-summary ui-admin-summary--tight">
-                Review recap history and generate a manual recap when needed.
-              </div>
-              <UiButtonLink href="/admin/recaps" className="ui-admin-btn ui-admin-btn--full">
-                Open Round Recaps
-              </UiButtonLink>
-            </UiCard>
-
-            <UiCard className="ui-admin-tool">
-              <div className="ui-admin-subtitle">Announcements</div>
-              <div className="ui-admin-summary ui-admin-summary--tight">
-                Member-facing broadcast posts live here, so it belongs with the main comms tools.
-              </div>
-              <UiButtonLink href="/announcements" className="ui-admin-btn ui-admin-btn--full">
-                Open Announcements
-              </UiButtonLink>
-            </UiCard>
-
-            <UiCard className="ui-admin-tool">
-              <div className="ui-row-wrap" style={{ justifyContent: "space-between", gap: 8 }}>
-                <div className="ui-admin-subtitle">Automation health</div>
-                <span
-                  className="ui-badge"
-                  style={{
-                    background:
-                      healthData?.healthy === false
-                        ? "var(--tone-danger-bg)"
-                        : "var(--tone-success-bg)",
-                    color:
-                      healthData?.healthy === false
-                        ? "var(--tone-danger-text)"
-                        : "var(--tone-success-text)",
-                    border: "1px solid rgba(0,0,0,0.08)",
-                  }}
-                >
-                  {healthLoading
-                    ? "CHECKING"
-                    : healthData?.healthy === false
-                      ? "ATTENTION NEEDED"
-                      : "ALL CLEAR"}
-                </span>
-              </div>
-              <div className="ui-admin-summary ui-admin-summary--tight">
-                {healthMsg
-                  ? healthMsg
-                  : healthData?.healthy === false
-                    ? `${healthFailureCount} failed automation run${healthFailureCount === 1 ? "" : "s"} in the last ${healthData?.failure_window_hours ?? 72} hours.`
-                    : `No failed automation runs in the last ${healthData?.failure_window_hours ?? 72} hours.`}
-              </div>
-              {healthWarning && (
-                <div
-                  className="ui-admin-summary ui-admin-summary--tight"
-                  style={{ color: "var(--tone-warning-text)" }}
-                >
-                  {healthWarning}
-                </div>
-              )}
-              <div className="ui-admin-stack-tight">
-                <UiButtonLink
-                  href={`/admin/automation-health?season=${encodeURIComponent(String(season))}`}
-                  className="ui-admin-btn ui-admin-btn--full"
-                >
-                  Open Automation Health
-                </UiButtonLink>
-                <UiButton
-                  disabled={healthLoading}
-                  onClick={() => void loadAutomationHealth()}
-                  className="ui-admin-btn ui-admin-btn--full"
-                >
-                  {healthLoading ? "Refreshing..." : "Refresh Health"}
-                </UiButton>
-              </div>
-            </UiCard>
-
-            {showOnboarding && (
-              <UiCard className="ui-admin-tool">
-                <div className="ui-row-wrap" style={{ justifyContent: "space-between", gap: 8 }}>
-                  <div className="ui-admin-subtitle">Next-season onboarding</div>
-                  <span className="ui-badge">{NEXT_SEASON}</span>
-                </div>
-                <div className="ui-admin-summary ui-admin-summary--tight">
-                  Keep this visible while you are actively filling the next season pipeline.
-                </div>
-                <UiButtonLink href="/admin/onboarding" className="ui-admin-btn ui-admin-btn--full">
-                  Open Onboarding
-                </UiButtonLink>
-              </UiCard>
-            )}
-          </div>
-        </UiCard>
-
-        <details
-          id="admin-maintenance"
-          className="ui-card ui-card-soft ui-admin-section ui-admin-section--wide ui-admin-details"
-        >
-          <summary className="ui-admin-details-summary">Settings &amp; Logs</summary>
-          <div className="ui-admin-summary">
-            Lower-frequency admin controls, history pages, and back-office views.
-          </div>
-
-          <div className="ui-admin-maintenance-grid" style={{ marginTop: 12 }}>
-            <UiCard className="ui-admin-tool">
-              <div className="ui-admin-subtitle">People settings</div>
-              <div className="ui-admin-summary ui-admin-summary--tight">
-                Champion settings, payment lock settings, and cross-season people edits live here.
-              </div>
-              <UiButtonLink href="/admin/settings/people" className="ui-admin-btn ui-admin-btn--full">
-                Open People Settings
-              </UiButtonLink>
-            </UiCard>
-
-            <UiCard className="ui-admin-tool">
-              <div className="ui-admin-subtitle">Scoring log</div>
-              <div className="ui-admin-summary ui-admin-summary--tight">
-                Check scoring, results changes, and leaderboard refreshes.
-              </div>
               <UiButtonLink
                 href={`/admin/scoring-sync?season=${encodeURIComponent(String(season))}`}
                 className="ui-admin-btn ui-admin-btn--full"
               >
                 Open Scoring Log
               </UiButtonLink>
-            </UiCard>
+            </div>
+          </UiCard>
 
-            <UiCard className="ui-admin-tool">
-              <div className="ui-admin-subtitle">Admin audit log</div>
-              <div className="ui-admin-summary ui-admin-summary--tight">
-                See who changed members, settings, fixture data, results, or snapshots.
-              </div>
+          <UiCard className="ui-admin-operation-card">
+            <div className="ui-admin-subtitle">Members &amp; money</div>
+            <div className="ui-admin-summary ui-admin-summary--tight">
+              Roster, payment reconciliation, and next-season onboarding stay together.
+            </div>
+            <div className="ui-admin-operation-actions">
               <UiButtonLink
-                href={`/admin/audit-log?season=${encodeURIComponent(String(season))}`}
+                href={`/admin/roster/${CURRENT_SEASON}`}
                 className="ui-admin-btn ui-admin-btn--full"
               >
-                Open Audit Log
+                Open Season Roster
               </UiButtonLink>
-            </UiCard>
+              <UiButtonLink href="/admin/payments" className="ui-admin-btn ui-admin-btn--full">
+                Open Payments
+              </UiButtonLink>
+              {showOnboarding && (
+                <UiButtonLink href="/admin/onboarding" className="ui-admin-btn ui-admin-btn--full">
+                  Open Onboarding ({NEXT_SEASON})
+                </UiButtonLink>
+              )}
+            </div>
+          </UiCard>
 
-            <UiCard className="ui-admin-tool">
-              <div className="ui-admin-subtitle">Raw interest queue</div>
-              <div className="ui-admin-summary ui-admin-summary--tight">
-                Back-office view for export, bulk email, and cleanup.
-              </div>
-              <UiButtonLink
-                href="/admin/interested-members"
-                className="ui-admin-btn ui-admin-btn--full"
-              >
-                Raw Interest Queue ({NEXT_SEASON})
+          <UiCard className="ui-admin-operation-card">
+            <div className="ui-admin-subtitle">Comms</div>
+            <div className="ui-admin-summary ui-admin-summary--tight">
+              Member-facing updates and recap emails are treated as one communication workflow.
+            </div>
+            <div className="ui-admin-operation-actions">
+              <UiButtonLink href="/announcements" className="ui-admin-btn ui-admin-btn--full">
+                Open Announcements
               </UiButtonLink>
-            </UiCard>
+              <UiButtonLink href="/admin/recaps" className="ui-admin-btn ui-admin-btn--full">
+                Open Round Recaps
+              </UiButtonLink>
+            </div>
+          </UiCard>
+        </div>
+      </section>
+
+      <details
+        id="admin-maintenance"
+        className="ui-card ui-card-soft ui-admin-section ui-admin-details ui-admin-operation-section"
+      >
+        <summary className="ui-admin-details-summary">Settings, Logs &amp; Archives</summary>
+        <div className="ui-admin-summary">
+          Lower-frequency controls and history pages. They are useful, but they should not compete
+          with today&apos;s queue.
+        </div>
+
+        <div className="ui-admin-directory-grid">
+          <div className="ui-admin-action-item">
+            <div className="ui-admin-subtitle">People settings</div>
+            <div className="ui-admin-summary ui-admin-summary--tight">
+              Champion settings, payment lock settings, and cross-season people edits.
+            </div>
+            <UiButtonLink href="/admin/settings/people" className="ui-admin-btn ui-admin-btn--full">
+              Open People Settings
+            </UiButtonLink>
           </div>
 
-          <details
-            className="ui-card ui-admin-tool--nested ui-admin-details"
-            style={{ marginTop: 16 }}
-          >
-            <summary className="ui-admin-details-summary">Rare Recovery</summary>
-            <div className="ui-admin-summary">
-              Single-step, backfill, and testing tools. Use only when the main recovery action is not enough.
+          <div className="ui-admin-action-item">
+            <div className="ui-admin-subtitle">Audit log</div>
+            <div className="ui-admin-summary ui-admin-summary--tight">
+              See who changed members, settings, fixture data, results, or snapshots.
             </div>
+            <UiButtonLink
+              href={`/admin/audit-log?season=${encodeURIComponent(String(season))}`}
+              className="ui-admin-btn ui-admin-btn--full"
+            >
+              Open Audit Log
+            </UiButtonLink>
+          </div>
 
-            <div className="ui-admin-maintenance-grid" style={{ marginTop: 12 }}>
-              <UiCard className="ui-admin-tool">
-                <div className="ui-admin-subtitle">Manual scoring steps</div>
-                <div className="ui-admin-summary ui-admin-summary--tight">
-                  Run a single scoring step only when you intentionally want less than the full recovery flow.
-                </div>
-                <div className="ui-row-wrap ui-admin-gap-sm">
-                  <UiButton
-                    disabled={isRunning}
-                    onClick={() => run(`/api/admin/sync-results?season=${season}`)}
-                    className="ui-admin-btn ui-admin-btn--compact"
-                  >
-                    Sync Results (Only)
-                  </UiButton>
-
-                  <UiButton
-                    disabled={isRunning}
-                    onClick={() => run(`/api/admin/recalc-leaderboard?season=${season}`)}
-                    className="ui-admin-btn ui-admin-btn--compact"
-                  >
-                    Recalculate Leaderboard (Only)
-                  </UiButton>
-                </div>
-              </UiCard>
-
-              <UiCard className="ui-admin-tool">
-                <div className="ui-admin-subtitle">Fixture &amp; odds maintenance</div>
-                <div className="ui-admin-summary ui-admin-summary--tight">
-                  Backfills and manual capture for fixture data or due-round odds.
-                </div>
-                <div className="ui-admin-stack">
-                  <UiButton
-                    disabled={isRunning}
-                    onClick={() => run(`/api/admin/sync-fixture?season=${season}`)}
-                    className="ui-admin-btn ui-admin-btn--full"
-                  >
-                    Sync Fixture
-                  </UiButton>
-
-                  <UiButton
-                    disabled={isRunning}
-                    onClick={() => run(`/api/admin/snapshot-odds-all-due?season=${season}`)}
-                    className="ui-admin-btn ui-admin-btn--full"
-                  >
-                    Snapshot Next Due Round
-                  </UiButton>
-                </div>
-              </UiCard>
-
-              <UiCard className="ui-admin-tool">
-                <div className="ui-row-wrap" style={{ justifyContent: "space-between", gap: 8 }}>
-                  <div className="ui-admin-subtitle">Force snapshot</div>
-                  <span className="ui-admin-danger-chip">Rare use</span>
-                </div>
-                <div className="ui-admin-summary ui-admin-summary--tight">
-                  Forces odds capture immediately. Keep this as a deliberate testing/backfill action.
-                </div>
-                <UiButton
-                  disabled={isRunning}
-                  onClick={runForceSnapshotNow}
-                  className="ui-admin-btn ui-admin-btn--full"
-                  tone="dangerSoft"
-                >
-                  Run Force Snapshot
-                </UiButton>
-              </UiCard>
+          <div className="ui-admin-action-item">
+            <div className="ui-admin-subtitle">Raw signups</div>
+            <div className="ui-admin-summary ui-admin-summary--tight">
+              Back-office view for export, bulk email, and cleanup.
             </div>
-          </details>
-        </details>
-      </div>
+            <UiButtonLink href="/admin/interested-members" className="ui-admin-btn ui-admin-btn--full">
+              Open Raw Signups ({NEXT_SEASON})
+            </UiButtonLink>
+          </div>
+        </div>
+
+      </details>
+
+      <details
+        id="admin-recovery"
+        className="ui-card ui-card-soft ui-admin-section ui-admin-details ui-admin-danger-zone"
+      >
+        <summary className="ui-admin-details-summary">Rare Recovery</summary>
+        <div className="ui-admin-summary">
+          Single-step, backfill, and testing tools. Use only when the full recovery action is not enough.
+        </div>
+
+        <div className="ui-admin-directory-grid">
+          <div className="ui-admin-action-item">
+            <div className="ui-admin-subtitle">Manual scoring steps</div>
+            <div className="ui-admin-summary ui-admin-summary--tight">
+              Run one scoring step only when you intentionally want less than the full recovery flow.
+            </div>
+            <div className="ui-row-wrap ui-admin-gap-sm">
+              <UiButton
+                disabled={isRunning}
+                onClick={() => run(`/api/admin/sync-results?season=${season}`)}
+                className="ui-admin-btn ui-admin-btn--compact"
+              >
+                Sync Results Only
+              </UiButton>
+
+              <UiButton
+                disabled={isRunning}
+                onClick={() => run(`/api/admin/recalc-leaderboard?season=${season}`)}
+                className="ui-admin-btn ui-admin-btn--compact"
+              >
+                Recalculate Only
+              </UiButton>
+            </div>
+          </div>
+
+          <div className="ui-admin-action-item">
+            <div className="ui-admin-subtitle">Fixture &amp; odds maintenance</div>
+            <div className="ui-admin-summary ui-admin-summary--tight">
+              Backfills and manual capture for fixture data or due-round odds.
+            </div>
+            <div className="ui-admin-operation-actions">
+              <UiButton
+                disabled={isRunning}
+                onClick={() => run(`/api/admin/sync-fixture?season=${season}`)}
+                className="ui-admin-btn ui-admin-btn--full"
+              >
+                Sync Fixture
+              </UiButton>
+
+              <UiButton
+                disabled={isRunning}
+                onClick={() => run(`/api/admin/snapshot-odds-all-due?season=${season}`)}
+                className="ui-admin-btn ui-admin-btn--full"
+              >
+                Snapshot Next Due Round
+              </UiButton>
+            </div>
+          </div>
+
+          <div className="ui-admin-action-item">
+            <div className="ui-row-wrap" style={{ justifyContent: "space-between", gap: 8 }}>
+              <div className="ui-admin-subtitle">Force snapshot</div>
+              <span className="ui-admin-danger-chip">Rare use</span>
+            </div>
+            <div className="ui-admin-summary ui-admin-summary--tight">
+              Forces odds capture immediately. Keep this as a deliberate testing/backfill action.
+            </div>
+            <UiButton
+              disabled={isRunning}
+              onClick={runForceSnapshotNow}
+              className="ui-admin-btn ui-admin-btn--full"
+              tone="dangerSoft"
+            >
+              Run Force Snapshot
+            </UiButton>
+          </div>
+        </div>
+      </details>
 
       {loading && <div className="ui-admin-running">{runningLabel}</div>}
 

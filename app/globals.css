@@ -1347,8 +1347,321 @@ button {
    Admin UI (Shared Phase)
 ================================ */
 
+.ui-admin-shell {
+  width: 100%;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 22px 16px 46px;
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.ui-admin-shell-sidebar {
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  padding: 12px;
+}
+
+.ui-admin-shell-header {
+  padding: 4px 4px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ui-admin-shell-kicker,
+.ui-admin-shell-group-label {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ui-admin-shell-title {
+  margin-top: 4px;
+  font-size: 22px;
+  font-weight: 900;
+  line-height: 1.05;
+}
+
+.ui-admin-shell-meta {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.ui-admin-shell-nav {
+  display: grid;
+  gap: 16px;
+  padding-top: 14px;
+}
+
+.ui-admin-mobile-links {
+  display: none;
+}
+
+.ui-admin-shell-group {
+  display: grid;
+  gap: 7px;
+}
+
+.ui-admin-shell-links {
+  display: grid;
+  gap: 4px;
+}
+
+.ui-admin-shell-link {
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  color: inherit;
+  text-decoration: none;
+  border: 1px solid transparent;
+}
+
+.ui-admin-shell-link:hover {
+  background: var(--card-soft);
+  border-color: var(--border);
+}
+
+.ui-admin-shell-link--active {
+  background: var(--foreground);
+  color: var(--background);
+  border-color: var(--foreground);
+}
+
+.ui-admin-shell-link-label {
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.ui-admin-shell-link-detail {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.ui-admin-shell-link--active .ui-admin-shell-link-detail {
+  color: color-mix(in srgb, var(--background) 72%, transparent);
+}
+
+.ui-admin-shell-content {
+  min-width: 0;
+}
+
+.ui-admin-shell-content > .ui-page {
+  margin-top: 0;
+}
+
 .ui-admin-page {
-  margin: 40px auto;
+  margin: 0 auto 40px;
+}
+
+.ui-admin-control-bar {
+  margin-top: 18px;
+  padding: 14px;
+}
+
+.ui-admin-control-grid {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.65fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.ui-admin-status-column {
+  display: grid;
+  gap: 12px;
+}
+
+.ui-admin-status-list {
+  display: grid;
+  gap: 10px;
+}
+
+.ui-admin-status-row {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+}
+
+.ui-admin-status-dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  border-radius: 999px;
+  background: var(--muted);
+}
+
+.ui-admin-status-dot--success {
+  background: rgb(16, 185, 129);
+}
+
+.ui-admin-status-dot--warning {
+  background: rgb(245, 158, 11);
+}
+
+.ui-admin-status-dot--danger {
+  background: rgb(239, 68, 68);
+}
+
+.ui-admin-operation-section {
+  margin-top: 16px;
+}
+
+.ui-admin-operation-grid {
+  margin-top: 12px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.ui-admin-operation-card {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  min-height: 176px;
+}
+
+.ui-admin-operation-card--primary {
+  background: color-mix(in srgb, var(--foreground) 5%, var(--card));
+  border-color: color-mix(in srgb, var(--foreground) 18%, var(--border));
+}
+
+.ui-admin-operation-actions {
+  display: grid;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.ui-admin-rhythm-list {
+  display: grid;
+  gap: 8px;
+}
+
+.ui-admin-rhythm-item {
+  display: grid;
+  grid-template-columns: minmax(92px, 0.45fr) minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+}
+
+.ui-admin-directory-grid {
+  margin-top: 12px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.ui-admin-directory-card {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.ui-admin-action-item {
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+}
+
+.ui-admin-danger-zone {
+  margin-top: 14px;
+  border-color: rgba(239, 68, 68, 0.28);
+}
+
+@media (max-width: 1120px) {
+  .ui-admin-shell {
+    grid-template-columns: 228px minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  .ui-admin-shell-sidebar {
+    padding: 10px;
+  }
+}
+
+@media (max-width: 920px) {
+  .ui-admin-shell {
+    display: block;
+    padding: 14px 12px 34px;
+  }
+
+  .ui-admin-shell-sidebar {
+    position: static;
+    max-height: none;
+    margin-bottom: 16px;
+  }
+
+  .ui-admin-shell-header {
+    padding-bottom: 10px;
+  }
+
+  .ui-admin-mobile-links {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-top: 10px;
+  }
+
+  .ui-admin-mobile-link {
+    flex: 0 0 auto;
+    padding: 9px 11px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: inherit;
+    background: var(--card);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 900;
+    white-space: nowrap;
+  }
+
+  .ui-admin-mobile-link--active {
+    background: var(--foreground);
+    color: var(--background);
+    border-color: var(--foreground);
+  }
+
+  .ui-admin-shell-nav {
+    display: none;
+  }
+
+  .ui-admin-control-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .ui-admin-shell-nav {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ui-admin-rhythm-item {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .ui-admin-season-row {
@@ -1393,10 +1706,14 @@ button {
 }
 
 .ui-admin-section {
-  padding: 14px;
+  padding: 16px;
   display: grid;
   gap: 12px;
   align-content: start;
+}
+
+.ui-admin-section > .ui-row-wrap:first-child {
+  align-items: flex-start;
 }
 
 .ui-admin-section--wide {
@@ -1406,6 +1723,9 @@ button {
 .ui-admin-section-title {
   margin: 0;
   font-size: 18px;
+  line-height: 1.18;
+  letter-spacing: 0;
+  font-weight: 800;
 }
 
 .ui-admin-kicker {
@@ -1461,7 +1781,7 @@ button {
   margin-top: 6px;
   font-size: 13px;
   color: var(--muted);
-  line-height: 1.4;
+  line-height: 1.45;
 }
 
 .ui-admin-summary--tight {
@@ -1480,7 +1800,19 @@ button {
 }
 
 .ui-admin-subtitle {
+  font-size: 15px;
+  line-height: 1.25;
+  letter-spacing: 0;
   font-weight: 800;
+}
+
+.ui-admin-status-row .ui-admin-subtitle {
+  font-size: 16px;
+}
+
+.ui-admin-status-row .ui-admin-summary {
+  font-size: 13px;
+  line-height: 1.35;
 }
 
 .ui-admin-tool {
@@ -1497,9 +1829,10 @@ button {
 }
 
 .ui-admin-btn {
-  padding: 12px 14px;
-  border-radius: 10px;
-  font-size: 16px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.2;
   background: var(--card);
   border-color: var(--border);
   color: var(--foreground);
@@ -1514,6 +1847,7 @@ button {
 .ui-admin-btn--compact {
   white-space: normal;
   line-height: 1.2;
+  font-size: 13px;
   max-width: 100%;
   text-align: center;
 }
@@ -1523,8 +1857,8 @@ button {
 }
 
 .ui-admin-btn--primary {
-  padding: 16px 18px;
-  font-size: 17px;
+  padding: 12px 14px;
+  font-size: 15px;
   font-weight: 800;
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
   background: var(--foreground);
@@ -1561,7 +1895,8 @@ button {
 
 .ui-admin-details-summary {
   cursor: pointer;
-  font-size: 18px;
+  font-size: 17px;
+  line-height: 1.2;
   font-weight: 800;
   list-style: none;
 }
@@ -2452,7 +2787,7 @@ button {
   color: var(--tone-warning-text);
   font-size: 11px;
   line-height: 1;
-  font-weight: 850;
+  font-weight: 800;
   white-space: nowrap;
 }
 

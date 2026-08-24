@@ -698,53 +698,27 @@ export default function AdminPage() {
             </div>
           </UiCard>
 
-          <UiCard soft className="ui-admin-section">
-            <h2 className="ui-admin-section-title">Weekly Rhythm</h2>
-            <div className="ui-admin-rhythm-list">
-              <div className="ui-admin-rhythm-item">
-                <div className="ui-admin-kicker">Before lock</div>
-                <div className="ui-admin-summary ui-admin-summary--tight">
-                  Check automation health, payment locks, and due odds snapshots.
-                </div>
-              </div>
-              <div className="ui-admin-rhythm-item">
-                <div className="ui-admin-kicker">After round</div>
-                <div className="ui-admin-summary ui-admin-summary--tight">
-                  Sync results, recalculate the leaderboard, then generate or review the recap.
-                </div>
-              </div>
-              <div className="ui-admin-rhythm-item">
-                <div className="ui-admin-kicker">Season admin</div>
-                <div className="ui-admin-summary ui-admin-summary--tight">
-                  Keep roster, payments, and onboarding in the member lifecycle lane.
-                </div>
-              </div>
-            </div>
-          </UiCard>
         </div>
       </section>
 
       <section className="ui-admin-operation-section" aria-labelledby="admin-routine-heading">
-        <div className="ui-row-wrap" style={{ justifyContent: "space-between", gap: 10 }}>
-          <div>
-            <h2 id="admin-routine-heading" className="ui-admin-section-title">
-              Routine Operations
-            </h2>
-            <div className="ui-admin-summary ui-admin-summary--tight">
-              These are the normal places to work during the week.
-            </div>
+        <div>
+          <h2 id="admin-routine-heading" className="ui-admin-section-title">
+            Routine Operations
+          </h2>
+          <div className="ui-admin-summary ui-admin-summary--tight">
+            Fast access to the admin work you use most.
           </div>
-          <span className="ui-badge">Common tools</span>
         </div>
 
         <div className="ui-admin-operation-grid">
           <UiCard className="ui-admin-operation-card ui-admin-operation-card--primary">
-            <div className="ui-row-wrap" style={{ justifyContent: "space-between", gap: 8 }}>
+            <div className="ui-admin-card-head">
               <div className="ui-admin-subtitle">Results recovery</div>
               <span className="ui-badge">Primary</span>
             </div>
             <div className="ui-admin-summary ui-admin-summary--tight">
-              Run the full scoring repair flow first. Single-step tools live in rare recovery.
+              Full scoring repair flow. Single-step tools stay in rare recovery.
             </div>
             <div className="ui-admin-operation-actions">
               <UiButton
@@ -752,13 +726,13 @@ export default function AdminPage() {
                 onClick={runSyncAndRecalc}
                 className="ui-admin-btn ui-admin-btn--full ui-admin-btn--primary"
               >
-                Sync Results + Recalculate Leaderboard
+                Sync + Recalculate
               </UiButton>
               <UiButtonLink
                 href={`/admin/scoring-sync?season=${encodeURIComponent(String(season))}`}
                 className="ui-admin-btn ui-admin-btn--full"
               >
-                Open Scoring Log
+                Scoring Log
               </UiButtonLink>
             </div>
           </UiCard>
@@ -766,21 +740,21 @@ export default function AdminPage() {
           <UiCard className="ui-admin-operation-card">
             <div className="ui-admin-subtitle">Members &amp; money</div>
             <div className="ui-admin-summary ui-admin-summary--tight">
-              Roster, payment reconciliation, and next-season onboarding stay together.
+              Roster, payments, and next-season onboarding.
             </div>
             <div className="ui-admin-operation-actions">
               <UiButtonLink
                 href={`/admin/roster/${CURRENT_SEASON}`}
                 className="ui-admin-btn ui-admin-btn--full"
               >
-                Open Season Roster
+                Season Roster
               </UiButtonLink>
               <UiButtonLink href="/admin/payments" className="ui-admin-btn ui-admin-btn--full">
-                Open Payments
+                Payments
               </UiButtonLink>
               {showOnboarding && (
                 <UiButtonLink href="/admin/onboarding" className="ui-admin-btn ui-admin-btn--full">
-                  Open Onboarding ({NEXT_SEASON})
+                  Onboarding ({NEXT_SEASON})
                 </UiButtonLink>
               )}
             </div>
@@ -789,14 +763,14 @@ export default function AdminPage() {
           <UiCard className="ui-admin-operation-card">
             <div className="ui-admin-subtitle">Comms</div>
             <div className="ui-admin-summary ui-admin-summary--tight">
-              Member-facing updates and recap emails are treated as one communication workflow.
+              Member-facing updates, posts, and recap emails.
             </div>
             <div className="ui-admin-operation-actions">
               <UiButtonLink href="/announcements" className="ui-admin-btn ui-admin-btn--full">
-                Open Announcements
+                Announcements
               </UiButtonLink>
               <UiButtonLink href="/admin/recaps" className="ui-admin-btn ui-admin-btn--full">
-                Open Round Recaps
+                Round Recaps
               </UiButtonLink>
             </div>
           </UiCard>

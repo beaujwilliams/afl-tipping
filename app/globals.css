@@ -1527,14 +1527,16 @@ button {
   margin-top: 12px;
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
 .ui-admin-operation-card {
   display: grid;
-  gap: 10px;
+  gap: 9px;
   align-content: start;
-  min-height: 176px;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .ui-admin-operation-card--primary {
@@ -1548,20 +1550,11 @@ button {
   margin-top: auto;
 }
 
-.ui-admin-rhythm-list {
+.ui-admin-card-head {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
-}
-
-.ui-admin-rhythm-item {
-  display: grid;
-  grid-template-columns: minmax(92px, 0.45fr) minmax(0, 1fr);
-  gap: 10px;
   align-items: start;
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--card);
 }
 
 .ui-admin-directory-grid {
@@ -1656,10 +1649,6 @@ button {
 
 @media (max-width: 640px) {
   .ui-admin-shell-nav {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .ui-admin-rhythm-item {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -1833,6 +1822,9 @@ button {
   border-radius: 8px;
   font-size: 14px;
   line-height: 1.2;
+  min-width: 0;
+  white-space: normal;
+  text-align: center;
   background: var(--card);
   border-color: var(--border);
   color: var(--foreground);

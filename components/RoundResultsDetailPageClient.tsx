@@ -2,14 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChampionSeasonLabels } from "@/components/ChampionSeasonLabels";
-import CopyToClipboardButton from "@/components/CopyToClipboardButton";
 import { UnpaidTag } from "@/components/UnpaidTag";
 import { normalizeChampionSeasonsByUserId } from "@/lib/champion-metadata";
 import { isDrawnMatch, isMatchCompleted } from "@/lib/match-status";
 import { getRoundDisplayName } from "@/lib/round-label";
 import { formatAflMatchupForDisplay, formatAflTeamNameForDisplay } from "@/lib/team-display";
 import { normalizeVenue } from "@/lib/venue-display";
-import { waitForSession } from "@/lib/session-client";
 import type {
   MatchResultRow,
   PlayerRoundScore,
@@ -25,26 +23,6 @@ import {
   UiTableScroll,
   UiTableShell,
 } from "@/components/ui";
-
-type RecapRow = {
-  id: number;
-  season: number;
-  round_number: number;
-  recap_type: string;
-  subject: string;
-  narrative_text: string;
-  raw_stats_text: string;
-  generated_at: string;
-  updated_at: string;
-};
-
-type RecapsResponse = {
-  ok?: boolean;
-  recaps?: RecapRow[];
-  error?: string;
-  details?: string;
-  hint?: string;
-};
 
 type RoundSortKey =
   | "rank"
@@ -65,6 +43,12 @@ type MyTipSummaryRow = {
   picked: string | null;
   opponent: string | null;
   status: MyTipStatus;
+};
+
+type EveryoneTipsUiState = {
+  scopeKey: string;
+  search: string;
+  expandedUserIds: Record<string, boolean>;
 };
 
 type RoundResultsDetailPageClientProps = {
@@ -201,30 +185,6 @@ function RoundResultsLoadingSkeleton({ isMobile }: { isMobile: boolean }) {
   );
 }
 
-function RoundRecapLoadingSkeleton() {
-  return (
-    <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-      <UiSkeleton width="28%" height={12} />
-      <div
-        style={{
-          border: "1px solid var(--border)",
-          borderRadius: 12,
-          padding: 12,
-          background: "var(--card)",
-          display: "grid",
-          gap: 10,
-        }}
-      >
-        <UiSkeleton width="24%" height={16} />
-        <UiSkeleton width="100%" height={12} />
-        <UiSkeleton width="94%" height={12} />
-        <UiSkeleton width="88%" height={12} />
-        <UiSkeleton width="62%" height={12} />
-      </div>
-    </div>
-  );
-}
-
 export default function RoundResultsDetailPageClient({
   season,
   round,
@@ -234,17 +194,21 @@ export default function RoundResultsDetailPageClient({
 }: RoundResultsDetailPageClientProps) {
   const msg = initialMessage ?? "";
   const [nowMs, setNowMs] = useState(() => Date.now());
-  const [isRecapAdmin, setIsRecapAdmin] = useState(false);
-  const [recapLoading, setRecapLoading] = useState(false);
-  const [recapError, setRecapError] = useState("");
-  const [roundRecap, setRoundRecap] = useState<RecapRow | null>(null);
   const [sortBy, setSortBy] = useState<RoundSortKey>("round_score");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [isMobile, setIsMobile] = useState(false);
-  const [everyoneTipsSearch, setEveryoneTipsSearch] = useState("");
-  const [expandedEveryoneTipUserIds, setExpandedEveryoneTipUserIds] = useState<
-    Record<string, boolean>
-  >({});
+  const everyoneTipsScopeKey = `${season}:${round}`;
+  const [everyoneTipsUi, setEveryoneTipsUi] = useState<EveryoneTipsUiState>(() => ({
+    scopeKey: everyoneTipsScopeKey,
+    search: "",
+    expandedUserIds: {},
+  }));
+  const activeEveryoneTipsUi =
+    everyoneTipsUi.scopeKey === everyoneTipsScopeKey
+      ? everyoneTipsUi
+      : { scopeKey: everyoneTipsScopeKey, search: "", expandedUserIds: {} };
+  const everyoneTipsSearch = activeEveryoneTipsUi.search;
+  const expandedEveryoneTipUserIds = activeEveryoneTipsUi.expandedUserIds;
   const everyoneTipsRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const invalidParams = !Number.isFinite(season) || !Number.isFinite(round);
   const matches = useMemo<MatchResultRow[]>(
@@ -280,62 +244,6 @@ export default function RoundResultsDetailPageClient({
     (msg.startsWith("Checking") || msg.startsWith("Loading")) &&
     matches.length === 0 &&
     players.length === 0;
-
-  useEffect(() => {
-    let alive = true;
-
-    (async () => {
-      if (invalidParams || !initialData) return;
-
-      setIsRecapAdmin(false);
-      setRecapLoading(false);
-      setRecapError("");
-      setRoundRecap(null);
-      setEveryoneTipsSearch("");
-      setExpandedEveryoneTipUserIds({});
-
-      const session = await waitForSession(3000, 180);
-      if (!alive || !session) return;
-
-      try {
-        setRecapLoading(true);
-        const recapRes = await fetch(
-          `/api/admin/round-recaps?season=${encodeURIComponent(String(season))}&round=${encodeURIComponent(
-            String(round)
-          )}&limit=1`,
-          {
-            cache: "no-store",
-            headers: { Authorization: `Bearer ${session.access_token}` },
-          }
-        );
-
-        if (!alive) return;
-
-        if (recapRes.status !== 401 && recapRes.status !== 403) {
-          setIsRecapAdmin(true);
-          const recapJson = (await recapRes.json().catch(() => null)) as RecapsResponse | null;
-          if (!recapRes.ok) {
-            const parts = [recapJson?.error ?? "Could not load round recap."];
-            if (recapJson?.details) parts.push(recapJson.details);
-            if (recapJson?.hint) parts.push(recapJson.hint);
-            setRecapError(parts.join(" - "));
-          } else {
-            const rows = Array.isArray(recapJson?.recaps) ? recapJson.recaps : [];
-            setRoundRecap(rows[0] ?? null);
-          }
-        }
-      } catch {
-        if (!alive) return;
-        setRecapError("Could not load round recap.");
-      } finally {
-        if (alive) setRecapLoading(false);
-      }
-    })();
-
-    return () => {
-      alive = false;
-    };
-  }, [initialData, invalidParams, round, season]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -506,8 +414,15 @@ export default function RoundResultsDetailPageClient({
     const me = everyoneTipsRows.find((p) => p.user_id === currentUserId);
     if (!me) return;
 
-    setEveryoneTipsSearch("");
-    setExpandedEveryoneTipUserIds((prev) => ({ ...prev, [currentUserId]: true }));
+    setEveryoneTipsUi((prev) => {
+      const expandedUserIds =
+        prev.scopeKey === everyoneTipsScopeKey ? prev.expandedUserIds : {};
+      return {
+        scopeKey: everyoneTipsScopeKey,
+        search: "",
+        expandedUserIds: { ...expandedUserIds, [currentUserId]: true },
+      };
+    });
 
     setTimeout(() => {
       const node = everyoneTipsRowRefs.current[currentUserId];
@@ -517,8 +432,10 @@ export default function RoundResultsDetailPageClient({
 
   function toggleExpandAllVisible() {
     if (!visibleEveryoneTips.length) return;
-    setExpandedEveryoneTipUserIds((prev) => {
-      const next = { ...prev };
+    setEveryoneTipsUi((prev) => {
+      const next = {
+        ...(prev.scopeKey === everyoneTipsScopeKey ? prev.expandedUserIds : {}),
+      };
       if (allVisibleExpanded) {
         visibleEveryoneTips.forEach((p) => {
           delete next[p.user_id];
@@ -528,7 +445,11 @@ export default function RoundResultsDetailPageClient({
           next[p.user_id] = true;
         });
       }
-      return next;
+      return {
+        scopeKey: everyoneTipsScopeKey,
+        search: prev.scopeKey === everyoneTipsScopeKey ? prev.search : "",
+        expandedUserIds: next,
+      };
     });
   }
 
@@ -1244,7 +1165,15 @@ export default function RoundResultsDetailPageClient({
                   <div className="ui-row-wrap ui-mt-3" style={{ alignItems: "center", gap: 10 }}>
                     <input
                       value={everyoneTipsSearch}
-                      onChange={(e) => setEveryoneTipsSearch(e.target.value)}
+                      onChange={(e) => {
+                        const search = e.target.value;
+                        setEveryoneTipsUi((prev) => ({
+                          scopeKey: everyoneTipsScopeKey,
+                          search,
+                          expandedUserIds:
+                            prev.scopeKey === everyoneTipsScopeKey ? prev.expandedUserIds : {},
+                        }));
+                      }}
                       placeholder="Search member..."
                       className="ui-input"
                     />
@@ -1294,10 +1223,21 @@ export default function RoundResultsDetailPageClient({
                             <button
                               type="button"
                               onClick={() =>
-                                setExpandedEveryoneTipUserIds((prev) => ({
-                                  ...prev,
-                                  [p.user_id]: !prev[p.user_id],
-                                }))
+                                setEveryoneTipsUi((prev) => {
+                                  const expandedUserIds =
+                                    prev.scopeKey === everyoneTipsScopeKey
+                                      ? prev.expandedUserIds
+                                      : {};
+                                  return {
+                                    scopeKey: everyoneTipsScopeKey,
+                                    search:
+                                      prev.scopeKey === everyoneTipsScopeKey ? prev.search : "",
+                                    expandedUserIds: {
+                                      ...expandedUserIds,
+                                      [p.user_id]: !expandedUserIds[p.user_id],
+                                    },
+                                  };
+                                })
                               }
                               style={{
                                 width: "100%",
@@ -1449,99 +1389,6 @@ export default function RoundResultsDetailPageClient({
             </UiCard>
           )}
 
-          {isRecapAdmin && (
-            <UiCard soft className="ui-mt-4">
-              <div style={{ fontWeight: 900, fontSize: 16 }}>Admin Round Recap</div>
-
-              {recapLoading && (
-                <RoundRecapLoadingSkeleton />
-              )}
-
-              {!recapLoading && recapError && (
-                <div
-                  style={{
-                    marginTop: 10,
-                    padding: "10px 12px",
-                    borderRadius: 10,
-                    border: "1px solid rgba(220, 38, 38, 0.45)",
-                    background: "rgba(220, 38, 38, 0.10)",
-                    color: "rgb(185, 28, 28)",
-                    fontWeight: 700,
-                    fontSize: 12,
-                  }}
-                >
-                  {recapError}
-                </div>
-              )}
-
-              {!recapLoading && !recapError && !roundRecap && (
-                <div style={{ marginTop: 8, opacity: 0.75, fontSize: 13 }}>
-                  No generated recap found for {getRoundDisplayName(round)}.
-                </div>
-              )}
-
-              {!recapLoading && !recapError && roundRecap && (
-                <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-                  <div style={{ fontSize: 12, opacity: 0.75 }}>
-                    Generated {formatMelbourne(roundRecap.generated_at)}
-                  </div>
-
-                  <section
-                    style={{
-                      border: "1px solid var(--border)",
-                      borderRadius: 12,
-                      padding: 12,
-                      background: "var(--card)",
-                    }}
-                  >
-                    <div className="ui-recap-section-head">
-                      <div style={{ fontWeight: 800, fontSize: 15 }}>Narrative</div>
-                      <CopyToClipboardButton
-                        value={roundRecap.narrative_text}
-                        label={`Copy ${getRoundDisplayName(round)} recap`}
-                        failureMessage={`Could not copy the ${getRoundDisplayName(round)} recap.`}
-                      />
-                    </div>
-                    <pre
-                      style={{
-                        marginTop: 10,
-                        whiteSpace: "pre-wrap",
-                        fontFamily: "inherit",
-                        lineHeight: 1.5,
-                        fontSize: 13,
-                      }}
-                    >
-                      {roundRecap.narrative_text}
-                    </pre>
-                  </section>
-
-                  <details
-                    style={{
-                      border: "1px solid var(--border)",
-                      borderRadius: 12,
-                      padding: 12,
-                      background: "var(--card)",
-                    }}
-                  >
-                    <summary style={{ cursor: "pointer", fontWeight: 800, fontSize: 14 }}>
-                      Raw Stats
-                    </summary>
-                    <pre
-                      style={{
-                        marginTop: 10,
-                        whiteSpace: "pre-wrap",
-                        fontFamily: "inherit",
-                        lineHeight: 1.45,
-                        fontSize: 12,
-                      }}
-                    >
-                      {roundRecap.raw_stats_text}
-                    </pre>
-                  </details>
-                </div>
-              )}
-            </UiCard>
-          )}
         </>
       )}
     </main>

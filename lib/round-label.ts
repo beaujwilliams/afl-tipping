@@ -1,8 +1,9 @@
 const FINALS_LABELS: Record<number, string> = {
-  25: "Finals Week 1",
-  26: "Finals Week 2",
-  27: "Preliminary Finals",
-  28: "Grand Final",
+  25: "Wildcard Weekend",
+  26: "Qualifying & Elimination Finals",
+  27: "Semi-Finals",
+  28: "Preliminary Finals",
+  29: "Grand Final",
 };
 
 export function getRoundDisplayName(roundNumber: number): string {

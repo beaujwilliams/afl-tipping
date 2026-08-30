@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import CopyToClipboardButton from "@/components/CopyToClipboardButton";
+import { getRoundDisplayName } from "@/lib/round-label";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { UiButton, UiButtonLink, UiCard, UiSectionHeader } from "@/components/ui";
 import { useToast } from "@/components/ToastProvider";
@@ -26,6 +27,12 @@ type RecapsResponse = {
   hint?: string;
 };
 
+type AuditOptionsResponse = {
+  locked_rounds?: Array<{
+    round_number?: unknown;
+  }>;
+};
+
 function parseFiniteNumber(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string") {
@@ -35,12 +42,6 @@ function parseFiniteNumber(value: unknown): number | null {
     if (Number.isFinite(parsed)) return parsed;
   }
   return null;
-}
-
-function parseMinRound(value: string): number {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return 0;
-  return Math.max(0, Math.trunc(parsed));
 }
 
 function fmtMelbourne(iso: string) {
@@ -56,6 +57,42 @@ function fmtMelbourne(iso: string) {
   }).format(d);
 }
 
+function formatRecapSubjectForDisplay(row: RecapRow) {
+  const roundLabel = getRoundDisplayName(row.round_number);
+  const fallback = `${roundLabel} recap (${row.season})`;
+  const subject = String(row.subject ?? "").trim();
+  if (!subject) return fallback;
+  return subject.replace(new RegExp(`^Round\\s+${row.round_number}(?=\\D|$)`, "i"), roundLabel);
+}
+
+function formatRoundSelectLabel(roundNumber: number) {
+  const roundLabel = getRoundDisplayName(roundNumber);
+  const numericLabel = `Round ${roundNumber}`;
+  return roundLabel === numericLabel ? numericLabel : `${roundLabel} (${numericLabel})`;
+}
+
+function normalizeRoundOptions(values: Array<number | null | undefined>) {
+  return Array.from(
+    new Set(
+      values
+        .filter((value): value is number => typeof value === "number" && Number.isFinite(value))
+        .map((value) => Math.max(0, Math.trunc(value)))
+    )
+  ).sort((a, b) => a - b);
+}
+
+function buildManualRoundOptions(params: {
+  recaps: RecapRow[];
+  lockedRounds: number[];
+  defaultRound: number | null;
+}) {
+  return normalizeRoundOptions([
+    ...params.lockedRounds,
+    ...params.recaps.map((row) => parseFiniteNumber(row.round_number)),
+    params.defaultRound,
+  ]);
+}
+
 export default function AdminRecapsPage() {
   const toast = useToast();
   const [season, setSeason] = useState<number>(new Date().getFullYear());
@@ -64,6 +101,7 @@ export default function AdminRecapsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [manualRound, setManualRound] = useState<number>(0);
+  const [manualRoundOptions, setManualRoundOptions] = useState<number[]>([]);
   const [msg, setMsg] = useState("");
   const [recaps, setRecaps] = useState<RecapRow[]>([]);
   const [expandedRecapId, setExpandedRecapId] = useState<number | null>(null);
@@ -119,7 +157,11 @@ export default function AdminRecapsPage() {
       }
     }
 
-    const fallbackRes = await fetch(
+    return null;
+  }
+
+  async function fetchLockedRoundOptions(sessionToken: string, year: number) {
+    const res = await fetch(
       `/api/audit/options?season=${encodeURIComponent(String(year))}`,
       {
         headers: {
@@ -128,21 +170,15 @@ export default function AdminRecapsPage() {
         cache: "no-store",
       }
     );
-    const fallbackJson = (await fallbackRes.json().catch(() => null)) as
-      | { locked_rounds?: Array<{ round_number?: unknown }> }
-      | null;
-    if (!fallbackRes.ok || !fallbackJson || !Array.isArray(fallbackJson.locked_rounds)) {
-      return null;
+
+    const json = (await res.json().catch(() => null)) as AuditOptionsResponse | null;
+    if (!res.ok || !json || !Array.isArray(json.locked_rounds)) {
+      return [];
     }
 
-    const latestFromLocked = fallbackJson.locked_rounds
-      .map((row) => parseFiniteNumber(row.round_number))
-      .filter((value): value is number => value !== null)
-      .reduce<number | null>(
-        (max, value) => (max === null || value > max ? value : max),
-        null
-      );
-    return latestFromLocked === null ? null : Math.max(0, Math.trunc(latestFromLocked));
+    return normalizeRoundOptions(
+      json.locked_rounds.map((row) => parseFiniteNumber(row.round_number))
+    );
   }
 
   useEffect(() => {
@@ -155,22 +191,33 @@ export default function AdminRecapsPage() {
         if (!sessionToken) {
           setMsg("Not authenticated.");
           setRecaps([]);
+          setManualRoundOptions([]);
           setExpandedRecapId(null);
           return;
         }
 
         setToken(sessionToken);
-        const [rows, defaultRound] = await Promise.all([
+        const [rows, defaultRound, lockedRounds] = await Promise.all([
           fetchRecaps(sessionToken, season),
           fetchDefaultRound(sessionToken, season),
+          fetchLockedRoundOptions(sessionToken, season),
         ]);
+        const roundOptions = buildManualRoundOptions({
+          recaps: rows,
+          lockedRounds,
+          defaultRound,
+        });
         setRecaps(rows);
+        setManualRoundOptions(roundOptions);
         setExpandedRecapId(rows[0]?.id ?? null);
         if (defaultRound !== null) {
           setManualRound(defaultRound);
+        } else if (roundOptions.length > 0) {
+          setManualRound(roundOptions[roundOptions.length - 1]);
         }
       } catch (err: unknown) {
         setMsg(err instanceof Error ? err.message : "Failed to load recaps.");
+        setManualRoundOptions([]);
       } finally {
         setLoading(false);
       }
@@ -185,8 +232,20 @@ export default function AdminRecapsPage() {
     try {
       setRefreshing(true);
       setMsg("");
-      const rows = await fetchRecaps(token, season);
+      const [rows, lockedRounds] = await Promise.all([
+        fetchRecaps(token, season),
+        fetchLockedRoundOptions(token, season),
+      ]);
+      const roundOptions = buildManualRoundOptions({
+        recaps: rows,
+        lockedRounds,
+        defaultRound: manualRound,
+      });
       setRecaps(rows);
+      setManualRoundOptions(roundOptions);
+      if (roundOptions.length > 0 && !roundOptions.includes(manualRound)) {
+        setManualRound(roundOptions[roundOptions.length - 1]);
+      }
       setExpandedRecapId((prev) => {
         if (!rows.length) return null;
         if (prev && rows.some((r) => r.id === prev)) return prev;
@@ -204,7 +263,14 @@ export default function AdminRecapsPage() {
       setMsg("Not authenticated.");
       return;
     }
+    if (manualRoundOptions.length === 0) {
+      const message = "No locked rounds are available for this season yet.";
+      setMsg(message);
+      toast.error(message);
+      return;
+    }
     const round = Math.max(0, Math.trunc(manualRound));
+    const roundLabel = getRoundDisplayName(round);
     if (!Number.isFinite(round)) {
       setMsg("Round must be 0 or higher.");
       return;
@@ -241,16 +307,22 @@ export default function AdminRecapsPage() {
       }
 
       const rows = await fetchRecaps(token, season);
+      const roundOptions = buildManualRoundOptions({
+        recaps: rows,
+        lockedRounds: manualRoundOptions,
+        defaultRound: round,
+      });
       setRecaps(rows);
+      setManualRoundOptions(roundOptions);
       const matchingRound = rows.find((row) => row.round_number === round) ?? rows[0] ?? null;
       setExpandedRecapId(matchingRound?.id ?? null);
 
       if (json?.skipped_reason === "recap_exists") {
-        toast.success(`Round ${round} recap already existed.`);
+        toast.success(`${roundLabel} recap already existed.`);
       } else if (json?.recap_saved === true) {
-        toast.success(`Round ${round} recap generated.`);
+        toast.success(`${roundLabel} recap generated.`);
       } else {
-        toast.success(`Round ${round} recap request completed.`);
+        toast.success(`${roundLabel} recap request completed.`);
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to generate recap.";
@@ -262,6 +334,8 @@ export default function AdminRecapsPage() {
   }
 
   const latestRecap = recaps[0] ?? null;
+  const canGenerateManualRecap =
+    !loading && !refreshing && !generating && manualRoundOptions.length > 0;
 
   return (
     <main className="ui-page ui-page--wide ui-admin-page">
@@ -305,15 +379,29 @@ export default function AdminRecapsPage() {
           </div>
           <div className="ui-row-wrap ui-admin-gap-sm ui-admin-form-row" style={{ marginTop: 10 }}>
             <label className="ui-admin-label">Round</label>
-            <input
-              type="number"
-              min={0}
-              value={manualRound}
-              onChange={(e) => setManualRound(parseMinRound(e.target.value))}
-              onBlur={() => setManualRound((prev) => Math.max(0, Math.trunc(prev)))}
-              className="ui-input ui-admin-input-round"
-            />
-            <UiButton onClick={() => void generateManualRecap()} disabled={loading || refreshing || generating}>
+            <select
+              value={manualRoundOptions.length > 0 ? String(manualRound) : ""}
+              onChange={(e) => {
+                const nextRound = parseFiniteNumber(e.target.value);
+                if (nextRound !== null) {
+                  setManualRound(Math.max(0, Math.trunc(nextRound)));
+                }
+              }}
+              disabled={loading || refreshing || generating || manualRoundOptions.length === 0}
+              className="ui-input"
+              style={{ flex: "0 1 320px", minWidth: 260 }}
+            >
+              {manualRoundOptions.length === 0 ? (
+                <option value="">No locked rounds yet</option>
+              ) : (
+                manualRoundOptions.map((roundOption) => (
+                  <option key={roundOption} value={roundOption}>
+                    {formatRoundSelectLabel(roundOption)}
+                  </option>
+                ))
+              )}
+            </select>
+            <UiButton onClick={() => void generateManualRecap()} disabled={!canGenerateManualRecap}>
               {generating ? "Generating..." : "Generate recap"}
             </UiButton>
           </div>
@@ -331,9 +419,11 @@ export default function AdminRecapsPage() {
         </UiCard>
         <UiCard soft>
           <div className="ui-kicker">Latest round</div>
-          <div className="ui-value">{latestRecap ? latestRecap.round_number : "—"}</div>
+          <div className="ui-value" style={{ fontSize: 24, lineHeight: 1.12 }}>
+            {latestRecap ? getRoundDisplayName(latestRecap.round_number) : "—"}
+          </div>
           <div className="ui-meta">
-            {latestRecap ? latestRecap.subject : `No recap records yet for season ${season}.`}
+            {latestRecap ? formatRecapSubjectForDisplay(latestRecap) : `No recap records yet for season ${season}.`}
           </div>
         </UiCard>
         <UiCard soft>
@@ -363,6 +453,7 @@ export default function AdminRecapsPage() {
         <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
           {recaps.map((r) => {
             const expanded = expandedRecapId === r.id;
+            const roundLabel = getRoundDisplayName(r.round_number);
 
             return (
               <UiCard
@@ -391,10 +482,10 @@ export default function AdminRecapsPage() {
                 >
                   <div>
                     <div style={{ fontWeight: 900, fontSize: 20, letterSpacing: -0.2 }}>
-                      Round {r.round_number}
+                      {roundLabel}
                     </div>
                     <div style={{ marginTop: 4, fontSize: 13, opacity: 0.8 }}>
-                      {r.subject}
+                      {formatRecapSubjectForDisplay(r)}
                     </div>
                     <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75 }}>
                       Season {r.season} • Generated {fmtMelbourne(r.generated_at)}
@@ -429,8 +520,8 @@ export default function AdminRecapsPage() {
                         <h2 style={{ margin: 0, fontSize: 18 }}>Narrative</h2>
                         <CopyToClipboardButton
                           value={r.narrative_text}
-                          label={`Copy Round ${r.round_number} recap`}
-                          failureMessage={`Could not copy the Round ${r.round_number} recap.`}
+                          label={`Copy ${roundLabel} recap`}
+                          failureMessage={`Could not copy the ${roundLabel} recap.`}
                         />
                       </div>
                       <pre

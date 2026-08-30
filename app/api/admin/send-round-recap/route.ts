@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase-server";
 import { getDefaultCompetitionId, requireAdminOrCron } from "@/lib/admin-auth";
 import { isMatchCompleted } from "@/lib/match-status";
+import { getRoundDisplayName } from "@/lib/round-label";
 
 const DEFAULT_SEASON = 2026;
 const DEFAULT_HOURS_AFTER_FIRST = 48;
@@ -492,6 +493,7 @@ function formatHookSuffix(lines: string[]) {
 
 function buildRoundLeadLines(params: {
   roundNumber: number;
+  roundLabel: string;
   gameCount: number;
   roundDifficultyPct: number;
   roundAverage: number;
@@ -533,8 +535,8 @@ function buildRoundLeadLines(params: {
                   "A few people gave the ladder a real nudge there.",
                 ])
               : pickByRound(params.roundNumber, [
-                  `Round ${params.roundNumber} is complete.`,
-                  `Round ${params.roundNumber} is done.`,
+                  `${params.roundLabel} is complete.`,
+                  `${params.roundLabel} is done.`,
                   `Another round in the books.`,
                 ]);
 
@@ -821,6 +823,7 @@ export async function GET(req: Request) {
 
     const roundId = String(target.row.id);
     const roundNumber = Number(target.row.round_number);
+    const roundLabel = getRoundDisplayName(roundNumber);
     const roundMatches = matchRows.filter((m) => String(m.round_id) === roundId);
     const roundMatchIds = roundMatches.map((m) => String(m.id));
 
@@ -990,6 +993,8 @@ export async function GET(req: Request) {
       String(season)
     )}&round=${encodeURIComponent(String(roundNumber))}`;
     const previousRoundNumber = roundNumber > 0 ? roundNumber - 1 : null;
+    const previousRoundLabel =
+      previousRoundNumber === null ? null : getRoundDisplayName(previousRoundNumber);
     const previousRoundResultsUrl =
       previousRoundNumber === null
         ? null
@@ -1522,17 +1527,17 @@ export async function GET(req: Request) {
     const headlineBits: string[] = [];
     if (roundWinners.length > 0) {
       headlineBits.push(
-        `Round winner: ${humanList(roundWinners.map((w) => w.display_name))} (${fmt2(
+        `${roundLabel} winner: ${humanList(roundWinners.map((w) => w.display_name))} (${fmt2(
           maxRoundScore
         )} pts)`
       );
     }
-    headlineBits.push(`Round difficulty: ${fmtPct(roundDifficultyPct)} correct`);
+    headlineBits.push(`${roundLabel} difficulty: ${fmtPct(roundDifficultyPct)} correct`);
     if (biggestUpset) {
       headlineBits.push(`Biggest upset: ${biggestUpset.winner} at ${fmt2(biggestUpset.winnerOdds)}`);
     }
 
-    const subject = `Round ${roundNumber} recap (${season})`;
+    const subject = `${roundLabel} recap (${season})`;
     const generatedAtIso = new Date().toISOString();
 
     const textLines: string[] = [];
@@ -2062,26 +2067,32 @@ export async function GET(req: Request) {
       );
 
       if (upsetRank === 1 && tiedSeasonHighUpset) {
+        const tiedSeasonHighUpsetRoundLabel = getRoundDisplayName(
+          Number(tiedSeasonHighUpset.round_number)
+        );
         historicalContextCandidates.push({
           id: "upset-tied-1",
           priority: 96,
           line: `${biggestUpset.winner} at ${fmt2(
             Number(biggestUpset.winnerOdds)
-          )} matches the biggest upset of ${season}, alongside Round ${
-            tiedSeasonHighUpset.round_number
-          } - ${tiedSeasonHighUpset.home_team} vs ${tiedSeasonHighUpset.away_team} (${
+          )} matches the biggest upset of ${season}, alongside ${tiedSeasonHighUpsetRoundLabel} - ${
+            tiedSeasonHighUpset.home_team
+          } vs ${tiedSeasonHighUpset.away_team} (${
             tiedSeasonHighUpset.winner_team
           } @ ${fmt2(Number(tiedSeasonHighUpset.winner_odds))}).`,
         });
       } else if (upsetRank === 1 && seasonSecondBiggestUpset) {
+        const seasonSecondBiggestUpsetRoundLabel = getRoundDisplayName(
+          Number(seasonSecondBiggestUpset.round_number)
+        );
         historicalContextCandidates.push({
           id: "upset-new-1",
           priority: 96,
           line: `${biggestUpset.winner} at ${fmt2(
             Number(biggestUpset.winnerOdds)
-          )} is now the biggest upset of ${season}, passing Round ${
-            seasonSecondBiggestUpset.round_number
-          } - ${seasonSecondBiggestUpset.home_team} vs ${
+          )} is now the biggest upset of ${season}, passing ${seasonSecondBiggestUpsetRoundLabel} - ${
+            seasonSecondBiggestUpset.home_team
+          } vs ${
             seasonSecondBiggestUpset.away_team
           } (${seasonSecondBiggestUpset.winner_team} @ ${fmt2(
             Number(seasonSecondBiggestUpset.winner_odds)
@@ -2091,8 +2102,11 @@ export async function GET(req: Request) {
         const higherUpset = seasonUpsetRows.find(
           (x) => Number(x.winner_odds) > Number(biggestUpset.winnerOdds) + 0.0001
         );
+        const higherUpsetRoundLabel = higherUpset
+          ? getRoundDisplayName(Number(higherUpset.round_number))
+          : "";
         const suffix = higherUpset
-          ? ` Only Round ${higherUpset.round_number} - ${higherUpset.home_team} vs ${
+          ? ` Only ${higherUpsetRoundLabel} - ${higherUpset.home_team} vs ${
               higherUpset.away_team
             } (${higherUpset.winner_team} @ ${fmt2(Number(higherUpset.winner_odds))}) was bigger.`
           : "";
@@ -2192,6 +2206,7 @@ export async function GET(req: Request) {
     });
     const leadLines = buildRoundLeadLines({
       roundNumber,
+      roundLabel,
       gameCount: rrMatches.length,
       roundDifficultyPct,
       roundAverage: roundAvg,
@@ -2211,7 +2226,7 @@ export async function GET(req: Request) {
       const winnerLb = lbByUserId.get(String(winner.user_id)) ?? null;
       const winnerContext = formatHookSuffix(playerContextHooks(winner, 1));
       textLines.push(
-        `Round ${roundNumber} is complete, with ${atHandle(
+        `${roundLabel} is complete, with ${atHandle(
           winner.display_name
         )} top-scoring on ${fmt2(maxRoundScore)} points${winnerContext}.`
       );
@@ -2224,7 +2239,7 @@ export async function GET(req: Request) {
       }
     } else {
       textLines.push(
-        `Round ${roundNumber} is complete, with ${humanList(
+        `${roundLabel} is complete, with ${humanList(
           roundWinners.map((w) => atHandle(w.display_name))
         )} sharing top score on ${fmt2(maxRoundScore)} points.`
       );
@@ -2244,7 +2259,7 @@ export async function GET(req: Request) {
     }
 
     textLines.push("");
-    textLines.push(`Top 3 overall after Round ${roundNumber}:`);
+    textLines.push(`Top 3 overall after ${roundLabel}:`);
     if (top3Rows.length > 0) {
       textLines.push(`1. ${atHandle(top3Rows[0].display_name)}`);
     }
@@ -2266,9 +2281,9 @@ export async function GET(req: Request) {
         roundAvg
       )}.`
     );
-    if (previousRoundNumber !== null && previousRoundDifficulty !== null && difficultyDelta !== null) {
+    if (previousRoundLabel !== null && previousRoundDifficulty !== null && difficultyDelta !== null) {
       textLines.push(
-        `Compared to Round ${previousRoundNumber} (${fmtPct(
+        `Compared to ${previousRoundLabel} (${fmtPct(
           previousRoundDifficulty
         )}), this one was ${Math.round(Math.abs(difficultyDelta))} percentage points ${
           difficultyDelta >= 0 ? "easier" : "harder"
@@ -2364,12 +2379,15 @@ export async function GET(req: Request) {
       })
     );
     if (historicalContextLines.length === 0 && seasonBiggestUpset) {
+      const seasonBiggestUpsetRoundLabel = getRoundDisplayName(
+        Number(seasonBiggestUpset.round_number)
+      );
       pushStoryCandidate(roundNoteCandidates, {
         id: "season-high-upset",
         priority: 50,
         line: `Season-high upset remains ${seasonBiggestUpset.winner_team} @ ${fmt2(
           Number(seasonBiggestUpset.winner_odds)
-        )} (Round ${seasonBiggestUpset.round_number}).`,
+        )} (${seasonBiggestUpsetRoundLabel}).`,
       });
     }
     if (fivePlusWinners > 0) {

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import CopyToClipboardButton from "@/components/CopyToClipboardButton";
+import { getRoundDisplayName } from "@/lib/round-label";
 import { waitForSession } from "@/lib/session-client";
 
 type RecapRow = {
@@ -37,6 +38,14 @@ function fmtMelbourne(iso: string) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(d);
+}
+
+function formatRecapSubjectForDisplay(row: RecapRow) {
+  const roundLabel = getRoundDisplayName(row.round_number);
+  const fallback = `${roundLabel} recap (${row.season})`;
+  const subject = String(row.subject ?? "").trim();
+  if (!subject) return fallback;
+  return subject.replace(new RegExp(`^Round\\s+${row.round_number}(?=\\D|$)`, "i"), roundLabel);
 }
 
 export default function SeasonRecapsPage() {
@@ -238,6 +247,7 @@ export default function SeasonRecapsPage() {
         <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
           {recaps.map((r) => {
             const expanded = expandedRecapId === r.id;
+            const roundLabel = getRoundDisplayName(r.round_number);
 
             return (
               <section
@@ -268,10 +278,10 @@ export default function SeasonRecapsPage() {
                 >
                   <div>
                     <div style={{ fontWeight: 900, fontSize: 20, letterSpacing: -0.2 }}>
-                      Round {r.round_number}
+                      {roundLabel}
                     </div>
                     <div style={{ marginTop: 4, fontSize: 13, opacity: 0.8 }}>
-                      {r.subject}
+                      {formatRecapSubjectForDisplay(r)}
                     </div>
                     <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75 }}>
                       Season {r.season} • Generated {fmtMelbourne(r.generated_at)}
@@ -306,8 +316,8 @@ export default function SeasonRecapsPage() {
                         <h2 style={{ margin: 0, fontSize: 18 }}>Narrative</h2>
                         <CopyToClipboardButton
                           value={r.narrative_text}
-                          label={`Copy Round ${r.round_number} recap`}
-                          failureMessage={`Could not copy the Round ${r.round_number} recap.`}
+                          label={`Copy ${roundLabel} recap`}
+                          failureMessage={`Could not copy the ${roundLabel} recap.`}
                         />
                       </div>
                       <pre

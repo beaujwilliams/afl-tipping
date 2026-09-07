@@ -959,6 +959,100 @@ button {
   padding: 0 10px;
 }
 
+.leaderboard-trend-fluctuation {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.leaderboard-trend-fluctuation-empty {
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.leaderboard-trend-fluctuation-group {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.leaderboard-trend-fluctuation-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.leaderboard-trend-fluctuation-heading span {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.leaderboard-trend-fluctuation-heading small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.leaderboard-trend-fluctuation-list {
+  display: grid;
+  gap: 8px;
+}
+
+.leaderboard-trend-fluctuation-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 9px;
+  align-items: center;
+  min-height: 44px;
+}
+
+.leaderboard-trend-fluctuation-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+}
+
+.leaderboard-trend-fluctuation-person {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.leaderboard-trend-fluctuation-person strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.leaderboard-trend-fluctuation-person small,
+.leaderboard-trend-fluctuation-total small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.leaderboard-trend-fluctuation-total {
+  text-align: right;
+  display: grid;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.leaderboard-trend-fluctuation-total strong {
+  font-size: 14px;
+  font-weight: 800;
+}
+
 .leaderboard-trend-chart-top {
   display: flex;
   align-items: center;
@@ -1393,6 +1487,19 @@ button {
   .leaderboard-trend-range-summary {
     margin-top: -4px !important;
     font-size: 12px;
+  }
+
+  .leaderboard-trend-fluctuation {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .leaderboard-trend-fluctuation-heading {
+    align-items: flex-start;
+  }
+
+  .leaderboard-trend-fluctuation-person small {
+    overflow-wrap: anywhere;
   }
 
   .leaderboard-trend-expand-btn {

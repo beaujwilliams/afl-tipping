@@ -34,6 +34,10 @@ import {
   getRoundDisplayNameWithNumber,
   getRoundShortDisplayName,
 } from "@/lib/round-label";
+import {
+  buildRankFluctuationSummary,
+  type RankFluctuationSummary,
+} from "@/lib/leaderboard-trend";
 
 type LeaderboardRow = {
   user_id: string;
@@ -173,6 +177,41 @@ function splitTrendRoundAxisLabel(roundNumber: number) {
   return [words.slice(0, midpoint).join(" "), words.slice(midpoint).join(" ")].filter(
     Boolean
   );
+}
+
+function formatSpotChangeCount(value: number) {
+  const rounded = Number.isInteger(value) ? String(value) : value.toFixed(1);
+  return `${rounded} ${value === 1 ? "spot" : "spots"}`;
+}
+
+function formatRoundGapCount(value: number) {
+  return `${value} ${value === 1 ? "gap" : "gaps"}`;
+}
+
+function compareMostFluctuation(
+  a: RankFluctuationSummary,
+  b: RankFluctuationSummary
+) {
+  if (b.total_position_changes !== a.total_position_changes) {
+    return b.total_position_changes - a.total_position_changes;
+  }
+  if (b.biggest_single_change !== a.biggest_single_change) {
+    return b.biggest_single_change - a.biggest_single_change;
+  }
+  return a.display_name.localeCompare(b.display_name, "en", { sensitivity: "base" });
+}
+
+function compareLeastFluctuation(
+  a: RankFluctuationSummary,
+  b: RankFluctuationSummary
+) {
+  if (a.total_position_changes !== b.total_position_changes) {
+    return a.total_position_changes - b.total_position_changes;
+  }
+  if (a.biggest_single_change !== b.biggest_single_change) {
+    return a.biggest_single_change - b.biggest_single_change;
+  }
+  return a.display_name.localeCompare(b.display_name, "en", { sensitivity: "base" });
 }
 
 function movementText(movement: number) {
@@ -447,6 +486,64 @@ function normalizeLeaderboardState(json: LeaderboardResponse | null | undefined)
       .map((row) => row.user_id)
       .filter((userId) => trendSeries.some((series) => series.user_id === userId)),
   };
+}
+
+function TrendFluctuationPanel(props: {
+  mostRows: RankFluctuationSummary[];
+  leastRows: RankFluctuationSummary[];
+  colorByUserId: Record<string, string>;
+}) {
+  const { mostRows, leastRows, colorByUserId } = props;
+  const hasRows = mostRows.length > 0 || leastRows.length > 0;
+
+  if (!hasRows) {
+    return (
+      <div className="ui-caption leaderboard-trend-fluctuation-empty">
+        Select at least two rounds to calculate position fluctuation.
+      </div>
+    );
+  }
+
+  const renderGroup = (label: string, rows: RankFluctuationSummary[]) => (
+    <div className="leaderboard-trend-fluctuation-group">
+      <div className="leaderboard-trend-fluctuation-heading">
+        <span>{label}</span>
+        <small>Total spot changes</small>
+      </div>
+      <div className="leaderboard-trend-fluctuation-list">
+        {rows.map((row) => (
+          <div key={`${label}-${row.user_id}`} className="leaderboard-trend-fluctuation-row">
+            <span
+              aria-hidden
+              className="leaderboard-trend-fluctuation-dot"
+              style={{ background: trendColorForUser(colorByUserId, row.user_id) }}
+            />
+            <div className="leaderboard-trend-fluctuation-person">
+              <strong title={row.display_name}>{row.display_name}</strong>
+              <small>
+                {formatTrendRoundLabel(row.start_round)} #{row.start_rank} to{" "}
+                {formatTrendRoundLabel(row.finish_round)} #{row.finish_rank}
+              </small>
+            </div>
+            <div className="leaderboard-trend-fluctuation-total">
+              <strong>{formatSpotChangeCount(row.total_position_changes)}</strong>
+              <small>{formatRoundGapCount(row.transition_count)}</small>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  return (
+    <div
+      className="leaderboard-trend-fluctuation"
+      aria-label="Position fluctuation leaders"
+    >
+      {renderGroup("Most fluctuation", mostRows)}
+      {renderGroup("Least fluctuation", leastRows)}
+    </div>
+  );
 }
 
 function TrendChart(props: {
@@ -1811,6 +1908,22 @@ export default function LeaderboardPageClient({
         points: series.points.filter((point) => activeTrendRoundSet.has(point.round_number)),
       }));
   }, [activeTrendRoundSet, scopedTrendSeries, selectedTrendUserIds]);
+
+  const trendFluctuationRows = useMemo(() => {
+    return scopedTrendSeries
+      .map((series) => buildRankFluctuationSummary(series, activeTrendRoundSet))
+      .filter((row): row is RankFluctuationSummary => row !== null);
+  }, [activeTrendRoundSet, scopedTrendSeries]);
+
+  const mostFluctuatingTrendRows = useMemo(
+    () => [...trendFluctuationRows].sort(compareMostFluctuation).slice(0, 3),
+    [trendFluctuationRows]
+  );
+
+  const leastFluctuatingTrendRows = useMemo(
+    () => [...trendFluctuationRows].sort(compareLeastFluctuation).slice(0, 3),
+    [trendFluctuationRows]
+  );
 
   const trendColorByUserId = useMemo(() => {
     const ordered = [...scopedTrendSeries].sort((a, b) => {
@@ -3249,6 +3362,12 @@ export default function LeaderboardPageClient({
                     </p>
                   ) : (
                     <div style={{ display: "grid", gap: 14 }}>
+                      <TrendFluctuationPanel
+                        mostRows={mostFluctuatingTrendRows}
+                        leastRows={leastFluctuatingTrendRows}
+                        colorByUserId={trendColorByUserId}
+                      />
+
                       <TrendChart
                         rounds={activeTrendRounds}
                         selectedSeries={selectedTrendSeries}

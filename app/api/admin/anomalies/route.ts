@@ -26,6 +26,7 @@ import {
   resolveCompetitionIdForAdminRequest,
 } from "@/lib/admin-auth";
 import { NEXT_SEASON } from "@/lib/season-config";
+import { getRoundDisplayName } from "@/lib/round-label";
 import { createServiceClient } from "@/lib/supabase-server";
 
 type RecapRow = {
@@ -474,12 +475,13 @@ export async function GET(req: Request) {
       });
 
     findDueSnapshotRounds({ rounds }).slice(0, 3).forEach((round) => {
+      const roundLabel = getRoundDisplayName(round.round_number);
       anomalies.push({
         id: `snapshot-due-${round.round_id}`,
         dismiss_key: `snapshot-due:${round.round_id}`,
         severity: "critical",
         category: "odds",
-        title: `Locked odds snapshot overdue for Round ${round.round_number}`,
+        title: `Locked odds snapshot overdue for ${roundLabel}`,
         detail: "The snapshot window is already open, but the locked odds timestamp is still missing for this round.",
         href: "/admin#admin-maintenance",
         cta: "Open maintenance",
@@ -492,12 +494,13 @@ export async function GET(req: Request) {
     })
       .slice(0, 3)
       .forEach((round) => {
+        const roundLabel = getRoundDisplayName(round.round_number);
         anomalies.push({
           id: `stale-results-${round.round_id}`,
           dismiss_key: `stale-results:${round.round_id}`,
           severity: "warning",
           category: "results",
-          title: `Results may be stale for Round ${round.round_number}`,
+          title: `Results may be stale for ${roundLabel}`,
           detail: `${round.missing_winner_count} of ${round.total_matches} matches are still missing final results long after the round should have finished.`,
           href: `/admin/scoring-sync?season=${encodeURIComponent(String(season))}`,
           cta: "Open scoring log",
@@ -511,12 +514,13 @@ export async function GET(req: Request) {
     })
       .slice(0, 3)
       .forEach((round) => {
+        const roundLabel = getRoundDisplayName(round.round_number);
         anomalies.push({
           id: `recap-due-${round.round_id}`,
           dismiss_key: `recap-due:${round.round_id}`,
           severity: "warning",
           category: "recaps",
-          title: `Round ${round.round_number} recap is due`,
+          title: `${roundLabel} recap is due`,
           detail: "All results are complete and the recap window has opened, but no stored recap exists yet.",
           href: "/admin/recaps",
           cta: "Open recap history",
@@ -530,6 +534,7 @@ export async function GET(req: Request) {
     });
 
     if (pendingPaymentAttention) {
+      const roundLabel = getRoundDisplayName(pendingPaymentAttention.round_number);
       anomalies.push({
         id: `pending-payments-${pendingPaymentAttention.round_id}`,
         dismiss_key: `pending-payments:${pendingPaymentAttention.round_id}`,
@@ -537,7 +542,7 @@ export async function GET(req: Request) {
         category: "payments",
         title: `${pendingPaymentAttention.pending_member_count} pending member${
           pendingPaymentAttention.pending_member_count === 1 ? "" : "s"
-        } before Round ${pendingPaymentAttention.round_number} lock`,
+        } before ${roundLabel} lock`,
         detail: "Unpaid tip lock is enabled, so these members may be blocked from tipping if payment status is not updated in time.",
         href: `/admin/roster/${season}`,
         cta: "Open season roster",

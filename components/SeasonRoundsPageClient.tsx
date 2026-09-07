@@ -286,6 +286,7 @@ export default function SeasonRoundsPageClient({
   }
 
   async function sendRoundReminders(roundId: string, roundNumber: number) {
+    const roundLabel = getRoundDisplayName(roundNumber);
     const { data } = await supabaseBrowser.auth.getSession();
     const sessionToken = data.session?.access_token ?? null;
     if (!sessionToken) {
@@ -295,7 +296,7 @@ export default function SeasonRoundsPageClient({
     }
 
     const ok = confirm(
-      `Send reminder emails now for Round ${roundNumber}? This will resend to all currently missing tipsters.`
+      `Send reminder emails now for ${roundLabel}? This will resend to all currently missing tipsters.`
     );
     if (!ok) return;
 
@@ -345,7 +346,7 @@ export default function SeasonRoundsPageClient({
 
       const summary = `Sent ${row.sent}. Already reminded ${row.already_reminded}. No email ${row.no_email}. Failed ${row.failed}.`;
       setRoundReminderStatus(roundId, summary);
-      toast.info(`Round ${roundNumber} reminders: ${summary}`, { durationMs: 5200 });
+      toast.info(`${roundLabel} reminders: ${summary}`, { durationMs: 5200 });
     } catch {
       setRoundReminderStatus(roundId, "Reminder request failed.");
       toast.error("Reminder request failed.");

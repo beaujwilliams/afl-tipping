@@ -9,6 +9,7 @@ import {
   classifyPrelockReminderRun,
   recordAutomationJobRun,
 } from "@/lib/automation-observability";
+import { getRoundDisplayName } from "@/lib/round-label";
 const DEFAULT_SEASON = 2026;
 const DEFAULT_REMINDER_HOURS = 4;
 const DEFAULT_WINDOW_MINUTES = 15;
@@ -247,12 +248,13 @@ async function sendReminderEmail(params: {
 
   const lockMelbourne = formatMelbourne(params.lockTimeUtc);
   const countdown = formatCountdownForSubject(params.lockTimeUtc);
-  const subject = `AFL Tipping reminder: Round ${params.roundNumber} locks in ${countdown}`;
+  const roundLabel = getRoundDisplayName(params.roundNumber);
+  const subject = `AFL Tipping reminder: ${roundLabel} locks in ${countdown}`;
 
   const text = [
     `Hi ${params.displayName},`,
     "",
-    `Round ${params.roundNumber} (Season ${params.season}) locks in ${countdown}.`,
+    `${roundLabel} (Season ${params.season}) locks in ${countdown}.`,
     `Lock time: ${lockMelbourne} (Melbourne time)`,
     "",
     "You still have missing tips for this round.",
@@ -265,7 +267,7 @@ async function sendReminderEmail(params: {
     <div style="font-family: Arial, Helvetica, sans-serif; line-height: 1.45; color: #111;">
       <p>Hi ${params.displayName},</p>
       <p>
-        <b>Round ${params.roundNumber}</b> (Season ${params.season}) locks in ${countdown}.<br />
+        <b>${roundLabel}</b> (Season ${params.season}) locks in ${countdown}.<br />
         Lock time: <b>${lockMelbourne}</b> (Melbourne time)
       </p>
       <p>You still have missing tips for this round.</p>

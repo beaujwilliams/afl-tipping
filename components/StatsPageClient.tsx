@@ -16,6 +16,7 @@ import type {
   TeamStatsRow,
   TeamStatsTotals,
 } from "@/lib/stats-types";
+import { getRoundShortDisplayName } from "@/lib/round-label";
 import { formatAflTeamNameForDisplay } from "@/lib/team-display";
 
 type TeamSortDirection = "asc" | "desc";
@@ -239,7 +240,9 @@ export default function StatsPageClient(props: {
               <UiCard>
                 <div className="ui-kicker">Best round</div>
                 <div className="ui-value">
-                  {props.insights.best_round ? `R${props.insights.best_round.round_number}` : "-"}
+                  {props.insights.best_round
+                    ? getRoundShortDisplayName(props.insights.best_round.round_number)
+                    : "-"}
                 </div>
                 <div className="ui-meta">
                   Score: {fmtPts(props.insights.best_round?.score ?? 0)} • Move:{" "}
@@ -249,7 +252,9 @@ export default function StatsPageClient(props: {
               <UiCard>
                 <div className="ui-kicker">Worst round</div>
                 <div className="ui-value">
-                  {props.insights.worst_round ? `R${props.insights.worst_round.round_number}` : "-"}
+                  {props.insights.worst_round
+                    ? getRoundShortDisplayName(props.insights.worst_round.round_number)
+                    : "-"}
                 </div>
                 <div className="ui-meta">
                   Score: {fmtPts(props.insights.worst_round?.score ?? 0)} • Move:{" "}

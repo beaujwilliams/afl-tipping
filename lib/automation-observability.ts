@@ -1,3 +1,5 @@
+import { getRoundDisplayName } from "./round-label.ts";
+
 export type AutomationJobKind = "snapshot_odds_due" | "prelock_reminders";
 export type AutomationRunStatus = "success" | "failed" | "skipped";
 export type AutomationTriggerMode = "cron" | "bearer";
@@ -31,6 +33,10 @@ function readNumber(value: unknown, fallback = 0) {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   const parsed = Number(value ?? fallback);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function formatAutomationRoundLabel(roundNumber: number) {
+  return roundNumber > 0 ? getRoundDisplayName(roundNumber) : "round ?";
 }
 
 function readString(value: unknown) {
@@ -81,6 +87,7 @@ export function classifySnapshotRun(body: unknown, httpStatus: number): Automati
   const processedDueRounds = Math.max(0, Math.trunc(readNumber(obj.processedDueRounds)));
   const next = asObject(obj.next);
   const nextRound = Math.trunc(readNumber(next?.round));
+  const nextRoundLabel = formatAutomationRoundLabel(nextRound);
   const skippedReason = readString(obj.skipped_reason);
   const nestedError = firstErrorFromResults(obj.results);
 
@@ -94,7 +101,7 @@ export function classifySnapshotRun(body: unknown, httpStatus: number): Automati
   if (capturedRounds > 0) {
     return {
       runStatus: "success",
-      summary: `Captured locked odds for round ${nextRound || "?"}.`,
+      summary: `Captured locked odds for ${nextRoundLabel}.`,
     };
   }
 
@@ -108,13 +115,13 @@ export function classifySnapshotRun(body: unknown, httpStatus: number): Automati
     if (skippedReason === "already_captured_for_due_snapshot") {
       return {
         runStatus: "skipped",
-        summary: `Round ${nextRound || "?"} was already captured for its due snapshot.`,
+        summary: `${nextRoundLabel} was already captured for its due snapshot.`,
       };
     }
     if (skippedReason === "not_due_yet") {
       return {
         runStatus: "skipped",
-        summary: `Next due round is ${nextRound || "?"}, but its snapshot window is not open yet.`,
+        summary: `Next due round is ${nextRoundLabel}, but its snapshot window is not open yet.`,
       };
     }
     if (skippedReason === "completed_rounds_are_read_only") {

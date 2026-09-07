@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import CopyToClipboardButton from "@/components/CopyToClipboardButton";
-import { getRoundDisplayName } from "@/lib/round-label";
+import { getRoundDisplayName, getRoundDisplayNameWithNumber } from "@/lib/round-label";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { UiButton, UiButtonLink, UiCard, UiSectionHeader } from "@/components/ui";
 import { useToast } from "@/components/ToastProvider";
@@ -66,9 +66,7 @@ function formatRecapSubjectForDisplay(row: RecapRow) {
 }
 
 function formatRoundSelectLabel(roundNumber: number) {
-  const roundLabel = getRoundDisplayName(roundNumber);
-  const numericLabel = `Round ${roundNumber}`;
-  return roundLabel === numericLabel ? numericLabel : `${roundLabel} (${numericLabel})`;
+  return getRoundDisplayNameWithNumber(roundNumber);
 }
 
 function normalizeRoundOptions(values: Array<number | null | undefined>) {

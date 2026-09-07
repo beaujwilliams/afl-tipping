@@ -4,6 +4,7 @@ import {
   requireAdminOrCron,
   resolveCompetitionIdForAdminRequest,
 } from "@/lib/admin-auth";
+import { getRoundDisplayName } from "@/lib/round-label";
 
 const DEFAULT_SEASON = 2026;
 const NOTIFICATION_TYPE = "odds_snapshot_set_v1";
@@ -253,7 +254,8 @@ async function sendOddsAddedEmail(params: {
 
   const lockMelbourne = formatMelbourne(params.lockTimeUtc);
   const lockForSubject = formatLockoutForSubject(params.lockTimeUtc);
-  const subject = `Round ${params.round} Odds Are In | Lockout ${lockForSubject}`;
+  const roundLabel = getRoundDisplayName(params.round);
+  const subject = `${roundLabel} Odds Are In | Lockout ${lockForSubject}`;
   const textLines = params.fixtureLines.map((row) => `${row.index}. ${row.line}`);
   const htmlRows = params.fixtureLines
     .map((row) => `<li>${escapeHtml(row.line)}</li>`)
@@ -262,13 +264,13 @@ async function sendOddsAddedEmail(params: {
   const text = [
     `Hi ${params.displayName},`,
     "",
-    `Round ${params.round} odds are now live.`,
+    `${roundLabel} odds are now live.`,
     "",
     `Lockout (Melbourne): ${lockMelbourne}`,
     "",
     `Submit your tips: ${params.roundUrl}`,
     "",
-    `Round ${params.round} fixtures and odds`,
+    `${roundLabel} fixtures and odds`,
     ...textLines,
     "",
     "Needlessly Complicated AFL Tipping",
@@ -277,7 +279,7 @@ async function sendOddsAddedEmail(params: {
   const html = `
     <div style="font-family: Arial, Helvetica, sans-serif; line-height: 1.45; color: #111;">
       <p style="margin: 0 0 12px;">Hi ${escapeHtml(params.displayName)},</p>
-      <p style="margin: 0 0 12px;"><b>Round ${params.round} odds are now live.</b></p>
+      <p style="margin: 0 0 12px;"><b>${escapeHtml(roundLabel)} odds are now live.</b></p>
       <div style="margin: 0 0 16px; padding: 12px 14px; border: 1px solid #f5c2c7; border-radius: 10px; background: #fff3f4;">
         <div style="margin: 0; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: #8c1d1d; font-weight: 700;">
           Lockout
@@ -291,10 +293,10 @@ async function sendOddsAddedEmail(params: {
           href="${escapeHtml(params.roundUrl)}"
           style="display: inline-block; padding: 11px 16px; border-radius: 8px; background: #111; color: #fff; text-decoration: none; font-weight: 700;"
         >
-          Submit your tips for Round ${params.round}
+          Submit your tips for ${escapeHtml(roundLabel)}
         </a>
       </p>
-      <p style="margin: 0 0 8px;"><b>Round ${params.round} fixtures and odds</b></p>
+      <p style="margin: 0 0 8px;"><b>${escapeHtml(roundLabel)} fixtures and odds</b></p>
       <ol style="margin: 0; padding-left: 20px;">${htmlRows}</ol>
       <p style="margin: 20px 0 0;">Needlessly Complicated AFL Tipping</p>
     </div>

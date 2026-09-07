@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { UiButton, UiCard, UiSectionHeader } from "@/components/ui";
 import { useToast } from "@/components/ToastProvider";
+import { getRoundDisplayNameWithNumber } from "@/lib/round-label";
 import { CURRENT_SEASON } from "@/lib/season-config";
 import { waitForSession } from "@/lib/session-client";
 
@@ -261,7 +262,7 @@ export default function AuditPage() {
               ) : (
                 rounds.map((round) => (
                   <option key={round.round_number} value={round.round_number}>
-                    Round {round.round_number}
+                    {getRoundDisplayNameWithNumber(round.round_number)}
                   </option>
                 ))
               )}

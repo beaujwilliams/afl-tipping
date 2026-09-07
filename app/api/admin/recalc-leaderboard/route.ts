@@ -4,6 +4,7 @@ import {
   requireAdminOrCron,
 } from "@/lib/admin-auth";
 import { refreshLeaderboardSnapshot } from "@/lib/leaderboard-snapshot";
+import { getRoundDisplayName } from "@/lib/round-label";
 import { invalidateStatsSeasonBaseCache } from "@/lib/stats-data";
 
 export async function GET(req: Request) {
@@ -19,6 +20,10 @@ export async function GET(req: Request) {
       competitionId: gate.mode === "bearer" ? gate.competitionId : undefined,
     });
     invalidateStatsSeasonBaseCache();
+    const latestScoredRoundLabel =
+      snapshot.latest_scored_round === null
+        ? "n/a"
+        : getRoundDisplayName(snapshot.latest_scored_round);
 
     const payload = {
       ok: true,
@@ -41,7 +46,7 @@ export async function GET(req: Request) {
       targetLabel: `Season ${season}`,
       summary:
         resultStatus === "success"
-          ? `Recalculated leaderboard for season ${season}: ${snapshot.rows.length} rows updated, latest scored round ${snapshot.latest_scored_round ?? "n/a"}.`
+          ? `Recalculated leaderboard for season ${season}: ${snapshot.rows.length} rows updated, latest scored ${latestScoredRoundLabel}.`
           : `Checked leaderboard recalculation for season ${season}: no rows were updated.`,
       requestPath: url.pathname + url.search,
       details: payload,

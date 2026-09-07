@@ -945,6 +945,20 @@ button {
   color: var(--muted);
 }
 
+.leaderboard-trend-range-field {
+  display: grid;
+  flex: 1 1 260px;
+  gap: 4px;
+  min-width: 0;
+  max-width: 340px;
+}
+
+.leaderboard-trend-range-select {
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+}
+
 .leaderboard-trend-chart-top {
   display: flex;
   align-items: center;

@@ -29,6 +29,11 @@ import {
   computeLeaderboardGroupSummary,
   summarizeCreatorInviteStatuses,
 } from "@/lib/leaderboard-group-insights";
+import {
+  getRoundDisplayName,
+  getRoundDisplayNameWithNumber,
+  getRoundShortDisplayName,
+} from "@/lib/round-label";
 
 type LeaderboardRow = {
   user_id: string;
@@ -145,6 +150,29 @@ function fmtPts(n: number) {
 
 function fmtPct(n: number) {
   return `${Number(n ?? 0).toFixed(1)}%`;
+}
+
+function isRegularRoundNumber(roundNumber: number) {
+  return getRoundDisplayName(roundNumber) === `Round ${roundNumber}`;
+}
+
+function formatTrendRoundLabel(roundNumber: number) {
+  return getRoundShortDisplayName(roundNumber);
+}
+
+function formatTrendRoundSelectLabel(roundNumber: number) {
+  return getRoundDisplayNameWithNumber(roundNumber);
+}
+
+function splitTrendRoundAxisLabel(roundNumber: number) {
+  const label = formatTrendRoundLabel(roundNumber);
+  if (isRegularRoundNumber(roundNumber) || label.length <= 14) return [label];
+
+  const words = label.split(" ");
+  const midpoint = Math.ceil(words.length / 2);
+  return [words.slice(0, midpoint).join(" "), words.slice(midpoint).join(" ")].filter(
+    Boolean
+  );
 }
 
 function movementText(movement: number) {
@@ -267,7 +295,7 @@ function buildNiceNumberDomain(minValue: number, maxValue: number, targetTickCou
   return { ticks, axisMin: roundAxisNumber(axisMin), axisMax: roundAxisNumber(axisMax) };
 }
 
-function summarizeRoundNumbers(roundNumbers: number[]) {
+function summarizeTrendRoundLabels(roundNumbers: number[]) {
   const uniqueRounds = Array.from(
     new Set(roundNumbers.filter((roundNumber) => Number.isFinite(roundNumber)))
   ).sort((a, b) => a - b);
@@ -278,22 +306,31 @@ function summarizeRoundNumbers(roundNumbers: number[]) {
   let rangeStart = uniqueRounds[0];
   let previousRound = uniqueRounds[0];
 
+  const pushRange = (start: number, end: number) => {
+    const roundRange = uniqueRounds.filter(
+      (roundNumber) => roundNumber >= start && roundNumber <= end
+    );
+    const allRegularRounds = roundRange.every(isRegularRoundNumber);
+    if (allRegularRounds) {
+      ranges.push(start === end ? `R${start}` : `R${start}-R${end}`);
+      return;
+    }
+
+    ranges.push(roundRange.map(formatTrendRoundLabel).join(", "));
+  };
+
   for (const roundNumber of uniqueRounds.slice(1)) {
     if (roundNumber === previousRound + 1) {
       previousRound = roundNumber;
       continue;
     }
 
-    ranges.push(
-      rangeStart === previousRound ? `R${rangeStart}` : `R${rangeStart}-R${previousRound}`
-    );
+    pushRange(rangeStart, previousRound);
     rangeStart = roundNumber;
     previousRound = roundNumber;
   }
 
-  ranges.push(
-    rangeStart === previousRound ? `R${rangeStart}` : `R${rangeStart}-R${previousRound}`
-  );
+  pushRange(rangeStart, previousRound);
 
   return ranges.join(", ");
 }
@@ -317,12 +354,12 @@ function buildTrendRangeRankSummary(points: LeaderboardTrendPoint[]) {
   return {
     bestRank,
     worstRank,
-    bestRoundsLabel: summarizeRoundNumbers(
+    bestRoundsLabel: summarizeTrendRoundLabels(
       sortedPoints
         .filter((point) => point.rank === bestRank)
         .map((point) => point.round_number)
     ),
-    worstRoundsLabel: summarizeRoundNumbers(
+    worstRoundsLabel: summarizeTrendRoundLabels(
       sortedPoints
         .filter((point) => point.rank === worstRank)
         .map((point) => point.round_number)
@@ -579,12 +616,22 @@ function TrendChart(props: {
               />
               <text
                 x={x(tick)}
-                y={height - margin.bottom + 22}
-                textAnchor="middle"
-                fontSize={variant === "expanded" ? 13 : 11}
+                y={height - margin.bottom + 19}
+                textAnchor={
+                  tick === minRound ? "start" : tick === maxRound ? "end" : "middle"
+                }
+                fontSize={variant === "expanded" ? 12 : 10}
                 fill="var(--muted)"
               >
-                R{tick}
+                {splitTrendRoundAxisLabel(tick).map((line, index) => (
+                  <tspan
+                    key={`${variant}-${tick}-label-${line}`}
+                    x={x(tick)}
+                    dy={index === 0 ? 0 : 12}
+                  >
+                    {line}
+                  </tspan>
+                ))}
               </text>
             </g>
           ))}
@@ -767,12 +814,12 @@ function TrendChart(props: {
               <div className="leaderboard-trend-range-stat">
                 <span>Start</span>
                 <strong>#{activeTrendRankSummary.startRank}</strong>
-                <small>R{activeTrendRankSummary.startRound}</small>
+                <small>{formatTrendRoundLabel(activeTrendRankSummary.startRound)}</small>
               </div>
               <div className="leaderboard-trend-range-stat">
                 <span>Finish</span>
                 <strong>#{activeTrendRankSummary.finishRank}</strong>
-                <small>R{activeTrendRankSummary.finishRound}</small>
+                <small>{formatTrendRoundLabel(activeTrendRankSummary.finishRound)}</small>
               </div>
             </div>
           ) : null}
@@ -809,7 +856,7 @@ function TrendChart(props: {
                   }
                 >
                   <span className="ui-caption" style={{ fontSize: 12 }}>
-                    R{roundNumber}
+                    {formatTrendRoundLabel(roundNumber)}
                   </span>
                   <span>
                     {isRankMode ? `#${point.rank}` : `${fmtPts(point.total_points)} pts`}
@@ -1736,8 +1783,10 @@ export default function LeaderboardPageClient({
     trendRangeStart === null || trendRangeEnd === null
       ? ""
       : trendRangeStart === trendRangeEnd
-        ? `Showing R${trendRangeStart}`
-        : `Showing R${trendRangeStart} to R${trendRangeEnd}`;
+        ? `Showing ${formatTrendRoundLabel(trendRangeStart)}`
+        : `Showing ${formatTrendRoundLabel(trendRangeStart)} to ${formatTrendRoundLabel(
+            trendRangeEnd
+          )}`;
 
   const filteredTrendOptions = useMemo(() => {
     const query = trendSearch.trim().toLowerCase();
@@ -2093,12 +2142,14 @@ export default function LeaderboardPageClient({
     }
   }
 
+  const latestScoredRoundLabel =
+    latestScoredRound === null ? "" : getRoundDisplayName(latestScoredRound);
   const trendRoundStatusLabel =
     latestScoredRound === null
       ? "No scored rounds yet."
       : latestScoredRoundInProgress === true
-        ? `Round R${latestScoredRound} is in progress.`
-        : `Round R${latestScoredRound} is complete.`;
+        ? `${latestScoredRoundLabel} is in progress.`
+        : `${latestScoredRoundLabel} is complete.`;
 
   return (
     <main className={`ui-page ${isTrendPage ? "ui-page--content" : "ui-page--wide"}`}>
@@ -3257,36 +3308,34 @@ export default function LeaderboardPageClient({
                                   justifyContent: "flex-start",
                                 }}
                               >
-                                <label className="ui-caption" style={{ display: "grid", gap: 4 }}>
+                                <label className="ui-caption leaderboard-trend-range-field">
                                   <span>From</span>
                                   <select
-                                    className="ui-input"
+                                    className="ui-input leaderboard-trend-range-select"
                                     value={trendRangeStartRound ?? ""}
                                     onChange={(event) =>
                                       setTrendRangeStartRound(Number(event.target.value))
                                     }
-                                    style={{ minWidth: 96, height: 34, padding: "0 10px" }}
                                   >
                                     {trendRounds.map((roundNumber) => (
                                       <option key={`range-start-${roundNumber}`} value={roundNumber}>
-                                        R{roundNumber}
+                                        {formatTrendRoundSelectLabel(roundNumber)}
                                       </option>
                                     ))}
                                   </select>
                                 </label>
-                                <label className="ui-caption" style={{ display: "grid", gap: 4 }}>
+                                <label className="ui-caption leaderboard-trend-range-field">
                                   <span>To</span>
                                   <select
-                                    className="ui-input"
+                                    className="ui-input leaderboard-trend-range-select"
                                     value={trendRangeEndRound ?? ""}
                                     onChange={(event) =>
                                       setTrendRangeEndRound(Number(event.target.value))
                                     }
-                                    style={{ minWidth: 96, height: 34, padding: "0 10px" }}
                                   >
                                     {trendRounds.map((roundNumber) => (
                                       <option key={`range-end-${roundNumber}`} value={roundNumber}>
-                                        R{roundNumber}
+                                        {formatTrendRoundSelectLabel(roundNumber)}
                                       </option>
                                     ))}
                                   </select>

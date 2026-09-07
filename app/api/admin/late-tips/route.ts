@@ -7,6 +7,7 @@ import {
   resolveCompetitionIdForAdminRequest,
 } from "@/lib/admin-auth";
 import { recordAdminAuditEvent, shortUserLabel } from "@/lib/admin-audit";
+import { getRoundDisplayName } from "@/lib/round-label";
 import { invalidateRoundTipStatusCache } from "@/lib/round-tip-status-data";
 import { createServiceClient } from "@/lib/supabase-server";
 
@@ -376,6 +377,7 @@ export async function POST(req: Request) {
     });
 
     const requestUrl = new URL(req.url);
+    const roundLabel = getRoundDisplayName(round);
     const auditError = await recordAdminAuditEvent({
       competitionId,
       season,
@@ -385,7 +387,7 @@ export async function POST(req: Request) {
       targetType: "member",
       targetUserId: resolvedTarget.userId,
       targetLabel,
-      summary: `Applied ${assignments.length} late tip override${assignments.length === 1 ? "" : "s"} for ${targetLabel} in season ${season}, round ${round}.`,
+      summary: `Applied ${assignments.length} late tip override${assignments.length === 1 ? "" : "s"} for ${targetLabel} in ${roundLabel} of season ${season}.`,
       requestPath: requestUrl.pathname + requestUrl.search,
       details: {
         season,

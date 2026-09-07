@@ -20,6 +20,25 @@ test("snapshot classification marks a successful capture correctly", () => {
   assert.match(result.summary, /round 6/i);
 });
 
+test("snapshot classification uses finals round labels in summaries", () => {
+  const result = classifySnapshotRun(
+    {
+      ok: true,
+      capturedRounds: 0,
+      processedDueRounds: 1,
+      skipped_reason: "already_captured_for_due_snapshot",
+      next: { round: 26 },
+    },
+    200
+  );
+
+  assert.equal(result.runStatus, "skipped");
+  assert.equal(
+    result.summary,
+    "Qualifying & Elimination Finals was already captured for its due snapshot."
+  );
+});
+
 test("snapshot classification treats no due rounds as skipped", () => {
   const result = classifySnapshotRun(
     {

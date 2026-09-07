@@ -1067,6 +1067,122 @@ button {
   -webkit-overflow-scrolling: touch;
 }
 
+.leaderboard-trend-detail {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  display: grid;
+  gap: 12px;
+}
+
+.leaderboard-trend-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.leaderboard-trend-detail-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.leaderboard-trend-clear-btn {
+  appearance: none;
+  background: var(--card);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.leaderboard-trend-range-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.leaderboard-trend-range-stat {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card-soft);
+  padding: 9px 10px;
+  display: grid;
+  gap: 4px;
+}
+
+.leaderboard-trend-range-stat--best {
+  border-color: color-mix(in srgb, var(--tone-success-text) 36%, var(--border));
+  background: color-mix(in srgb, var(--tone-success-bg) 72%, var(--card));
+}
+
+.leaderboard-trend-range-stat--worst {
+  border-color: color-mix(in srgb, var(--tone-danger-text) 32%, var(--border));
+  background: color-mix(in srgb, var(--tone-danger-bg) 68%, var(--card));
+}
+
+.leaderboard-trend-range-stat span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.leaderboard-trend-range-stat strong {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.leaderboard-trend-range-stat small {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.leaderboard-trend-round-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.leaderboard-trend-round-chip {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--card);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.leaderboard-trend-round-chip--best {
+  border-color: color-mix(in srgb, var(--tone-success-text) 48%, var(--border));
+  background: color-mix(in srgb, var(--tone-success-bg) 78%, var(--card));
+  color: var(--tone-success-text);
+}
+
+.leaderboard-trend-round-chip--worst {
+  border-color: color-mix(in srgb, var(--tone-danger-text) 42%, var(--border));
+  background: color-mix(in srgb, var(--tone-danger-bg) 72%, var(--card));
+  color: var(--tone-danger-text);
+}
+
 .leaderboard-trend-selected-rail {
   display: flex;
   flex-wrap: wrap;
@@ -1309,6 +1425,14 @@ button {
 
   .leaderboard-trend-chart-frame--expanded {
     min-width: 860px;
+  }
+
+  .leaderboard-trend-detail {
+    padding: 10px;
+  }
+
+  .leaderboard-trend-range-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .leaderboard-trend-selected-rail {

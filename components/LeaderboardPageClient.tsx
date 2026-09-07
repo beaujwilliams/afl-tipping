@@ -267,6 +267,73 @@ function buildNiceNumberDomain(minValue: number, maxValue: number, targetTickCou
   return { ticks, axisMin: roundAxisNumber(axisMin), axisMax: roundAxisNumber(axisMax) };
 }
 
+function summarizeRoundNumbers(roundNumbers: number[]) {
+  const uniqueRounds = Array.from(
+    new Set(roundNumbers.filter((roundNumber) => Number.isFinite(roundNumber)))
+  ).sort((a, b) => a - b);
+
+  if (uniqueRounds.length === 0) return "";
+
+  const ranges: string[] = [];
+  let rangeStart = uniqueRounds[0];
+  let previousRound = uniqueRounds[0];
+
+  for (const roundNumber of uniqueRounds.slice(1)) {
+    if (roundNumber === previousRound + 1) {
+      previousRound = roundNumber;
+      continue;
+    }
+
+    ranges.push(
+      rangeStart === previousRound ? `R${rangeStart}` : `R${rangeStart}-R${previousRound}`
+    );
+    rangeStart = roundNumber;
+    previousRound = roundNumber;
+  }
+
+  ranges.push(
+    rangeStart === previousRound ? `R${rangeStart}` : `R${rangeStart}-R${previousRound}`
+  );
+
+  return ranges.join(", ");
+}
+
+function buildTrendRangeRankSummary(points: LeaderboardTrendPoint[]) {
+  const sortedPoints = points
+    .filter(
+      (point) =>
+        Number.isFinite(point.round_number) && Number.isFinite(point.rank)
+    )
+    .sort((a, b) => a.round_number - b.round_number);
+
+  if (sortedPoints.length === 0) return null;
+
+  const ranks = sortedPoints.map((point) => point.rank);
+  const bestRank = Math.min(...ranks);
+  const worstRank = Math.max(...ranks);
+  const firstPoint = sortedPoints[0];
+  const lastPoint = sortedPoints[sortedPoints.length - 1];
+
+  return {
+    bestRank,
+    worstRank,
+    bestRoundsLabel: summarizeRoundNumbers(
+      sortedPoints
+        .filter((point) => point.rank === bestRank)
+        .map((point) => point.round_number)
+    ),
+    worstRoundsLabel: summarizeRoundNumbers(
+      sortedPoints
+        .filter((point) => point.rank === worstRank)
+        .map((point) => point.round_number)
+    ),
+    startRank: firstPoint.rank,
+    startRound: firstPoint.round_number,
+    finishRank: lastPoint.rank,
+    finishRound: lastPoint.round_number,
+  };
+}
+
 function normalizeLeaderboardState(json: LeaderboardResponse | null | undefined) {
   const rows = Array.isArray(json?.rows)
     ? json.rows.map((row) => ({
@@ -363,6 +430,9 @@ function TrendChart(props: {
   const activeTrendSeries =
     seriesWithPoints.find((series) => series.user_id === resolvedActiveTrendUserId) ??
     (seriesWithPoints.length === 1 ? seriesWithPoints[0] : null);
+  const activeTrendRankSummary = activeTrendSeries
+    ? buildTrendRangeRankSummary(activeTrendSeries.points)
+    : null;
   const isRankMode = metric === "rank";
   const toggleTrendSelection = (userId: string) => {
     setActiveTrendUserId((current) => (current === userId ? null : userId));
@@ -650,25 +720,9 @@ function TrendChart(props: {
       {rangeControls ? <div>{rangeControls}</div> : null}
 
       {activeTrendSeries ? (
-        <div
-          style={{
-            border: "1px solid var(--border)",
-            borderRadius: 12,
-            padding: 12,
-            display: "grid",
-            gap: 10,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 10,
-              flexWrap: "wrap",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <div className="leaderboard-trend-detail">
+          <div className="leaderboard-trend-detail-header">
+            <div className="leaderboard-trend-detail-title-row">
               <span
                 aria-hidden
                 style={{
@@ -688,40 +742,71 @@ function TrendChart(props: {
               <button
                 type="button"
                 onClick={() => setActiveTrendUserId(null)}
-                style={{
-                  appearance: "none",
-                  background: "var(--card)",
-                  color: "var(--foreground)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 999,
-                  padding: "6px 12px",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
+                className="leaderboard-trend-clear-btn"
               >
                 Clear highlight
               </button>
             ) : null}
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+
+          {activeTrendRankSummary ? (
+            <div
+              className="leaderboard-trend-range-stats"
+              aria-label={`${activeTrendSeries.display_name} selected range position summary`}
+            >
+              <div className="leaderboard-trend-range-stat leaderboard-trend-range-stat--best">
+                <span>Best</span>
+                <strong>#{activeTrendRankSummary.bestRank}</strong>
+                <small>{activeTrendRankSummary.bestRoundsLabel}</small>
+              </div>
+              <div className="leaderboard-trend-range-stat leaderboard-trend-range-stat--worst">
+                <span>Worst</span>
+                <strong>#{activeTrendRankSummary.worstRank}</strong>
+                <small>{activeTrendRankSummary.worstRoundsLabel}</small>
+              </div>
+              <div className="leaderboard-trend-range-stat">
+                <span>Start</span>
+                <strong>#{activeTrendRankSummary.startRank}</strong>
+                <small>R{activeTrendRankSummary.startRound}</small>
+              </div>
+              <div className="leaderboard-trend-range-stat">
+                <span>Finish</span>
+                <strong>#{activeTrendRankSummary.finishRank}</strong>
+                <small>R{activeTrendRankSummary.finishRound}</small>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="leaderboard-trend-round-list">
             {rounds.map((roundNumber) => {
               const point = activeTrendSeries.points.find((entry) => entry.round_number === roundNumber);
               if (!point) return null;
+              const isBestPosition =
+                isRankMode &&
+                activeTrendRankSummary !== null &&
+                activeTrendRankSummary.bestRank !== activeTrendRankSummary.worstRank &&
+                point.rank === activeTrendRankSummary.bestRank;
+              const isWorstPosition =
+                isRankMode &&
+                activeTrendRankSummary !== null &&
+                activeTrendRankSummary.bestRank !== activeTrendRankSummary.worstRank &&
+                point.rank === activeTrendRankSummary.worstRank;
+              const positionMarkerClass = isBestPosition
+                ? " leaderboard-trend-round-chip--best"
+                : isWorstPosition
+                  ? " leaderboard-trend-round-chip--worst"
+                  : "";
               return (
                 <div
                   key={`${activeTrendSeries.user_id}-summary-${roundNumber}`}
-                  style={{
-                    border: "1px solid var(--border)",
-                    borderRadius: 999,
-                    padding: "6px 10px",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 8,
-                    background: "var(--card)",
-                    fontSize: 13,
-                    fontWeight: 600,
-                  }}
+                  className={`leaderboard-trend-round-chip${positionMarkerClass}`}
+                  title={
+                    isBestPosition
+                      ? "Best position in selected range"
+                      : isWorstPosition
+                        ? "Worst position in selected range"
+                        : undefined
+                  }
                 >
                   <span className="ui-caption" style={{ fontSize: 12 }}>
                     R{roundNumber}

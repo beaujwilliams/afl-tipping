@@ -492,14 +492,17 @@ function TrendFluctuationPanel(props: {
   mostRows: RankFluctuationSummary[];
   leastRows: RankFluctuationSummary[];
   colorByUserId: Record<string, string>;
+  selectedSeriesCount: number;
 }) {
-  const { mostRows, leastRows, colorByUserId } = props;
+  const { mostRows, leastRows, colorByUserId, selectedSeriesCount } = props;
   const hasRows = mostRows.length > 0 || leastRows.length > 0;
 
   if (!hasRows) {
     return (
       <div className="ui-caption leaderboard-trend-fluctuation-empty">
-        Select at least two rounds to calculate position fluctuation.
+        {selectedSeriesCount === 0
+          ? "Select at least one tipster to calculate position fluctuation."
+          : "Select at least two rounds to calculate position fluctuation."}
       </div>
     );
   }
@@ -1910,10 +1913,10 @@ export default function LeaderboardPageClient({
   }, [activeTrendRoundSet, scopedTrendSeries, selectedTrendUserIds]);
 
   const trendFluctuationRows = useMemo(() => {
-    return scopedTrendSeries
-      .map((series) => buildRankFluctuationSummary(series, activeTrendRoundSet))
+    return selectedTrendSeries
+      .map((series) => buildRankFluctuationSummary(series))
       .filter((row): row is RankFluctuationSummary => row !== null);
-  }, [activeTrendRoundSet, scopedTrendSeries]);
+  }, [selectedTrendSeries]);
 
   const mostFluctuatingTrendRows = useMemo(
     () => [...trendFluctuationRows].sort(compareMostFluctuation).slice(0, 3),
@@ -3366,6 +3369,7 @@ export default function LeaderboardPageClient({
                         mostRows={mostFluctuatingTrendRows}
                         leastRows={leastFluctuatingTrendRows}
                         colorByUserId={trendColorByUserId}
+                        selectedSeriesCount={selectedTrendSeries.length}
                       />
 
                       <TrendChart
